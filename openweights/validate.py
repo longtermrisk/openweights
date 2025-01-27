@@ -103,6 +103,8 @@ class TrainingConfig(BaseModel):
     lora_dropout: float = Field(0.0, description="LoRA dropout rate")
     use_rslora: bool = Field(True, description="Whether to use RSLoRA")
     merge_before_push: bool = Field(True, description="Whether to merge model before pushing to Hub. Only merged models can be used as parent models for further finetunes. Only supported for bf16 models.")
+    push_both: bool = Field(False, description="Whether to push both merged and adapter models to Hub")
+    push_to_private: bool = Field(True, description="Whether to push to private Hub")
     
     # Training hyperparameters
     epochs: int = Field(1, description="Number of training epochs")
@@ -133,6 +135,9 @@ class TrainingConfig(BaseModel):
     def validate_training_file_prefixes(cls, values):
         loss = values.get('loss', 'orpo')
         training_file = values.get('training_file')
+
+        if os.path.exists(training_file):
+            return values
         
         if loss == 'sft' and not training_file.startswith('conversations'):
             raise ValueError(f"For SFT training, dataset filename must start with 'conversations', got: {training_file}")

@@ -9,22 +9,23 @@ from openweights.worker.utils import GPUStatsCallback, LogMetrics
 
 
 def sft_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
-    def apply_chat_template(examples):
-        conversations = examples["messages"]
-        texts = []
-        for conversation in conversations:
-            texts.append(
-                tokenizer.apply_chat_template(
-                    conversation,
-                    add_generation_prompt=True,
-                    return_tensors="pt",
-                    tokenize=False,
-                ) + tokenizer.eos_token
-            )
-        return {"text": texts}
+    # NOTE: removed since format is directly supported https://huggingface.co/docs/trl/en/sft_trainer#dataset-format-support
+    # def apply_chat_template(examples):
+    #     conversations = examples["messages"]
+    #     texts = []
+    #     for conversation in conversations:
+    #         texts.append(
+    #             tokenizer.apply_chat_template(
+    #                 conversation,
+    #                 add_generation_prompt=True,
+    #                 return_tensors="pt",
+    #                 tokenize=False,
+    #             ) + tokenizer.eos_token
+    #         )
+    #     return {"text": texts}
     
-    dataset = dataset.map(apply_chat_template, batched=True)
-    test_dataset = test_dataset.map(apply_chat_template, batched=True)
+    # dataset = dataset.map(apply_chat_template, batched=True)
+    # test_dataset = test_dataset.map(apply_chat_template, batched=True)
     
     learning_rate = training_cfg.learning_rate if (not isinstance(training_cfg.learning_rate, str)) else eval(training_cfg.learning_rate)
     if learning_rate < 0:
