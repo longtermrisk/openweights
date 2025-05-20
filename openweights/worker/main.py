@@ -42,9 +42,17 @@ def maybe_read(path):
 
 
 GPUs = {
-    "NVIDIA RTX 6000 Ada Generation": "A6000",
+    # References found at https://rest.runpod.io/v1/docs#v-0-106
+    # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
+    # "NVIDIA RTX 6000 Ada Generation": "6000Ada",  # Best compute-efficiency, to use by default
+    # "NVIDIA RTX 4000 Ada Generation": "4000Ada",
+    "NVIDIA RTX 6000 Ada Generation": "A6000",  # Best compute-efficiency, to use by default
     "NVIDIA RTX 4000 Ada Generation": "A4000",
-    "NVIDIA RTX 2000 Ada Generation": "A2000",
+    "NVIDIA L40": "L40",
+    "NVIDIA L40S": "L40S",
+    "NVIDIA A30": "A30",
+    #
+    # Belows, GPUs are only good for high-memory task (e.g., pretraining and vanilla finetuning)
     "NVIDIA A100 80GB PCIe": "A100",  # Default A100 - 80GB
     "NVIDIA A100 80GB PCIe": "A100_80",
     "NVIDIA A100-SXM4-40GB": "A100_40",
@@ -53,34 +61,39 @@ GPUs = {
     "NVIDIA H100 NVL": "H100N",
     "NVIDIA H100 80GB HBM3": "H100S",
     "NVIDIA H200": "H200",
-    "NVIDIA GeForce RTX 4090": "RTX4090",
-    "NVIDIA RTX A5000": "A5000",
-    "NVIDIA A40": "A40",
-    "NVIDIA RTX A4500": "A4500",
-    "NVIDIA L4": "L4",
-    "NVIDIA L40": "L40",
-    "NVIDIA L40S": "L40S",
-    "NVIDIA GeForce RTX 3080": "RTX3080",
-    "NVIDIA GeForce RTX 3070": "RTX3070",
-    "NVIDIA GeForce RTX 3080 Ti": "RTX3080Ti",
-    "NVIDIA A30": "A30",
-    "NVIDIA GeForce RTX 4080": "RTX4080",
-    "NVIDIA GeForce RTX 3090": "RTX3090",
-    "NVIDIA GeForce RTX 3090 Ti": "RTX3090Ti",
-    "Tesla V100-SXM2-32GB": "V100",  # Default V100 - 32GB
-    "Tesla V100-SXM2-32GB": "V100_32",
-    "Tesla V100-SXM2-16GB": "V100_16",
-    "Tesla V100-FHHL-16GB": "V100_16_FHHL",
-    "Tesla V100-PCIE-16GB": "V100_16_PCIE",
-    "NVIDIA GeForce RTX 4070 Ti": "RTX4070Ti",
-    "NVIDIA RTX 4000 SFF Ada Generation": "A4000_SFF",
-    "NVIDIA RTX 5000 Ada Generation": "A5000_ADA",
+    "NVIDIA B200": "B200",
+    #
+    # Below, GPUs are cost inefficient
+    # "NVIDIA GeForce RTX 4080": "RTX4080",
+    # "NVIDIA GeForce RTX 3090": "RTX3090",
+    # "NVIDIA GeForce RTX 3090 Ti": "RTX3090Ti",
+    # "Tesla V100-SXM2-32GB": "V100",  # Default V100 - 32GB
+    # "Tesla V100-SXM2-32GB": "V100_32",
+    # "Tesla V100-SXM2-16GB": "V100_16",
+    # "Tesla V100-FHHL-16GB": "V100_16_FHHL",
+    # "Tesla V100-PCIE-16GB": "V100_16_PCIE",
+    # "NVIDIA GeForce RTX 4070 Ti": "RTX4070Ti",
+    # "NVIDIA RTX 4000 SFF Ada Generation": "A4000_SFF",
+    # "NVIDIA RTX 5000 Ada Generation": "A5000_ADA",
     # "AMD Instinct MI300X OAM": "MI300X",
+    # "NVIDIA RTX 2000 Ada Generation": "2000Ada",
+    # "NVIDIA RTX A6000": "A6000",
+    # "NVIDIA RTX A4000": "A4000",
+    # "NVIDIA RTX A2000": "A2000",
+    # "NVIDIA GeForce RTX 4090": "RTX4090",
+    # "NVIDIA RTX A5000": "A5000",
+    # "NVIDIA A40": "A40",
+    # "NVIDIA RTX A4500": "A4500",
+    # "NVIDIA GeForce RTX 3080": "RTX3080",
+    # "NVIDIA GeForce RTX 3070": "RTX3070",
+    # "NVIDIA GeForce RTX 3080 Ti": "RTX3080Ti",
+    # "NVIDIA L4": "L4",
 }
 
 
 class Worker:
     def __init__(self):
+        logging.info("Initializing worker")
         self.supabase = openweights._supabase
         self.organization_id = openweights.organization_id
         self.auth_token = openweights.auth_token
@@ -126,6 +139,7 @@ class Worker:
 
         # Detect GPU info
         try:
+            logging.info("Detecting GPU info")
             self.gpu_count = torch.cuda.device_count()
             self.vram_gb = (
                 torch.cuda.get_device_properties(0).total_memory // (1024**3)
@@ -134,12 +148,22 @@ class Worker:
             # Determine hardware type based on GPU info
             gpu_name = torch.cuda.get_device_name(0)
             self.hardware_type = None
+
+            def clean_gpu_name(gpu_name):
+                return gpu_name.lower().replace("nvidia ", "").strip()
+
+            # Start with exact match
             for gpu_name_pattern, gpu_type in GPUs.items():
-                if gpu_name_pattern.lower().replace(
-                    "nvidia ", ""
-                ) in gpu_name.lower().replace("nvidia ", ""):
+                if clean_gpu_name(gpu_name_pattern) == clean_gpu_name(gpu_name):
                     self.hardware_type = f"{self.gpu_count}x {gpu_type}"
                     break
+
+            # If no exact match, use include match
+            if self.hardware_type is None:
+                for gpu_name_pattern, gpu_type in GPUs.items():
+                    if clean_gpu_name(gpu_name_pattern) in clean_gpu_name(gpu_name):
+                        self.hardware_type = f"{self.gpu_count}x {gpu_type}"
+                        break
 
             if self.hardware_type is None:
                 logging.info(f"GPU {gpu_name} not found in GPUs ({GPUs.keys()}).")
@@ -308,7 +332,7 @@ class Worker:
 
     def find_and_execute_job(self):
         while not self.shutdown_flag:
-            logging.debug("Worker is looking for jobs...")
+            logging.info("Worker is looking for jobs...")
             job = None
             try:
                 job = self._find_job()
@@ -316,20 +340,24 @@ class Worker:
                 logging.error(f"Error finding job: {e}")
                 traceback.print_exc()
             if not job:
-                logging.info("No suitable job found. Checking again in a few seconds...")
+                logging.info(
+                    "No suitable job found. Checking again in a few seconds..."
+                )
                 time.sleep(5)
                 continue
 
             try:
                 logging.info(f"Attempting to acquire job {job['id']}")
-                acquired_job = self.acquire_job(job['id'])
+                acquired_job = self.acquire_job(job["id"])
                 if not acquired_job:
                     # Another worker took it in the meantime
                     logging.info(f"Job {job['id']} was taken by another worker.")
                     time.sleep(2)
                     continue
 
-                logging.info(f"Worker {self.worker_id} acquired job {job['id']}, executing...")
+                logging.info(
+                    f"Worker {self.worker_id} acquired job {job['id']}, executing..."
+                )
                 self._execute_job(acquired_job)
             except KeyboardInterrupt:
                 logging.info("Worker interrupted by user. Shutting down...")
@@ -343,34 +371,52 @@ class Worker:
 
     def _find_job(self):
         """Fetch pending jobs for this docker image, sorted by required VRAM desc, then oldest first."""
-        logging.debug("Fetching jobs from the database...")
-        jobs = self.supabase.table('jobs') \
-            .select('*') \
-            .eq('status', 'pending') \
-            .eq('docker_image', self.docker_image) \
-            .order('requires_vram_gb', desc=True) \
-            .order('created_at', desc=False) \
-            .execute().data
+        logging.info("Fetching jobs from the database...")
+        jobs = (
+            self.supabase.table("jobs")
+            .select("*")
+            .eq("status", "pending")
+            .eq("docker_image", self.docker_image)
+            .order("requires_vram_gb", desc=True)
+            .order("created_at", desc=False)
+            .execute()
+            .data
+        )
 
-        logging.debug(f"Fetched {len(jobs)} pending jobs from the database")
+        logging.info(f"Fetched {len(jobs)} pending jobs from the database")
 
         # Filter jobs by VRAM requirements
-        suitable_jobs = [j for j in jobs if j['requires_vram_gb'] <= self.vram_gb]
-        logging.debug(f"Found {len(suitable_jobs)} suitable jobs based on VRAM criteria")
-        
+        logging.info(
+            f"VRAM requirements per job: {[j['requires_vram_gb'] for j in jobs]} GB"
+        )
+        logging.info(f"Hardware type: {self.hardware_type}")
+        logging.info(f"VRAM available: {self.vram_gb} GB")
+        logging.info(
+            f"Number of jobs existing before filtering them by VRAM: {len(jobs)}"
+        )
+        suitable_jobs = [j for j in jobs if j["requires_vram_gb"] <= self.vram_gb]
+        logging.info(f"Found {len(suitable_jobs)} suitable jobs based on VRAM criteria")
+
         # Further filter jobs by hardware requirements
         if self.hardware_type:
             hardware_suitable_jobs = []
             for job in suitable_jobs:
                 # If job doesn't specify allowed_hardware, it can run on any hardware
-                if not job['allowed_hardware']:
+                if not job["allowed_hardware"]:
                     hardware_suitable_jobs.append(job)
                 # If job specifies allowed_hardware, check if this worker's hardware is allowed
-                elif self.hardware_type in job['allowed_hardware']:
+                elif self.hardware_type in job["allowed_hardware"]:
                     hardware_suitable_jobs.append(job)
-            
+                else:
+                    logging.info(
+                        f"""Job {job["id"]} is not suitable for this worker's hardware {self.hardware_type}. 
+                        Allowed hardware: {job["allowed_hardware"]}"""
+                    )
+
             suitable_jobs = hardware_suitable_jobs
-            logging.debug(f"Found {len(suitable_jobs)} suitable jobs after hardware filtering")
+            logging.info(
+                f"Found {len(suitable_jobs)} suitable jobs after hardware filtering"
+            )
 
         # Shuffle suitable jobs to get different workers to cache different models
         random.shuffle(suitable_jobs)

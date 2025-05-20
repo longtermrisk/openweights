@@ -27,12 +27,14 @@ IMAGES = {
 
 GPUs = {
     # References found at https://rest.runpod.io/v1/docs#v-0-106
-    "6000Ada": "NVIDIA RTX 6000 Ada Generation",
+    # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
+    "6000Ada": "NVIDIA RTX 6000 Ada Generation",  # Best compute-efficiency, to use by default
     "4000Ada": "NVIDIA RTX 4000 Ada Generation",
-    "2000Ada": "NVIDIA RTX 2000 Ada Generation",
-    "A6000": "NVIDIA RTX A6000",
-    "A4000": "NVIDIA RTX A4000",
-    "A2000": "NVIDIA RTX A2000",
+    "L40": "NVIDIA L40",
+    "L40S": "NVIDIA L40S",
+    "A30": "NVIDIA A30",
+    #
+    # Belows, GPUs are only good for high-memory task (e.g., pretraining and vanilla finetuning)
     "A100": "NVIDIA A100 80GB PCIe",  # Default A100 - 80GB
     "A100_80": "NVIDIA A100 80GB PCIe",
     "A100_40": "NVIDIA A100-SXM4-40GB",
@@ -41,29 +43,33 @@ GPUs = {
     "H100N": "NVIDIA H100 NVL",
     "H100S": "NVIDIA H100 80GB HBM3",
     "H200": "NVIDIA H200",
-    "RTX4090": "NVIDIA GeForce RTX 4090",
-    "A5000": "NVIDIA RTX A5000",
-    "A40": "NVIDIA A40",
-    "A4500": "NVIDIA RTX A4500",
-    "L4": "NVIDIA L4",
-    "L40": "NVIDIA L40",
-    "L40S": "NVIDIA L40S",
-    "RTX3080": "NVIDIA GeForce RTX 3080",
-    "RTX3070": "NVIDIA GeForce RTX 3070",
-    "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
-    "A30": "NVIDIA A30",
-    "RTX4080": "NVIDIA GeForce RTX 4080",
-    "RTX3090": "NVIDIA GeForce RTX 3090",
-    "RTX3090Ti": "NVIDIA GeForce RTX 3090 Ti",
-    "V100": "Tesla V100-SXM2-32GB",  # Default V100 - 32GB
-    "V100_32": "Tesla V100-SXM2-32GB",
-    "V100_16": "Tesla V100-SXM2-16GB",
-    "V100_16_FHHL": "Tesla V100-FHHL-16GB",
-    "V100_16_PCIE": "Tesla V100-PCIE-16GB",
-    "RTX4070Ti": "NVIDIA GeForce RTX 4070 Ti",
-    "A4000_SFF": "NVIDIA RTX 4000 SFF Ada Generation",
-    "A5000_ADA": "NVIDIA RTX 5000 Ada Generation",
+    "B200": "NVIDIA B200",
+    #
+    # Below, GPUs are cost inefficient
+    # "RTX4080": "NVIDIA GeForce RTX 4080",
+    # "RTX3090": "NVIDIA GeForce RTX 3090",
+    # "RTX3090Ti": "NVIDIA GeForce RTX 3090 Ti",
+    # "V100": "Tesla V100-SXM2-32GB",  # Default V100 - 32GB
+    # "V100_32": "Tesla V100-SXM2-32GB",
+    # "V100_16": "Tesla V100-SXM2-16GB",
+    # "V100_16_FHHL": "Tesla V100-FHHL-16GB",
+    # "V100_16_PCIE": "Tesla V100-PCIE-16GB",
+    # "RTX4070Ti": "NVIDIA GeForce RTX 4070 Ti",
+    # "A4000_SFF": "NVIDIA RTX 4000 SFF Ada Generation",
+    # "A5000_ADA": "NVIDIA RTX 5000 Ada Generation",
     # "MI300X": "AMD Instinct MI300X OAM",
+    # "2000Ada": "NVIDIA RTX 2000 Ada Generation",
+    # "A6000": "NVIDIA RTX A6000",
+    # "A4000": "NVIDIA RTX A4000",
+    # "A2000": "NVIDIA RTX A2000",
+    # "RTX4090": "NVIDIA GeForce RTX 4090",
+    # "A5000": "NVIDIA RTX A5000",
+    # "A40": "NVIDIA A40",
+    # "A4500": "NVIDIA RTX A4500",
+    # "RTX3080": "NVIDIA GeForce RTX 3080",
+    # "RTX3070": "NVIDIA GeForce RTX 3070",
+    # "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
+    # "L4": "NVIDIA L4",
 }
 GPU_COUNT = 1
 allowed_cuda_versions = ['12.6']

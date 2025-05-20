@@ -1,3 +1,4 @@
+import logging
 from openweights import register, Jobs
 from typing import Any, Dict, Tuple
 import hashlib
@@ -48,7 +49,7 @@ class FineTuning(Jobs):
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
             job_id=job_id, org_id=self.client.hf_org, model_name=model_name
         )
-        if params.get("ft_id_suffix", None):
+        if params.get("ft_id_suffix", None) is not None:
             params["finetuned_model_id"] += f"-{params['ft_id_suffix']}"
 
         try:
@@ -69,6 +70,9 @@ class FineTuning(Jobs):
             "docker_image": self.base_image,
             "script": f"python training.py {job_id}",
         }
+        logging.info(
+            f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"
+        )
 
         return self.get_or_create_or_reset(data)
 

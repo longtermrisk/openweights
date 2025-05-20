@@ -29,13 +29,20 @@ def validate_messages(content):
             row = json.loads(line)
             if "messages" in row:
                 assert "text" not in row
-                for message in row['messages']:
+                for message in row["messages"]:
                     if not validate_message(message):
+                        logging.error(
+                            f"Invalid message in conversations file: {message}"
+                        )
                         return False
             elif "text" in row:
-                if not validate_text_only(row['text']):
+                if not validate_text_only(row["text"]):
+                    logging.error(f"Invalid text in conversations file: {row['text']}")
                     return False
             else:
+                logging.error(
+                    f"Invalid row in conversations file (no 'messages' or 'text' key): {row}"
+                )
                 return False
         return True
     except (json.JSONDecodeError, KeyError, ValueError, AssertionError):
