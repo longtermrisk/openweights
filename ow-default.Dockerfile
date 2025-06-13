@@ -16,7 +16,8 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
 RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install huggingface_hub supabase python-dotenv torch fire httpx>=0.24.0 runpod bitsandbytes
+RUN python3 -m pip install huggingface_hub[hf_transfer] hf_transfer supabase python-dotenv torch fire httpx>=0.24.0 runpod bitsandbytes
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
 RUN python3 -m pip install inspect_ai git+https://github.com/UKGovernmentBEIS/inspect_evals
 RUN python3 -m pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
 

@@ -15,7 +15,11 @@ from utils import load_jsonl, load_model_and_tokenizer, client
 
 def train(training_cfg, skip_client_logging: bool = False):
     """Prepare lora model, call training function, and push to hub"""
-    model, tokenizer = load_model_and_tokenizer(training_cfg.model, load_in_4bit=training_cfg.load_in_4bit)
+    model, tokenizer = load_model_and_tokenizer(
+        training_cfg.model,
+        load_in_4bit=training_cfg.load_in_4bit,
+        max_seq_length=training_cfg.max_seq_length,
+    )
 
     print("Creating new LoRA adapter")
     target_modules = training_cfg.target_modules
@@ -126,7 +130,8 @@ def main(config_job_id: str, skip_client_logging: bool = False):
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)
-        config = job['params']['validated_params']
+        config = job["params"]["validated_params"]
+    print(f"Training config: {json.dumps(config, indent=4)}")
     training_config = TrainingConfig(**config)
     train(training_config, skip_client_logging)
 

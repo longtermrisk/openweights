@@ -20,8 +20,8 @@ class TrainingConfig(BaseModel):
     finetuned_model_id: str = Field(
         "{org_id}/{model_name}-{job_id}", description="File ID of the finetuned model"
     )
-    ft_id_suffix: Optional[str] = Field(
-        None, description="Suffix for the finetuned model id"
+    model_naming_extra_parameters: Optional[Dict[str, str]] = Field(
+        None, description="Extra parameters for the finetuned model id"
     )
     job_id_suffix: Optional[str] = Field(None, description="Suffix for the job id")
 

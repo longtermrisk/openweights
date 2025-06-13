@@ -14,6 +14,17 @@ class InferenceConfig(BaseModel):
     job_id_suffix: Optional[str] = Field(
         None, description="Suffix to be added to the job ID"
     )
+    use_batch: bool = Field(
+        True, description="Whether to use OpenAI batch API for inference"
+    )
+
+    @field_validator("model")
+    def validate_model_format(cls, v):
+        if "/" not in v:
+            raise ValueError(
+                f"Model ID must be in the format 'organization/model-name', got: {v}"
+            )
+        return v
 
     max_tokens: int = Field(600, description="Maximum number of tokens to generate")
     temperature: float = Field(1.0, description="Temperature for sampling")

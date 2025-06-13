@@ -218,7 +218,7 @@ class MultipleChoiceEvalFreeform(MultipleChoiceEval):
 def main(config_job_id: str):
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
     if os.path.exists(config_job_id):
-        with open(config, 'r') as f:
+        with open(config_job_id, 'r') as f:
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)

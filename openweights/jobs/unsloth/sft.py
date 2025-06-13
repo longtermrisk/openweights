@@ -121,6 +121,7 @@ def sft_train(training_cfg, dataset, model, tokenizer, test_dataset, logp_datase
         callbacks=[LogMetrics(), GPUStatsCallback()] + logp_callbacks + mcq_callbacks + sampling_callbacks,
         eval_dataset=test_dataset,
     )
+    print(f"SFT trainer kwargs: {json.dumps(serializable_kwargs, indent=4)}")
 
     if training_cfg.train_on_responses_only:
         instruction_part, response_part = get_instruct_response_part(tokenizer)
