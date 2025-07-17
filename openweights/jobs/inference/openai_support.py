@@ -22,6 +22,10 @@ class OpenAIInferenceSupport:
         import logging
         import time
 
+        logging.warning(
+            "OpenAI batch API support through OpenWeigths is not tested.\nIssues include:\n-Files sent twice to OpenAI produce different file IDs. This should now be solved with the permanent caching on the function sending the file."
+        )
+
         # Initialize OpenAI client
         client = self._init_openai_client()
 
@@ -60,11 +64,23 @@ class OpenAIInferenceSupport:
         )
 
         # Check for existing batch jobs using this batch file
+        found_batch = False
         try:
             logging.info(f"Checking for existing batch jobs for file {batch_file.id}")
             existing_batches = client.batches.list()
+            # First check for completed batch jobs
+            for batch in existing_batches.data:
+                if batch.input_file_id == batch_file.id and batch.status == "completed":
+                    found_batch = True
+                    logging.info(
+                        f"Found existing batch job {batch.id} for batch file {batch_file.id}"
+                    )
+                    batch_job = client.batches.retrieve(batch.id)
+                    return self.get_batch_job_data(client, batch_job)
+            # Then check for running batch jobs
             for batch in existing_batches.data:
                 if batch.input_file_id == batch_file.id:
+                    found_batch = True
                     logging.info(
                         f"Found existing batch job {batch.id} for batch file {batch_file.id}"
                     )
@@ -72,6 +88,12 @@ class OpenAIInferenceSupport:
                     return self.get_batch_job_data(client, batch_job)
         except Exception as e:
             logging.error(f"Error checking existing batch jobs: {str(e)}")
+
+        if found_batch:
+            return {
+                "status": "completed",
+                "results": "Failed to retrieve batch job data",
+            }
 
         # If no existing batch found, create new batch job
         batch_job = client.batches.create(
@@ -298,10 +320,28 @@ class OpenAIInferenceSupport:
         logging.info(f"Batch job status: {batch_data.status}")
         if batch_data.status == "completed":
             logging.info(f"Retrieving results for file {batch_data.output_file_id}")
-            file_data = openai_client.files.retrieve(batch_data.output_file_id)
+            file_content = openai_client.files.content(batch_data.output_file_id)
+
+            result_file_name = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "tmp.jsonl",
+            )
+            with open(result_file_name, "wb") as file:
+                file.write(file_content.content)
+
+            # Loading data from saved file
+            results = []
+            with open(result_file_name, "r") as file:
+                for line in file:
+                    # Parsing the JSON string into a dict and appending to the list of results
+                    json_object = json.loads(line.strip())
+                    results.append(json_object)
+
+            os.remove(result_file_name)
+
             return {
                 "status": "completed",
-                "results": json.loads(file_data.content),
+                "results": results,
                 "batch_job_info": json.loads(json.dumps(batch_data.model_dump())),
             }
         else:
