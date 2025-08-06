@@ -19,6 +19,8 @@ APIS = {}
 
 def on_backoff(details):
     exception_info = details['exception']
+    if 'Bad Gateway' in exception_info:
+        return
     if '<title>' in str(exception_info):
         exception_info = str(exception_info).split('<title>')[1].split('</title>')[0]
     print(f"Retrying... {exception_info}")
@@ -36,8 +38,6 @@ class TemporaryApi:
         self._stop_timeout_thread = False
 
         self.sem = None
-
-        atexit.register(self.down)
     
     def up(self):
         self._stop_timeout_thread = False
@@ -68,7 +68,7 @@ class TemporaryApi:
     def __enter__(self):
         return self.up()
     
-    @backoff.on_exception(backoff.constant, Exception, interval=10, max_time=600, max_tries=60)
+    @backoff.on_exception(backoff.constant, Exception, interval=10, max_time=3600, max_tries=3600)
     def wait_until_ready(self, openai, model):
         print('Waiting for API to be ready...')
         openai.chat.completions.create(model=model, messages=[dict(role='user', content='Hello')], max_tokens=200)

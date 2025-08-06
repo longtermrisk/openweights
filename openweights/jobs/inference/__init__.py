@@ -6,7 +6,6 @@ from openweights import register, Jobs
 from openweights.client.utils import guess_model_size, get_lora_rank, resolve_lora_model
 import os
 import backoff
-from cachier import cachier
 import logging
 from pathlib import Path
 
