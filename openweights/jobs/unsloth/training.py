@@ -1,10 +1,11 @@
 import json
 import os
 import sys
-
+import logging
 import backoff
 from datasets import Dataset
 from dpo_ft import dpo_train
+from online_dpo_ft import online_dpo_train
 from orpo_ft import orpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
@@ -14,6 +15,8 @@ from validate import TrainingConfig
 
 def train(training_cfg, skip_client_logging: bool = False):
     """Prepare lora model, call training function, and push to hub"""
+    if not training_cfg.load_in_4bit:
+        logging.warning("Not using 4-bit precision for training.")
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
@@ -46,8 +49,12 @@ def train(training_cfg, skip_client_logging: bool = False):
 
     if training_cfg.test_file:
         test_rows = load_jsonl(training_cfg.test_file)
-        if training_cfg.loss in ["orpo", "dpo"]:
+        if training_cfg.loss in ["orpo", "dpo", "online_dpo"]:
             test_dataset = Dataset.from_list(test_rows)
+        elif training_cfg.loss in ["sft"]:
+            test_dataset = Dataset.from_list(
+                [dict(messages=r["messages"]) for r in test_rows]
+            )
         else:
             test_dataset = Dataset.from_list(
                 [dict(messages=r["messages"]) for r in test_rows]
@@ -84,6 +91,10 @@ def train(training_cfg, skip_client_logging: bool = False):
         )
     elif training_cfg.loss == "dpo":
         trainer = dpo_train(
+            training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
+        )
+    elif training_cfg.loss == "online_dpo":
+        trainer = online_dpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
         )
     else:
@@ -165,7 +176,7 @@ def push_model(training_cfg, finetuned_model_id, model, tokenizer):
 
 def main(config_job_id: str, skip_client_logging: bool = False):
     if os.path.exists(config_job_id):
-        with open(config, "r") as f:
+        with open(config_job_id, "r") as f:
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)

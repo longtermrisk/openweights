@@ -11,6 +11,7 @@ import backoff
 
 from openweights.client.decorators import supabase_retry
 from supabase import Client
+import storage3
 
 
 def validate_message(message):
@@ -52,10 +53,14 @@ def validate_messages(content):
                 if not validate_text_only(row["text"]):
                     logging.error(f"Invalid text in conversations file: {row['text']}")
                     return False
+            elif "prompt" in row and "chosen" in row and "rejected" in row:
+                for message in row["prompt"] + row["rejected"] + row["chosen"]:
+                    if not validate_message(message):
+                        logging.error(
+                            f"Invalid message in conversations file: {message}"
+                        )
+                        return False
             else:
-                logging.error(
-                    f"Invalid row in conversations file (no 'messages' or 'text' key): {row}"
-                )
                 return False
         return True
     except (json.JSONDecodeError, KeyError, ValueError, AssertionError):
@@ -143,6 +148,10 @@ class Files:
                 .data
             )
             if existing_file:
+                storage_path = self._get_storage_path(file_id)
+                exists = self._supabase.storage.from_("files").exists(storage_path)
+                if not exists:
+                    raise ValueError("File does not exist")
                 return existing_file
         except Exception:
             pass  # File doesn't exist yet, continue with creation

@@ -29,6 +29,9 @@ class InspectAi(Jobs):
 
     def get_entrypoint(self, validated_params: InspectAiConfig) -> str:
         """Create the command to run our script with the validated parameters"""
+        assert not validated_params.model.startswith(
+            "vllm/"
+        ), f"validated_params.model: {validated_params.model}"
         return (
             f"INSPECT_LOG_DIR=uploads/ inspect eval {validated_params.eval_name} \\\n"
             f"    --model vllm/{validated_params.model} \\\n"

@@ -191,7 +191,9 @@ class Jobs:
         return job_id
 
     @supabase_retry()
-    def get_or_create_or_reset(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def get_or_create_or_reset(self, data: Dict[str, Any],         
+        create_on_failed_status: bool = True,
+        create_on_canceled_status: bool = True,) -> Dict[str, Any]:
         """If job exists and is [pending, in_progress, completed] return it.
         If job exists and is [failed, canceled] reset it to pending and return it.
         If job doesn't exist, create it and return it.
@@ -225,7 +227,9 @@ class Jobs:
                 raise
         job = result.data
 
-        if job["status"] in ["failed", "canceled"]:
+        if (job["status"] == "failed" and create_on_failed_status) or (
+            job["status"] == "canceled" and create_on_canceled_status
+        ):
             # Reset job to pending
             data["status"] = "pending"
             result = (

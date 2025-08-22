@@ -22,7 +22,7 @@ job = ow.fine_tuning.create(
     loss='dpo'
 )
 ```
-Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md)
+Currently supported are sft, dpo, online_dpo, grpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md) 
 
 # Overview
 

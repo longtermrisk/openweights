@@ -45,7 +45,12 @@ class FineTuning(Jobs):
         on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
     )
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        create_on_canceled_status=False,
+        create_on_failed_status=False,
+        **params,
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:
@@ -95,7 +100,11 @@ class FineTuning(Jobs):
             f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"
         )
 
-        return self.get_or_create_or_reset(data)
+        return self.get_or_create_or_reset(
+            data,
+            create_on_failed_status=create_on_failed_status,
+            create_on_canceled_status=create_on_canceled_status,
+        )
 
     def get_training_config(self, **params) -> Dict[str, Any]:
         """Get the training config for a fine-tuning job"""
@@ -199,5 +208,4 @@ class LogProb(Jobs):
             "docker_image": self.base_image,
             "script": f"python logprobs.py {job_id}",
         }
-
         return self.get_or_create_or_reset(data)

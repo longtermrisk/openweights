@@ -1,5 +1,6 @@
 import json
 import os
+import math
 from functools import wraps
 
 import torch
@@ -37,6 +38,31 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     return model, tokenizer
 
 
+def filter_nan_values(data):
+    """Recursively filter out NaN values from a dictionary to make it JSON serializable"""
+    if isinstance(data, dict):
+        filtered = {}
+        for key, value in data.items():
+            filtered_value = filter_nan_values(value)
+            if filtered_value is not None:
+                filtered[key] = filtered_value
+        return filtered
+    elif isinstance(data, list):
+        filtered = []
+        for item in data:
+            filtered_item = filter_nan_values(item)
+            if filtered_item is not None:
+                filtered.append(filtered_item)
+        return filtered
+    elif isinstance(data, (int, float)):
+        # Check for NaN or infinite values
+        if math.isnan(data) or math.isinf(data):
+            return None
+        return data
+    else:
+        return data
+
+
 class LogMetrics(TrainerCallback):
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
         if metrics is None:
@@ -53,7 +79,7 @@ class LogMetrics(TrainerCallback):
                 return
             payload = {k: v for k, v in state.log_history[-1].items()}
             payload["tag"] = "train"
-            client.run.log(state.log_history[-1])
+            client.run.log(filter_nan_values(state.log_history[-1]))
         except Exception as e:
             # Sometimes there are connection errors to supabase etc that we can ignore
             print(f"Error logging metrics: {e}")
