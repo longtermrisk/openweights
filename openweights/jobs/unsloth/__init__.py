@@ -32,7 +32,14 @@ class FineTuning(Jobs):
         return 'ftjob'
 
     @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
-    def create(self, requires_vram_gb='guess', allowed_hardware=None, **params) -> Dict[str, Any]:
+    def create(
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        create_on_failed_status=True,
+        create_on_canceled_status=True,
+        **params,
+    ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
@@ -79,7 +86,11 @@ class FineTuning(Jobs):
             f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"
         )
 
-        return self.get_or_create_or_reset(data)
+        return self.get_or_create_or_reset(
+            data,
+            create_on_failed_status=create_on_failed_status,
+            create_on_canceled_status=create_on_canceled_status,
+        )
 
     def get_training_config(self, **params) -> Dict[str, Any]:
         """Get the training config for a fine-tuning job"""

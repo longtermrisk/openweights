@@ -7,6 +7,8 @@ from cachier import cachier
 import logging
 from pathlib import Path
 
+BATCH_JOB_FAILED_MESSAGE = "Failed to retrieve batch job data"
+
 
 class OpenAIInferenceSupport:
     def _init_openai_client(self) -> Any:
@@ -40,7 +42,7 @@ class OpenAIInferenceSupport:
 
         for i, conv in enumerate(conversations):
             completion_request = self._create_completion_request(
-                model_name, conv["messages"], params
+                model_name, conv["messages"], params, ignore_reset_cache_idx=True
             )
 
             batch_request = {
@@ -92,7 +94,7 @@ class OpenAIInferenceSupport:
         if found_batch:
             return {
                 "status": "completed",
-                "results": "Failed to retrieve batch job data",
+                "results": BATCH_JOB_FAILED_MESSAGE,
             }
 
         # If no existing batch found, create new batch job
@@ -209,75 +211,83 @@ class OpenAIInferenceSupport:
         formatted_results = []
         for i, result in enumerate(results):
             if result is None:
-                logging.warning(f"Request {i} failed and was skipped")
-                continue
-
-            formatted_result = {
-                # OpenAI API response
-                "id": result.id,
-                "object": result.object,
-                "created": result.created,
-                "model": result.model,
-                "choices": [
-                    {
-                        "index": choice.index,
-                        "message": {
-                            "role": choice.message.role,
-                            "content": choice.message.content,
-                            "function_call": choice.message.function_call,
-                            "tool_calls": choice.message.tool_calls,
-                        },
-                        "finish_reason": choice.finish_reason,
-                        "logprobs": (
+                logging.warning(f"Request {i} failed (result is None) and was skipped")
+                formatted_result = None
+            elif result.choices is None:
+                logging.warning(
+                    f"Request {i} failed (result.choices is None) and was skipped"
+                )
+                formatted_result = None
+            else:
+                formatted_result = {
+                    # OpenAI API response
+                    "id": result.id,
+                    "object": result.object,
+                    "created": result.created,
+                    "model": result.model,
+                    "choices": [
+                        {
+                            "index": choice.index,
+                            "message": {
+                                "role": choice.message.role,
+                                "content": choice.message.content,
+                                "function_call": choice.message.function_call,
+                                "tool_calls": choice.message.tool_calls,
+                            },
+                            "finish_reason": choice.finish_reason,
+                            "logprobs": (
+                                [
+                                    {
+                                        "logprob": logprob_content.logprob,
+                                        "token": logprob_content.token,
+                                        "top_logprobs": [
+                                            {
+                                                "token": top_logprob.token,
+                                                "logprob": top_logprob.logprob,
+                                            }
+                                            for top_logprob in logprob_content.top_logprobs
+                                        ],
+                                    }
+                                    for logprob_content in choice.logprobs.content
+                                ]
+                                if choice.logprobs
+                                else None
+                            ),
+                        }
+                        for choice in result.choices
+                    ],
+                    "usage": (
+                        {
+                            "prompt_tokens": result.usage.prompt_tokens,
+                            "completion_tokens": result.usage.completion_tokens,
+                            "total_tokens": result.usage.total_tokens,
+                        }
+                        if result.usage
+                        else None
+                    ),
+                    # OpenWeights response
+                    "completion": result.choices[0].message.content,
+                    "completions": [
+                        choice.message.content for choice in result.choices
+                    ],
+                    "logprobs": (
+                        [
                             [
                                 {
-                                    "logprob": logprob_content.logprob,
-                                    "token": logprob_content.token,
-                                    "top_logprobs": [
-                                        {
-                                            "token": top_logprob.token,
-                                            "logprob": top_logprob.logprob,
-                                        }
-                                        for top_logprob in logprob_content.top_logprobs
-                                    ],
+                                    "decoded_token": top_logprob.token,
+                                    "logprob": top_logprob.logprob,
                                 }
-                                for logprob_content in choice.logprobs.content
+                                # Over different tokens at each position
+                                for top_logprob in logprob_content.top_logprobs
                             ]
-                            if choice.logprobs
-                            else None
-                        ),
-                    }
-                    for choice in result.choices
-                ],
-                "usage": (
-                    {
-                        "prompt_tokens": result.usage.prompt_tokens,
-                        "completion_tokens": result.usage.completion_tokens,
-                        "total_tokens": result.usage.total_tokens,
-                    }
-                    if result.usage
-                    else None
-                ),
-                # OpenWeights response
-                "completion": result.choices[0].message.content,
-                "completions": [choice.message.content for choice in result.choices],
-                "logprobs": (
-                    [
-                        [
-                            {
-                                "decoded_token": top_logprob.token,
-                                "logprob": top_logprob.logprob,
-                            }
-                            # Over different tokens at each position
-                            for top_logprob in logprob_content.top_logprobs
+                            # Over the sequence of tokens
+                            for logprob_content in result.choices[0].logprobs.content
                         ]
-                        # Over the sequence of tokens
-                        for logprob_content in result.choices[0].logprobs.content
-                    ]
-                    if result.choices[0].logprobs
-                    else None
-                ),
-            }
+                        if result.choices[0].logprobs
+                        else None
+                    ),
+                }
+
             formatted_results.append(formatted_result)
             if i % 100 == 0:  # Log progress every 100 results
                 logging.info(f"Formatted {i} results")
@@ -357,10 +367,20 @@ class OpenAIInferenceSupport:
         return [json.loads(line) for line in content.split("\n") if line.strip()]
 
     def _create_completion_request(
-        self, model_name: str, messages: list, params: dict
+        self,
+        model_name: str,
+        messages: list,
+        params: dict,
+        ignore_reset_cache_idx: bool = False,
     ) -> dict:
         """Create a single completion request with optional parameters."""
         request = {"model": model_name, "messages": messages}
+        if (
+            not ignore_reset_cache_idx
+            and self.reset_cache_idx is not None
+            and self.reset_cache_idx != 0
+        ):
+            request["reset_cache_idx"] = self.reset_cache_idx
 
         # Add optional parameters if provided
         optional_params = [
@@ -398,7 +418,7 @@ class OpenAIInferenceSupport:
 
     @staticmethod
     def check_is_reasoning_model(model: str) -> bool:
-        return "o1" in model or "o3" in model or "o4" in model
+        return "o1" in model or "o3" in model or "o4" in model or "gpt-5" in model
 
 
 def custom_hasher(args, kwargs):
@@ -490,6 +510,7 @@ def create_openai_file_cached(**kwargs):
 def create_completion_cached(**kwargs):
     from openai import OpenAI
 
+    kwargs.pop("reset_cache_idx", None)
     logging.info("Requesting completion from OpenAI API (cache not used).")
 
     return OpenAI().chat.completions.create(**kwargs)

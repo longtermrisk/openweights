@@ -15,17 +15,18 @@ from openweights.jobs.inference.openai_support import OpenAIInferenceSupport
 
 from .validate import InferenceConfig
 
+
 @register("inference")
 class InferenceJobs(Jobs, OpenAIInferenceSupport):
     mount = {
-        os.path.join(os.path.dirname(__file__), 'cli.py'): 'cli.py',
-        os.path.join(os.path.dirname(__file__), 'validate.py'): 'validate.py'
+        os.path.join(os.path.dirname(__file__), "cli.py"): "cli.py",
+        os.path.join(os.path.dirname(__file__), "validate.py"): "validate.py",
     }
-    base_image: str = 'nielsrolf/ow-default'
-    
+    base_image: str = "nielsrolf/ow-default"
+
     @property
     def id_prefix(self):
-        return 'ijob-'
+        return "ijob-"
 
     @backoff.on_exception(
         backoff.constant,
@@ -35,17 +36,44 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         max_tries=60,
         on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
     )
-    def _get_or_create_with_retry(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_or_create_with_retry(
+        self,
+        data: Dict[str, Any],
+        create_on_failed_status: bool = True,
+        create_on_canceled_status: bool = True,
+    ) -> Dict[str, Any]:
         """Get or create a job with retry logic"""
-        return self.get_or_create_or_reset(data)
+        return self.get_or_create_or_reset(
+            data,
+            create_on_failed_status=create_on_failed_status,
+            create_on_canceled_status=create_on_canceled_status,
+        )
 
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        create_on_failed_status: bool = True,
+        create_on_canceled_status: bool = True,
+        **params,
     ) -> Dict[str, Any]:
         """Create an inference job"""
+
+        self.reset_cache_idx = params.get("reset_cache_idx", None)
+        if self.reset_cache_idx is not None:
+            del params["reset_cache_idx"]
+
         InferenceConfig(**params)
         if self.check_use_openai_api(params["model"]):
             params = self.convert_to_openai_params(params)
+            if not create_on_failed_status:
+                logging.warning(
+                    "create_on_failed_status is False, but we ignore this when running inference on the OpenAI API"
+                )
+            if not create_on_canceled_status:
+                logging.warning(
+                    "create_on_canceled_status is False, but we ignore this when running inference on the OpenAI API"
+                )
             if params.get("use_batch", True):
                 return self.create_openai_inference_batch_request(params)
             else:
@@ -71,13 +99,14 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
 
         model = params["model"]
         input_file_id = params["input_file_id"]
+        # assert 0
 
         data = {
             "type": "custom",
             "model": model,
             "params": {
                 "validated_params": {**params, "input_file_id": input_file_id},
-                "mounted_files": self._upload_mounted_files(),
+                "mounted_files": (self._upload_mounted_files()),
             },
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
@@ -86,11 +115,14 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             "script": self.get_entrypoint(InferenceConfig(**params)),
         }
 
-        return self._get_or_create_with_retry(data)
+        return self._get_or_create_with_retry(
+            data,
+            create_on_failed_status=create_on_failed_status,
+            create_on_canceled_status=create_on_canceled_status,
+        )
 
     def get_entrypoint(self, validated_params: InferenceConfig) -> str:
         """Create the command to run our script with the validated parameters"""
         # Convert parameters to JSON string to pass to script
         params_json = json.dumps(validated_params.model_dump())
-        return f'python cli.py \'{params_json}\''
-
+        return f"python cli.py '{params_json}'"
