@@ -1,11 +1,48 @@
 import math
 import json
+import sys
 import os
 import torch
 import torch.nn.functional as F
 from transformers import TrainerCallback
-from utils import client
+from utils import client, load_jsonl, load_model_and_tokenizer
 from datasets import Dataset
+
+# Helper utilities to normalize message content formats
+# Allows both string content and block-formatted content
+
+def content_to_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return ''.join(
+            block['text'] if isinstance(block, dict) and 'text' in block else str(block)
+            for block in content
+        )
+    return str(content)
+
+
+def ensure_block_list(content):
+    if isinstance(content, list):
+        # If already list of dict blocks with 'text', return as is
+        if len(content) == 0 or (isinstance(content[0], dict) and 'text' in content[0]):
+            return content
+        # If list of strings or mixed, collapse to a single text block
+        joined = ''.join(block if isinstance(block, str) else str(block) for block in content)
+        return [{
+            'type': 'text',
+            'text': joined
+        }]
+    if isinstance(content, str):
+        return [{
+            'type': 'text',
+            'text': content
+        }]
+    # Fallback: stringify unknown types
+    return [{
+        'type': 'text',
+        'text': str(content)
+    }]
 
 
 def _prepare_batch(tokenizer, batch):
@@ -106,7 +143,7 @@ def convs_to_ds(convs):
         for message in conv['messages']:
             processed_messages.append(dict(
                 role=message['role'],
-                content=''.join(block['text'] for block in message['content'])
+                content=content_to_text(message['content'])
             ))
         batch['messages'].append(processed_messages)
     return Dataset.from_dict(batch)
@@ -131,7 +168,7 @@ def tokenize_block_formatted_conversation(tokenizer, conversation):
     messages_copy = [dict(**m) for m in conversation]
     # Convert content blocks to strings
     for m in messages_copy:
-        m['content'] = ''.join(block['text'] for block in m['content'])
+        m['content'] = content_to_text(m['content'])
     # Get tokens with the full message
     return tokenizer.apply_chat_template(messages_copy, return_tensors='pt').squeeze(0)
 
@@ -170,7 +207,7 @@ def get_logprobs_blockwise_single_conv(conv, token_logprobs, tokenizer):
             'content': []
         }
         before_block = tokenize_block_formatted_conversation(tokenizer, processed_messages + [current_message])
-        for block in original_message['content']:
+        for block in ensure_block_list(original_message['content']):
             current_message['content'].append(block)
             with_block = tokenize_block_formatted_conversation(tokenizer, processed_messages + [current_message])
             block_start = find_common_prefix_length(before_block, with_block) - 1 # -1 is because tokens are derived from labels, which are shifted by 1 from inputs
@@ -192,11 +229,14 @@ def get_logprobs_blockwise_single_conv(conv, token_logprobs, tokenizer):
 def main(config_job_id: str):
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
     if os.path.exists(config_job_id):
-        with open(config, 'r') as f:
+        with open(config_job_id, 'r') as f:
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)
-        config = job['params']['validated_params']
+        config = job['params']['params']
+    
+    # Load model and tokenizer
+    model, tokenizer = load_model_and_tokenizer(config['model'])
     
     dataset = load_jsonl(config['dataset'])
     logprobs = get_logprobs_blockwise(model, tokenizer, dataset, config['batch_size'])
@@ -206,7 +246,7 @@ def main(config_job_id: str):
             f.write(json.dumps(conv) + '\n')
     # Upload to client
     with open('logprobs.jsonl', 'rb') as f:
-        client.files.create(f, purpose="logprobs")
+        logprobs_file = client.files.create(f, purpose="logprobs")
     client.run.log({
         "type": "logprobs",
         "file": logprobs_file['id']

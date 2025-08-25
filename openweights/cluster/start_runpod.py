@@ -88,7 +88,7 @@ def populate_hardware_config(runpod_client):
         for gpu in runpod_gpus:
             if gpu['id'] == gpu_full:
                 for count in [1, 2, 4, 8]:
-                    memory_gb = int(gpu['memoryInGb']) * count
+                    memory_gb = int(gpu['memoryInGb']) * count - 5 # there is often actually less vram available than according to runpod
                     HARDWARE_CONFIG[memory_gb] = HARDWARE_CONFIG.get(memory_gb, []) + [f"{count}x {gpu_short}"]
 
 
