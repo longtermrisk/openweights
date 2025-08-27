@@ -7,6 +7,7 @@ from datasets import Dataset
 from dpo_ft import dpo_train
 from online_dpo_ft import online_dpo_train
 from orpo_ft import orpo_train
+from grpo_ft import grpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
 from utils import client, load_jsonl, load_model_and_tokenizer
@@ -21,6 +22,7 @@ def train(training_cfg, skip_client_logging: bool = False):
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
         max_seq_length=training_cfg.max_seq_length,
+        fast_inference=training_cfg.use_vllm,
     )
     if training_cfg.chat_template != "default":
         tokenizer.chat_template = training_cfg.chat_template
@@ -49,16 +51,12 @@ def train(training_cfg, skip_client_logging: bool = False):
 
     if training_cfg.test_file:
         test_rows = load_jsonl(training_cfg.test_file)
-        if training_cfg.loss in ["orpo", "dpo", "online_dpo"]:
-            test_dataset = Dataset.from_list(test_rows)
-        elif training_cfg.loss in ["sft"]:
+        if training_cfg.loss in ["sft"]:
             test_dataset = Dataset.from_list(
                 [dict(messages=r["messages"]) for r in test_rows]
             )
         else:
-            test_dataset = Dataset.from_list(
-                [dict(messages=r["messages"]) for r in test_rows]
-            )
+            test_dataset = Dataset.from_list(test_rows)
     else:
         # Split 10% of train data for testing when no test set provided
         split = dataset.train_test_split(test_size=0.1)
@@ -95,6 +93,10 @@ def train(training_cfg, skip_client_logging: bool = False):
         )
     elif training_cfg.loss == "online_dpo":
         trainer = online_dpo_train(
+            training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
+        )
+    elif training_cfg.loss == "grpo":
+        trainer = grpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
         )
     else:

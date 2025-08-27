@@ -11,7 +11,9 @@ from openweights.client import OpenWeights
 client = OpenWeights()
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
+def load_model_and_tokenizer(
+    model_id, load_in_4bit=False, max_seq_length=2048, fast_inference=False
+):
     from unsloth import FastLanguageModel, is_bfloat16_supported
 
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -22,6 +24,7 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         max_seq_length=max_seq_length,
         device_map=None,  # important: no lazy/meta map
         low_cpu_mem_usage=False,  # force real tensors
+        fast_inference=fast_inference,
     )
     model = model.to("cuda")
     if tokenizer.pad_token is None:

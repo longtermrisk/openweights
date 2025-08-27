@@ -10,7 +10,6 @@ from openweights.client import OpenWeights
 client = OpenWeights()
 
 
-
 class TrainingConfig(BaseModel):
     class Config:
         extra = "forbid"  # Prevent extra fields not defined in the model
@@ -40,6 +39,9 @@ class TrainingConfig(BaseModel):
     )
     load_in_4bit: bool = Field(
         False, description="Whether to load model in 4-bit quantization"
+    )
+    use_vllm: bool = Field(
+        False, description="Whether to use VLLM for inference (e.g., for GRPO)"
     )
 
     # Training type configuration
@@ -100,7 +102,8 @@ class TrainingConfig(BaseModel):
     online_dpo: Optional[Dict] = Field(
         None, description="Parameters for online DPO training"
     )
-    
+    grpo: Optional[Dict] = Field(None, description="Parameters for GRPO training")
+
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field(
         "./tmp", description="Output directory for training checkpoints"
@@ -156,9 +159,16 @@ class TrainingConfig(BaseModel):
                 f"For DPO/ORPO training, dataset filename must start with 'preference', got: {training_file}"
             )
 
-        if loss in ["online_dpo", "grpo"] and not training_file.startswith("conversations"):
+        if loss in ["online_dpo", "grpo"] and not training_file.startswith(
+            "conversations"
+        ):
             raise ValueError(
                 f"For Online DPO/GRPO training, dataset filename must start with 'conversations', got: {training_file}"
+            )
+
+        if loss == "grpo" and not training_file.startswith("conversations"):
+            raise ValueError(
+                f"For GRPO training, dataset filename must start with 'conversations', got: {training_file}"
             )
 
         return values
