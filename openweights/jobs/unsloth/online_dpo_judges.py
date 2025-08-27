@@ -4,11 +4,8 @@ Custom judge for online DPO training that supports per-datapoint prompt template
 
 import logging
 import concurrent.futures
-from pathlib import Path
 import numpy as np
 import os
-import json
-import hashlib
 from typing import List, Optional, Union, Dict, Any, Callable
 from trl import OpenAIPairwiseJudge
 
@@ -57,8 +54,13 @@ class OpenAIJudge(OpenAIPairwiseJudge):
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         openai_api_key: str = None,
+        openai_base_url: Optional[str] = None,
     ):
-        os.environ["OPENAI_API_KEY"] = openai_api_key
+        # Only set env if provided to avoid overwriting existing config
+        if openai_api_key:
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+        if openai_base_url:
+            os.environ["OPENAI_BASE_URL"] = openai_base_url
         super().__init__(
             model=model, system_prompt=system_prompt, max_requests=max_requests
         )
@@ -238,66 +240,6 @@ class OpenAIJudge(OpenAIPairwiseJudge):
         return ranks
 
 
-# def custom_hasher(args, kwargs):
-#     """Hash function for caching that handles nested data structures deterministically.
-
-#     Args:
-#         args: Positional arguments (should be empty)
-#         kwargs: Keyword arguments to hash
-
-#     Returns:
-#         MD5 hash of the processed arguments
-#     """
-
-#     assert len(args) == 0, f"Unexpected args: {args}"
-#     kwargs = kwargs.copy()
-#     kwargs.pop("gateway", None)
-
-#     def normalize_value(v):
-#         """Normalize values for consistent hashing."""
-#         if v is None:
-#             return None
-#         elif isinstance(v, (str, int, bool)):
-#             return v
-#         elif isinstance(v, float):
-#             # Round floats to avoid precision issues
-#             return round(v, 10)
-#         elif isinstance(v, Path):
-#             # Normalize paths to absolute strings
-#             return str(v.resolve())
-#         elif isinstance(v, (list, tuple)):
-#             # Preserve order for lists/tuples - don't sort!
-#             return [normalize_value(x) for x in v]
-#         elif isinstance(v, dict):
-#             # Sort dict keys for consistency
-#             return {k: normalize_value(v[k]) for k in sorted(v.keys())}
-#         elif isinstance(v, set):
-#             # Sets are unordered, so sort them
-#             return sorted([normalize_value(x) for x in v])
-#         else:
-#             # For other types, use their string representation
-#             return str(v)
-
-#     # Normalize all kwargs
-#     normalized_kwargs = {k: normalize_value(v) for k, v in kwargs.items()}
-
-#     # Use JSON for deterministic string representation
-#     # sort_keys ensures dict keys are in consistent order
-#     # separators removes whitespace variations
-#     # ensure_ascii handles unicode consistently
-#     json_str = json.dumps(
-#         normalized_kwargs, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-#     )
-
-#     # Generate hash
-#     hash_value = hashlib.md5(json_str.encode("utf-8")).hexdigest()
-
-#     # Optional: Log the hash value for debugging
-#     # logging.info(f"Generated hash: {hash_value} when hashing JSON: {json_str[:200]}...")
-
-#     return hash_value
-
-
 # @cachier(
 #     separate_files=True,
 #     hash_func=custom_hasher,
@@ -312,12 +254,18 @@ def create_completion_cached(**kwargs):
     from openai import OpenAI
 
     logging.info("Requesting completion from OpenAI API (cache not used).")
-    return OpenAI().chat.completions.create(**kwargs)
+    # Allow client options via kwargs or environment
+    client_options = {}
+    api_key = kwargs.pop("api_key", None) or os.environ.get("OPENAI_API_KEY")
+    base_url = kwargs.pop("base_url", None) or os.environ.get("OPENAI_BASE_URL")
+    if api_key:
+        client_options["api_key"] = api_key
+    if base_url:
+        client_options["base_url"] = base_url
+    return OpenAI(**client_options).chat.completions.create(**kwargs)
 
 
 def extractor_argmax_score_tag(judgement_0: str, judgement_1: str) -> float:
-    # logging.info(f"Response 0: {judgement_0}")
-    # logging.info(f"Response 1: {judgement_1}")
     if "<score>" not in judgement_0 or "<score>" not in judgement_1:
         logging.error(
             f"No score tag found in judge judgement_0: {judgement_0} and judgement_1: {judgement_1}"

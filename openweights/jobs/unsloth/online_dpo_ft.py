@@ -7,9 +7,9 @@ from trl import OnlineDPOTrainer, OnlineDPOConfig
 from online_dpo_trainer import OnlineDPOTrainerCustom
 
 from utils import GPUStatsCallback, LogMetrics
-from judges import OpenAIJudge
-import judges
-from judges import ONLINE_DPO_RESPONSE_PLACEHOLDER
+from online_dpo_judges import OpenAIJudge
+import online_dpo_judges
+from online_dpo_judges import ONLINE_DPO_RESPONSE_PLACEHOLDER
 
 
 def online_dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
@@ -87,7 +87,7 @@ def online_dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kw
             model=judge_hp["model"],
             judge_prompts=judge_prompts,
             system_prompt=judge_hp["system_prompt"],
-            score_extractor=getattr(judges, judge_hp["score_extractor"]),
+            score_extractor=getattr(online_dpo_judges, judge_hp["score_extractor"]),
             max_requests=judge_hp["max_requests"],
             max_tokens=judge_hp["max_tokens"],
             temperature=judge_hp["temperature"],

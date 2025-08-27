@@ -4,6 +4,7 @@ from typing import BinaryIO, Dict, Any, List, Union, Tuple, Type
 import os
 from postgrest.exceptions import APIError
 import backoff
+import logging
 
 import hashlib
 from supabase import Client
@@ -109,6 +110,7 @@ class Jobs:
         for source_path, target_path in mount.items():
             # Handle both files and directories
             if os.path.isfile(source_path):
+                logging.info(f"Uploading file: {source_path}")
                 with open(source_path, "rb") as f:
                     file_response = self.client.files.create(
                         f, purpose="custom_job_file"
@@ -122,6 +124,7 @@ class Jobs:
                         rel_path = os.path.relpath(full_path, source_path)
                         target_file_path = os.path.join(target_path, rel_path)
 
+                        logging.info(f"Uploading file: {full_path}")
                         with open(full_path, "rb") as f:
                             file_response = self.client.files.create(
                                 f, purpose="custom_job_file"
@@ -266,6 +269,11 @@ class Jobs:
             )
             return Job(**result.data[0], _manager=self)
         elif job["status"] in ["pending", "in_progress", "completed"]:
+            return Job(**job, _manager=self)
+        elif job["status"] in ["failed", "canceled"]:
+            logging.info(
+                f"Job {job['id']} is {job['status']}, NOT resetting to pending"
+            )
             return Job(**job, _manager=self)
         else:
             raise ValueError(f"Invalid job status: {job['status']}")

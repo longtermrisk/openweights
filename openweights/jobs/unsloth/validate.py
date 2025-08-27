@@ -33,9 +33,12 @@ class TrainingConfig(BaseModel):
     load_in_4bit: bool = Field(
         False, description="Whether to load model in 4-bit quantization"
     )
+    use_vllm: bool = Field(
+        False, description="Whether to use VLLM for inference (e.g., for GRPO)"
+    )
 
     # Training type configuration
-    loss: Literal["dpo", "orpo", "sft", "online_dpo"] = Field(
+    loss: Literal["dpo", "orpo", "sft", "online_dpo", "grpo"] = Field(
         ..., description="Loss function / training type"
     )
 
@@ -93,52 +96,8 @@ class TrainingConfig(BaseModel):
     online_dpo: Optional[Dict] = Field(
         None, description="Parameters for online DPO training"
     )
-    # online_dpo_refresh_rate: Optional[float] = Field(
-    # None, description="Refresh rate for online DPO training"
-    # )
-    # online_dpo_mix_rate: Optional[float] = Field(
-    # None, description="Mix rate for online DPO training"
-    # )
+    grpo: Optional[Dict] = Field(None, description="Parameters for GRPO training")
 
-    # online_dpo_judge_model: Optional[str] = Field(
-    #     "gpt-4", description="Model name for the OpenAI judge in online DPO training"
-    # )
-    # online_dpo_system_prompt: Optional[str] = Field(
-    #     "You are a helpful assistant that evaluates the quality of responses.",
-    #     description="System prompt for the OpenAI judge in online DPO training",
-    # )
-    # online_dpo_custom_prompt_template: Optional[str] = Field(
-    #     None,
-    #     description="Custom prompt template for the OpenAI judge in online DPO training",
-    # )
-    # online_dpo_user_prompts: optional[dict[str, str]] = field(
-    # None,
-    # description="dictionary mapping datapoint ids to judge prompts for the openai judge in online dpo training",
-    # )
-    # online_dpo_score_extractor: Optional[str] = Field(
-    #     None,
-    #     description="Custom score extraction function for the OpenAI judge in online DPO training",
-    # )
-    # online_dpo_max_tokens: Optional[int] = Field(
-    #     1,
-    #     description="Maximum tokens for OpenAI judge completion in online DPO training",
-    # )
-    # online_dpo_temperature: Optional[float] = Field(
-    #     0.0, description="Temperature for OpenAI judge sampling in online DPO training"
-    # )
-    # online_dpo_top_p: Optional[float] = Field(
-    #     1.0, description="Top-p for OpenAI judge sampling in online DPO training"
-    # )
-    # online_dpo_frequency_penalty: Optional[float] = Field(
-    #     0.0, description="Frequency penalty for OpenAI judge in online DPO training"
-    # )
-    # online_dpo_presence_penalty: Optional[float] = Field(
-    #     0.0, description="Presence penalty for OpenAI judge in online DPO training"
-    # )
-    # online_dpo_max_requests: Optional[int] = Field(
-    #     1000,
-    #     description="Maximum number of requests to OpenAI API for online DPO judge",
-    # )
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field(
         "./tmp", description="Output directory for training checkpoints"
@@ -189,6 +148,11 @@ class TrainingConfig(BaseModel):
         if loss == "online_dpo" and not training_file.startswith("conversations"):
             raise ValueError(
                 f"For Online DPO training, dataset filename must start with 'conversations', got: {training_file}"
+            )
+
+        if loss == "grpo" and not training_file.startswith("conversations"):
+            raise ValueError(
+                f"For GRPO training, dataset filename must start with 'conversations', got: {training_file}"
             )
 
         return values

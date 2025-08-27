@@ -15,7 +15,9 @@ load_dotenv()
 client = OpenWeights()
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
+def load_model_and_tokenizer(
+    model_id, load_in_4bit=False, max_seq_length=2048, fast_inference=False
+):
     from unsloth import FastLanguageModel, is_bfloat16_supported
 
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -25,6 +27,7 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         load_in_4bit=load_in_4bit,
         token=os.environ["HF_TOKEN"],
         max_seq_length=max_seq_length,
+        fast_inference=fast_inference,
     )
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
