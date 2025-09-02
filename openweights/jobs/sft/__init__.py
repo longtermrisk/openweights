@@ -37,8 +37,10 @@ class SFT(Jobs):
         if 'training_file' not in params:
             raise ValueError("training_file is required in params")
         
+        if allowed_hardware is not None:
+            requires_vram_gb = 0 # if the user specifies hardware then we assume they know which hardware works   
         if requires_vram_gb == 'guess':
-            requires_vram_gb = 36 if '8b' in params['model'].lower() else 70
+            requires_vram_gb = 60
         
         params = SFTConfig(**params).model_dump()
         mounted_files = self._upload_mounted_files()
