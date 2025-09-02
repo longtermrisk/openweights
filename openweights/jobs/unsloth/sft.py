@@ -1,5 +1,6 @@
 import json
 import os
+from os.path import commonprefix
 
 from datasets import Dataset
 from transformers import TrainingArguments
@@ -31,11 +32,9 @@ def print_dataset_examples(dataset, dataset_name, num_examples=3):
 
 
 def get_instruct_response_part(tokenizer):
-    prefix_conversation = [
-        dict(role="user", content="ignore"),
-        dict(role="assistant", content="ignore"),
-    ]
-    example_conversation = prefix_conversation + [
+    example_conversation = [
+        dict(role="user", content="user-ignore"),
+        dict(role="assistant", content="assistant-ignore"),
         dict(role="user", content="<user message content>")
     ]
     example_text = tokenizer.apply_chat_template(
@@ -61,12 +60,21 @@ def get_instruct_response_part(tokenizer):
             return instruction_part, response_part
 
     print("Warning: guessing how to train on responses only")
-    prefix = tokenizer.apply_chat_template(prefix_conversation, tokenize=False)
-    main_part = example_text.replace(prefix, "")
-    instruction_part, _ = main_part.split("<user message content>")
-    response_part = tokenizer.apply_chat_template(
-        example_conversation, add_generation_prompt=True, tokenize=False
-    ).replace(example_text, "")
+
+    def get_part(role):
+        user = dict(role=role, content="ignore")
+
+        conversation_a = [user, user, user]
+        conversation_b = [user, user, user, user]
+
+        text_a = tokenizer.apply_chat_template(conversation_a, tokenize=False, add_generation_prompt=False)
+        text_b = tokenizer.apply_chat_template(conversation_b, tokenize=False, add_generation_prompt=False)
+
+        prefix = commonprefix([text_a, text_b])
+        return text_b.replace(prefix, "").split('ignore')[0]
+
+    instruction_part = get_part('user')
+    response_part = get_part('assistant')
     return instruction_part, response_part
 
 

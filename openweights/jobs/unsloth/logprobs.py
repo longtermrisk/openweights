@@ -45,30 +45,48 @@ def ensure_block_list(content):
     }]
 
 
-def _prepare_batch(tokenizer, batch):
-    """Prepare a batch of messages for the model."""
-    # Apply chat template to the batch of messages
-    input_ids = tokenizer.apply_chat_template(
-        batch['messages'],
-        add_generation_prompt=False,
+def apply_chat_template(tokenizer, batch):
+    if "text" in batch:
+        return batch
+    conversations = batch["messages"]
+    texts = []
+    for conversation in conversations:
+        text = tokenizer.apply_chat_template(
+            conversation,
+            add_generation_prompt=False,
+            return_tensors="pt",
+            tokenize=False,
+        )
+        if not text.strip().endswith(tokenizer.eos_token):
+            text += tokenizer.eos_token
+        texts.append(text)
+    return texts
+
+def batch_tokenize(tokenizer, batch):
+    texts = apply_chat_template(tokenizer, batch)
+    input_ids = tokenizer(
+        texts,
         padding=True,
         truncation=True,
         max_length=8196,
+        add_special_tokens=False,
         return_tensors="pt"
-    )
-    
+    )['input_ids']
+    return input_ids
+
+
+def _prepare_batch(tokenizer, batch):
+    """Prepare a batch of messages for the model."""
+    input_ids = batch_tokenize(tokenizer, batch)
     # Create attention mask (1 for real tokens, 0 for padding)
     attention_mask = (input_ids != tokenizer.pad_token_id).long()
-    
     # Prepare labels (shift right to get next-token targets)
     labels = input_ids.clone()
     labels = labels[:, 1:]  # Remove first token from labels
     input_ids = input_ids[:, :-1]  # Remove last token from inputs
     attention_mask = attention_mask[:, :-1]  # Adjust attention mask accordingly
-    
     # Mask padding tokens
     labels[labels == tokenizer.pad_token_id] = -100
-    
     return input_ids, attention_mask, labels
 
 
@@ -170,7 +188,7 @@ def tokenize_block_formatted_conversation(tokenizer, conversation):
     for m in messages_copy:
         m['content'] = content_to_text(m['content'])
     # Get tokens with the full message
-    return tokenizer.apply_chat_template(messages_copy, return_tensors='pt').squeeze(0)
+    return tokenizer.apply_chat_template(messages_copy, return_tensors='pt', tokenize=True).squeeze(0)
 
 
 def find_common_prefix_length(tokens1, tokens2):

@@ -70,7 +70,7 @@ class SFTConfig(BaseModel):
     seed: int = Field(3407, description="Random seed for reproducibility")
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field("./tmp", description="Output directory for training checkpoints")
-    train_on_responses_only: bool = Field(False, description="Whether to train on responses only")
+    train_on_responses_only: bool = Field(True, description="Whether to train on responses only")
 
     logp_callback_datasets: Dict[str, str] = Field({}, description="Datasets for which to track loss and logP")
     mcq_callbacks: Optional[List["MCQCallbackModel"]] = Field(None, description="List of MCQ callbacks for evaluation")

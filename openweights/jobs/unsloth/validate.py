@@ -16,6 +16,9 @@ class TrainingConfig(BaseModel):
     training_file: str = Field(..., description="File ID of the training dataset")
     test_file: Optional[str] = Field(None, description="File ID of the test dataset")
 
+    # Tokenizer
+    chat_template: str = Field('default', description="Optional override of tokenizer.chat_template")
+
     # Output model
     finetuned_model_id: str = Field(
         "{org_id}/{model_name}-{job_id}", description="File ID of the finetuned model"
@@ -71,7 +74,7 @@ class TrainingConfig(BaseModel):
     beta: float = Field(0.1, description="Beta parameter for DPO/ORPO training")
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field("./tmp", description="Output directory for training checkpoints")
-    train_on_responses_only: bool = Field(False, description="Whether to train on responses only")
+    train_on_responses_only: bool = Field(True, description="Whether to train on responses only")
     packing: bool = Field(False, description="Whether to pack the dataset")
 
     logp_callback_datasets: Dict[str, str] = Field({}, description="Datasets for which to track loss and logP")
@@ -236,7 +239,6 @@ class MultipleChoiceEvalModel(BaseModel):
             context=eval.context
         )
     
-    @classmethod
     def from_file(cls, file: str) -> "MultipleChoiceEvalModel":
         content = client.files.content(file).decode("utf-8")
         data = json.loads(content)

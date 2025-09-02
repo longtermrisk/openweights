@@ -20,11 +20,13 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_id,
         dtype=None,
-        device_map="auto",
         load_in_4bit=load_in_4bit,
         token=os.environ["HF_TOKEN"],
         max_seq_length=max_seq_length,
+        device_map=None,             # important: no lazy/meta map
+        low_cpu_mem_usage=False,     # force real tensors
     )
+    model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token
