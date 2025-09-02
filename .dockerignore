@@ -6,3 +6,90 @@ cache/
 **/.llm-cache/
 node_modules/
 **/node_modules/
+logs/
+openweights/dashboard/backend/backend.log
+openweights/dashboard/backend/backend.pid
+build-docker-in-runpod
+.env
+.env.dev
+.env.prod
+.env.ow-dev
+.env.ow-migrations
+openweights/dashboard/backend/.env.ow-dev
+openweights/dashboard/backend/.env.ow-migrations
+openweights/dashboard/frontend/.env.ow-dev
+openweights/dashboard/frontend/.env.ow-migrations
+artifacts/
+debug/
+example/.ipynb_checkpoints/
+example/Untitled1.ipynb
+dev.py
+planb/
+vulnerable-code/
+openweights/client/.llm-cache
+# yeaa
+cache
+# Bazel
+/bazel-*
+/bazel-bin
+/bazel-genfiles
+/bazel-out
+/bazel-testlogs
+/bazel-workspace
+
+# Bazel symlinks
+/bazel-*
+
+# Bazel disk cache
+.bazel-cache/
+
+# Bazel IntelliJ plugin
+.ijwb/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+example/ft_job_artifacts/
+example/mcq_dataset.jsonl
+openweights/jobs/unsloth/logp.ipynb
+
+openweights/dashboard/backend/static/
+example/_*
+.logs
+openweights/jobs/unsloth/check.ipynb
+.cache
+.logs/

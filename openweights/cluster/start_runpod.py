@@ -1,6 +1,18 @@
 """
 Usage:
-    python start_runpod.py --gpu A6000 --container_disk_in_gb 25 --volume_in_gb 30
+    python start_runpod.py --gpu A6000 --container_disk_in_gb 25 --volume_in_gb 30 --ttl_hours 24
+
+TTL (Time To Live) Feature:
+    - All pods have a default TTL of 24 hours to prevent runaway costs
+    - TTL can be customized with --ttl_hours parameter
+    - TTL can be extended from within the pod by updating ~/shutdown.txt with a new timestamp
+    - Example to extend TTL from within pod:
+      python3 -c "
+      import datetime
+      with open('~/shutdown.txt', 'w') as f:
+          new_time = datetime.datetime.now() + datetime.timedelta(hours=48)
+          f.write(new_time.isoformat())
+      "
 
 Note: possible unknown error with echo when running the script.
 """
@@ -199,7 +211,7 @@ def check_correct_cuda(pod, allowed=allowed_cuda_versions, runpod_client=None):
 
 
 @backoff.on_exception(backoff.expo, Exception, max_time=60, max_tries=5)
-def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, pending_workers=None, env=None, runpod_client=None):
+def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, ttl_hours=24, pending_workers=None, env=None, runpod_client=None):
     client = runpod_client or runpod
     gpu = GPUs[gpu]
     # default name: <username>-worker-<timestamp>
@@ -213,7 +225,9 @@ def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=5
     env.update({
         'WORKER_ID': worker_id,
         'DOCKER_IMAGE': image,
-        'OW_DEV': 'true' if dev_mode else 'false'
+        'OW_DEV': 'true' if dev_mode else 'false',
+        'TTL_HOURS': str(ttl_hours),
+        'RUNPOD_API_KEY': os.getenv('RUNPOD_API_KEY')
     })
     if worker_id is None:
         worker_id = uuid.uuid4().hex[:8]
@@ -239,7 +253,7 @@ def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=5
         return pod
 
 
-def start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, env=None, runpod_client=None):
+def start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, ttl_hours=24, env=None, runpod_client=None):
     pending_workers = []
     if dev_mode:
         env = {var: os.environ.get(var) for var in [
@@ -249,7 +263,7 @@ def start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=50
         runpod.api_key = os.getenv('RUNPOD_API_KEY')
         runpod_client = runpod
     try:
-        pod = _start_worker(gpu, image, count, name, container_disk_in_gb, volume_in_gb, worker_id, dev_mode, pending_workers, env, runpod_client)
+        pod = _start_worker(gpu, image, count, name, container_disk_in_gb, volume_in_gb, worker_id, dev_mode, ttl_hours, pending_workers, env, runpod_client)
         return pod
     except Exception as e:
         import traceback
