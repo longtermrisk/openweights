@@ -5,7 +5,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from utils import client
+from openweights.client import OpenWeights
+
+
+client = OpenWeights()
+
 
 class TrainingConfig(BaseModel):
     class Config:
