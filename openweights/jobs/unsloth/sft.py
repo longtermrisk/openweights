@@ -1,8 +1,5 @@
-import json
-import os
 from os.path import commonprefix
 
-from datasets import Dataset
 from transformers import TrainingArguments
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
@@ -123,7 +120,7 @@ def sft_train(
     if training_cfg.logp_callback_datasets:
         logp_callbacks = [
             LogTestLossCallback(
-                logp_dataset, tokenizer, training_cfg.eval_every_n_steps, log_as=key
+                logp_dataset, tokenizer, training_cfg.eval_every_n_steps, log_as=key, batch_size=training_cfg.eval_batch_size
             )
             for key, logp_dataset in logp_datasets.items()
         ]

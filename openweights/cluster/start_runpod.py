@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 from scp import SCPClient
 from functools import lru_cache
 
-load_dotenv(override=True) 
 
 IMAGES = {
     'default': 'nielsrolf/ow-default',

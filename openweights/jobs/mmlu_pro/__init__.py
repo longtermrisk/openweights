@@ -7,7 +7,6 @@ from typing import List
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List
-from dotenv import load_dotenv
 
 
 class MMLUProArgs(BaseModel):

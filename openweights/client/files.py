@@ -121,9 +121,9 @@ class Files:
         # Store file in Supabase Storage with organization path
         self._supabase.storage.from_('files').upload(
             path=storage_path,
-            file=file
+            file=file,
+            file_options={"upsert": "true"}
         )
-
         # Create database entry
         data = {
             'id': file_id,

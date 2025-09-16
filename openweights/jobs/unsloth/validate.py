@@ -312,7 +312,7 @@ class LogProbJobModel(BaseModel):
 
 class SamplingCallbackModel(BaseModel):
     dataset: str
-    eval_steps: Union[Literal["log"], int] = "log"
+    eval_steps: Union[Literal["log"], int] = 10
     batch_size: int = 8
     tag: str = "samples"
     temperature: float = 0

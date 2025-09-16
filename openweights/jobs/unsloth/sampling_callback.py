@@ -72,28 +72,29 @@ class SamplingCallback(TrainerCallback):
         self.tag = tag
         self.temperature = temperature
         self.max_tokens = max_tokens
+    
+    def on_init_end(self, args, state, control, **kwargs):
+        self.model = kwargs["model"]
 
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.run(model=self.model, step=0)
 
     def on_step_end(self, args, state, control, **kwargs):
         """Called at the end of each training step."""
-        eval_steps = 10 ** int(math.log10(max(1, state.global_step)))
-        if self.eval_steps == 'log':
-            eval_steps = eval_steps
-        else:
-            eval_steps = min(eval_steps, self.eval_steps)
-        
-        if state.global_step % eval_steps != 0:
+        if state.global_step % self.eval_steps != 0:
             return
-            
+        self.run(kwargs['model'], state.global_step)
+
+    def run(self, model, step):
+        """Called at the end of each training step."""
         # Get the model from kwargs
-        model = kwargs["model"]
         FastLanguageModel.for_inference(model)
         
         completions = sample(
             model, self.tokenizer, self.dataset, batch_size=self.batch_size,
             max_tokens=self.max_tokens, temperature=self.temperature)
 
-        results_file = f'samples_{self.tag}_{state.global_step}.jsonl'
+        results_file = f'samples_{self.tag}_{step}.jsonl'
         with open(results_file, 'w') as f:
             for row, completion in zip(self.dataset, completions):
                 row['completion'] = completion
@@ -105,7 +106,7 @@ class SamplingCallback(TrainerCallback):
         # Log the test loss
         client.run.log({
             "type": "samples",
-            "step": state.global_step,
+            "step": step,
             "file": samples_file['id'],
             "tag": self.tag
         })
