@@ -80,7 +80,6 @@ assert len(gpu_full) == len(set(gpu_full)), "GPU names must be unique in GPUs ma
 
 # Build map of memory -> hardware configu
 HARDWARE_CONFIG = {}
-print("Available hardware configurations:")
 def populate_hardware_config(runpod_client):
     runpod_gpus = runpod_client.get_gpus()
     for gpu_short, gpu_full in GPUs.items():
