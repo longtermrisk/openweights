@@ -6,6 +6,7 @@ import logging
 import concurrent.futures
 import numpy as np
 import os
+import time
 from typing import List, Optional, Union, Dict, Any, Callable
 from trl import OpenAIPairwiseJudge
 
@@ -251,6 +252,7 @@ class OpenAIJudge(OpenAIPairwiseJudge):
 # )
 def create_completion_cached(**kwargs):
     """Cached OpenAI completion request."""
+    import openai
     from openai import OpenAI
 
     logging.info("Requesting completion from OpenAI API (cache not used).")
@@ -262,7 +264,41 @@ def create_completion_cached(**kwargs):
         client_options["api_key"] = api_key
     if base_url:
         client_options["base_url"] = base_url
-    return OpenAI(**client_options).chat.completions.create(**kwargs)
+    client = OpenAI(**client_options)
+
+    # Retry on server errors (HTTP 5xx), with exponential backoff
+    max_retries = int(os.environ.get("OPENAI_RETRY_MAX", "3"))
+    base_delay = float(os.environ.get("OPENAI_RETRY_BASE_DELAY", "1.0"))
+    max_delay = float(os.environ.get("OPENAI_RETRY_MAX_DELAY", "30.0"))
+
+    for attempt in range(max_retries + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as e:
+            # Determine if this is a server-side error we should retry
+            is_server_error = False
+            try:
+                if isinstance(e, getattr(openai, "InternalServerError", ())):
+                    is_server_error = True
+                elif isinstance(e, getattr(openai, "APIError", ())):
+                    status = getattr(e, "status_code", None) or getattr(
+                        e, "status", None
+                    )
+                    if status is not None and int(status) >= 500:
+                        is_server_error = True
+            except Exception:
+                # If checking error type fails, do not treat as retriable
+                is_server_error = False
+
+            if not is_server_error or attempt >= max_retries:
+                raise
+
+            wait_seconds = min(max_delay, base_delay * (2**attempt))
+            logging.warning(
+                f"OpenAI server error (attempt {attempt + 1}/{max_retries}). "
+                f"Retrying in {wait_seconds:.1f}s. Error: {e}"
+            )
+            time.sleep(wait_seconds)
 
 
 def extractor_argmax_score_tag(judgement_0: str, judgement_1: str) -> float:
