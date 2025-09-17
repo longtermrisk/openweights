@@ -195,7 +195,7 @@ export const JobsView: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date>();
     const [autoRefresh, setAutoRefresh] = useState(true);
-    const [isCancelling, setIsCancelling] = useState<string | null>(null);
+    // const [isCancelling, setIsCancelling] = useState<string | null>(null);
     const [view, setView] = useState<'three-column' | 'list'>('three-column');
     const [statusFilters, setStatusFilters] = useState<StatusFilters>({
         completed: true,
@@ -254,8 +254,6 @@ export const JobsView: React.FC = () => {
             await fetchJobs();
         } catch (error) {
             console.error('Failed to cancel job', error);
-        } finally {
-            setIsCancelling(null);
         }
     };
 
@@ -379,6 +377,7 @@ export const JobsView: React.FC = () => {
                         onRefresh={fetchJobs}
                         loading={loading}
                         orgId={orgId}
+                        onCancelJob={cancelJob}
                     />
                 </Grid>
             ) : (
