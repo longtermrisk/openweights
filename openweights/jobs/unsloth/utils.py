@@ -41,7 +41,7 @@ class LogMetrics(TrainerCallback):
             return
         if args.process_index == 0:  # only log once in distributed
             payload = {k: v for k, v in metrics.items()}
-            payload["step"] = state.global_step
+            payload["tag"] = "eval"
             payload["step"] = state.global_step
             client.run.log(payload)
 
@@ -49,6 +49,8 @@ class LogMetrics(TrainerCallback):
         try:
             if len(state.log_history) == 0:
                 return
+            payload = {k: v for k, v in state.log_history[-1].items()}
+            payload["tag"] = "train"
             client.run.log(state.log_history[-1])
         except Exception as e:
             # Sometimes there are connection errors to supabase etc that we can ignore
