@@ -33,7 +33,8 @@ IMAGES = {
     "default": "nielsrolf/ow-default",
     "inference": "nielsrolf/ow-inference-v2",
     "inference-debugging": "nielsrolf/ow-inference-v2-debugging",
-    "finetuning": "nielsrolf/ow-unsloth-v2",
+    # "finetuning": "nielsrolf/ow-unsloth-v2",
+    "finetuning": "nielsrolf/ow-default",
     "torch": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
 }
 

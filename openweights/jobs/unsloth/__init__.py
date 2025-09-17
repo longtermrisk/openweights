@@ -118,7 +118,7 @@ class MultipleChoice(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-unsloth-v2"
+    # base_image: str = 'nielsrolf/ow-unsloth-v2'
 
     @property
     def id_predix(self):
@@ -171,7 +171,7 @@ class LogProb(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-unsloth-v2"
+    # base_image: str = "nielsrolf/ow-unsloth-v2"
 
     @property
     def id_predix(self):
