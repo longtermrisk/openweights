@@ -4,7 +4,6 @@ import json
 import time
 
 import torch
-from dotenv import load_dotenv
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig
@@ -17,7 +16,6 @@ from openweights.client.utils import resolve_lora_model, get_lora_rank
 from validate import InferenceConfig
 
 
-load_dotenv()
 client = OpenWeights()
 
 

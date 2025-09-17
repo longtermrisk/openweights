@@ -290,13 +290,6 @@ class Worker:
                         if self.current_run:
                             self.current_run.update(logfile=log_response["id"])
 
-                # Update worker record with logfile ID
-                with open("logs/main", "rb") as log_file:
-                    log_response = self.files.create(log_file, purpose="logs")
-                    self.supabase.table("worker").update(
-                        {"logfile": log_response["id"]}
-                    ).eq("id", self.worker_id).execute()
-
                 # Mark job as 'pending' only if it is still 'in_progress' by this worker
                 self.update_job_status_if_in_progress(
                     self.current_job["id"],
@@ -308,6 +301,16 @@ class Worker:
                     self.current_run.update(status="canceled")
             except Exception as e:
                 logging.error(f"Error updating job status during shutdown: {e}")
+        
+        try:
+            # Update worker record with logfile ID
+            with open("logs/main", "rb") as log_file:
+                log_response = self.files.create(log_file, purpose="logs")
+                self.supabase.table("worker").update(
+                    {"logfile": log_response["id"]}
+                ).eq("id", self.worker_id).execute()
+        except Exception as e:
+            logging.error(f"Error updating worker logs during shutdown: {e}")
 
         # Update worker status
         try:

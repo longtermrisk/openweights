@@ -2,28 +2,29 @@ import json
 import os
 
 import torch
-from dotenv import load_dotenv
 from transformers import AutoTokenizer, TrainerCallback
 from functools import wraps
 
 from openweights.client import OpenWeights
 
-load_dotenv()
 
 
 client = OpenWeights()
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False):
+def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     from unsloth import FastLanguageModel, is_bfloat16_supported
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_id,
         dtype=None,
-        device_map="auto",
         load_in_4bit=load_in_4bit,
         token=os.environ["HF_TOKEN"],
-        max_seq_length=2048,
+        max_seq_length=max_seq_length,
+        device_map=None,             # important: no lazy/meta map
+        low_cpu_mem_usage=False,     # force real tensors
     )
+    model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token
@@ -35,10 +36,21 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False):
 
 
 class LogMetrics(TrainerCallback):
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        if metrics is None:
+            return
+        if args.process_index == 0:  # only log once in distributed
+            payload = {k: v for k, v in metrics.items()}
+            payload["tag"] = "eval"
+            payload["step"] = state.global_step
+            client.run.log(payload)
+
     def on_step_end(self, args, state, control, **kwargs):
         try:
             if len(state.log_history) == 0:
                 return
+            payload = {k: v for k, v in state.log_history[-1].items()}
+            payload["tag"] = "train"
             client.run.log(state.log_history[-1])
         except Exception as e:
             # Sometimes there are connection errors to supabase etc that we can ignore

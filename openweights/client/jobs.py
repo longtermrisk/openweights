@@ -1,18 +1,14 @@
-import re
 import json
-from typing import BinaryIO, Dict, Any, List, Union, Tuple, Type
+from typing import Dict, Any, List, Type
 import os
 from postgrest.exceptions import APIError
-import backoff
 
 import hashlib
-from supabase import Client
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from datetime import datetime
 from dataclasses import dataclass
-from openweights.client.utils import resolve_lora_model, get_lora_rank
 from openweights.cluster.start_runpod import GPUs
-
+from openweights.client.decorators import supabase_retry
 
 @dataclass
 class Job:
@@ -133,14 +129,7 @@ class Jobs:
 
         return uploaded_files
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def list(self, limit: int = 10) -> List[Dict[str, Any]]:
         """List jobs"""
         result = (
@@ -152,14 +141,7 @@ class Jobs:
         )
         return [Job(**row, _manager=self) for row in result.data]
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def retrieve(self, job_id: str) -> Dict[str, Any]:
         """Get job details"""
         result = (
@@ -167,14 +149,7 @@ class Jobs:
         )
         return Job(**result.data, _manager=self)
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def cancel(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job"""
         result = (
@@ -185,14 +160,7 @@ class Jobs:
         )
         return Job(**result.data[0], _manager=self)
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def restart(self, job_id: str) -> Dict[str, Any]:
         """Restart a job"""
         result = (
@@ -220,14 +188,7 @@ class Jobs:
             job_id += f"-{data['params']['validated_params']['job_id_suffix']}"
         return job_id
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def get_or_create_or_reset(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """If job exists and is [pending, in_progress, completed] return it.
         If job exists and is [failed, canceled] reset it to pending and return it.
@@ -274,14 +235,7 @@ class Jobs:
         else:
             raise ValueError(f"Invalid job status: {job['status']}")
 
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
+    @supabase_retry()
     def find(self, **params) -> List[Dict[str, Any]]:
         """Find jobs by their JSON values in job.params
         Example:

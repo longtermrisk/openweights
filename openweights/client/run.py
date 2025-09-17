@@ -1,39 +1,11 @@
-import asyncio
-import atexit
-import json
-from typing import Optional, BinaryIO, Dict, Any, List, Union
+from typing import Optional, BinaryIO, Dict, Any, List
 import os
 import sys
 from postgrest.exceptions import APIError
 import hashlib
 from datetime import datetime
-import backoff
 from supabase import Client
-import httpx
-import logging
-from functools import wraps
-
-
-def is_transient_error(e):
-    """Check if an error is likely transient and should be retried"""
-    if isinstance(e, (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectTimeout)):
-        return True
-    return False
-
-def retry_or_ignore(func, n_retries=5):
-    """Retry a function, if it continues to fail, ignore the error"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        for i in range(n_retries):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                logging.error(f"Error in {func.__name__} (attempt {i+1}/{n_retries}): {e}")
-                if i == n_retries - 1:
-                    # On last attempt, return None instead of raising
-                    return None
-        return None
-    return wrapper
+from openweights.client.decorators import supabase_retry
     
 
 class Run:
@@ -43,14 +15,7 @@ class Run:
         self.organization_id = organization_id
         self.id = run_id or os.getenv('OPENWEIGHTS_RUN_ID')
         if self.id:
-            # Run ID exists, fetch the data
-            try:
-                self._fetch_and_init_run(job_id, worker_id)
-            except Exception as e:
-                if not is_transient_error(e):
-                    raise
-                # For transient errors, retry with backoff
-                self._fetch_and_init_run_with_retry(job_id, worker_id)
+            self._fetch_and_init_run(job_id, worker_id)
         else:
             # Create new run
             data = {
@@ -83,15 +48,7 @@ class Run:
             result = self._supabase.table('runs').insert(data).execute()
             self._load_data(result.data[0])
 
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectTimeout),
-        max_tries=5
-    )
-    def _fetch_and_init_run_with_retry(self, job_id, worker_id):
-        """Fetch run data with retry logic"""
-        self._fetch_and_init_run(job_id, worker_id)
-
+    @supabase_retry()
     def _fetch_and_init_run(self, job_id, worker_id):
         """Fetch run data and initialize"""
         try:
@@ -113,11 +70,7 @@ class Run:
         
         self._load_data(run_data)
 
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectTimeout),
-        max_tries=5
-    )
+    @supabase_retry()
     def _get_job_org_id_with_retry(self, job_id):
         """Get job organization ID with retry logic"""
         return self._supabase.table('jobs').select('organization_id').eq('id', job_id).single().execute()
@@ -144,7 +97,7 @@ class Run:
         run._load_data(result.data)
         return run
 
-    @retry_or_ignore
+    @supabase_retry(return_on_exhaustion=None)
     def update(self, status: Optional[str] = None, logfile: Optional[str] = None):
         """Update run status and/or logfile"""
         data = {}
@@ -157,7 +110,7 @@ class Run:
             result = self._supabase.table('runs').update(data).eq('id', self.id).execute()
             self._load_data(result.data[0])
 
-    @retry_or_ignore
+    @supabase_retry(return_on_exhaustion=None)
     def log(self, event_data: Dict[str, Any], file: Optional[BinaryIO] = None):
         """Log an event for this run"""
         if file:
@@ -204,7 +157,7 @@ class Runs:
         self.client = client
         self._supabase = client._supabase
     
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def list(self, job_id: Optional[str] = None, worker_id: Optional[str] = None, limit: int = 10, status: Optional[str]=None) -> List[Dict[str, Any]]:
         """List runs by job_id or worker_id"""
         query = self._supabase.table('runs').select('*').limit(limit)

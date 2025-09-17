@@ -2,13 +2,11 @@ import json
 import os
 
 import torch
-from dotenv import load_dotenv
 from transformers import AutoTokenizer, TrainerCallback
 from functools import wraps
 
 from openweights.client import OpenWeights
 
-load_dotenv()
 
 
 client = OpenWeights()
@@ -38,10 +36,21 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
 
 
 class LogMetrics(TrainerCallback):
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        if metrics is None:
+            return
+        if args.process_index == 0:  # only log once in distributed
+            payload = {k: v for k, v in metrics.items()}
+            payload["tag"] = "eval"
+            payload["step"] = state.global_step
+            client.run.log(payload)
+
     def on_step_end(self, args, state, control, **kwargs):
         try:
             if len(state.log_history) == 0:
                 return
+            payload = {k: v for k, v in state.log_history[-1].items()}
+            payload["tag"] = "train"
             client.run.log(state.log_history[-1])
         except Exception as e:
             # Sometimes there are connection errors to supabase etc that we can ignore

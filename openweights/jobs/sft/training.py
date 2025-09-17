@@ -57,15 +57,14 @@ def train(training_cfg, skip_client_logging: bool = False):
         kwargs["max_steps"] = training_cfg.max_steps
     
     trainer = sft_train(training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, logp_datasets=logp_datasets, **kwargs)
+    trainer.evaluate()
     trainer.train()
 
     finetuned_model_id = training_cfg.finetuned_model_id or f"{training_cfg.model}:ft-{client.run.id}"
     push_model(training_cfg,finetuned_model_id, model, tokenizer)
 
     try:
-        eval_results = trainer.evaluate()
-        if not skip_client_logging:
-            client.run.log(eval_results)
+        trainer.evaluate()
     except Exception as e:
         print(f"Error evaluating model: {e}. The model has already been pushed to the hub.")
 

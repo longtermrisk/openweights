@@ -18,6 +18,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -29,21 +30,24 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       console.log('Loaded organizations:', orgs);
       setOrganizations(orgs);
       setLoading(false);
+      setInitialLoaded(true);
     } catch (error) {
       console.error('Failed to load organizations:', error);
       setLoading(false);
+      setInitialLoaded(true);
     }
   };
 
   // Load organizations when user changes
   useEffect(() => {
-    if (user) {
+    if (user && !initialLoaded) {
       loadOrganizations();
-    } else {
+    } else if (!user) {
       setOrganizations([]);
       setCurrentOrganization(null);
+      setInitialLoaded(false);
     }
-  }, [user]);
+  }, [user, initialLoaded]);
 
   // Try to extract organization ID from URL and set it as current
   useEffect(() => {

@@ -1,12 +1,14 @@
 from typing import Optional, BinaryIO, Dict, Any, List, Union
 import os
 import hashlib
+import io
+import tempfile
 from datetime import datetime
 from supabase import Client
 import backoff
 import json
 import logging
-
+from openweights.client.decorators import supabase_retry
 
 def validate_message(message):
     try:
@@ -72,14 +74,17 @@ class Files:
         self._supabase = supabase
         self._org_id = organization_id
 
-    def _calculate_file_hash(self, file: BinaryIO) -> str:
+    def _calculate_file_hash(self, stream: BinaryIO) -> str:
         """Calculate SHA-256 hash of file content"""
         sha256_hash = hashlib.sha256()
-        for byte_block in iter(lambda: file.read(4096), b""):
+        for byte_block in iter(lambda: stream.read(4096), b""):
             sha256_hash.update(byte_block)
         # Add the org ID to the hash to ensure uniqueness
         sha256_hash.update(self._org_id.encode())
-        file.seek(0)  # Reset file pointer
+        try:
+            stream.seek(0)
+        except Exception:
+            pass
         return f"file-{sha256_hash.hexdigest()[:12]}"
 
     def _get_storage_path(self, file_id: str) -> str:
@@ -94,45 +99,75 @@ class Files:
             # Fallback if RPC fails
             return f"organizations/{self._org_id}/{file_id}"
 
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def create(self, file: BinaryIO, purpose: str) -> Dict[str, Any]:
-        """Upload a file and create a database entry"""
-        file.seek(0)
-        file_id = f"{purpose}:{self._calculate_file_hash(file)}"
+        """Upload a file and create a database entry.
+        Robust to retries by buffering the input stream into memory once
+        and using fresh BytesIO streams for hashing, validation, and upload.
+        """
+        # Read all bytes once; support both real files and file-like objects
+        try:
+            # Ensure at start (some callers might pass a consumed stream)
+            if hasattr(file, 'seek'):
+                try:
+                    file.seek(0)
+                except Exception:
+                    pass
+            data = file.read()
+        finally:
+            # Do not close the caller's file handle; just leave it as-is
+            # (the caller used a context manager typically)
+            pass
+
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError("Files.create expects a binary file-like object returning bytes")
+
+        file_id = f"{purpose}:{self._calculate_file_hash(io.BytesIO(data))}"
 
         # If the file already exists, return the existing file
         try:
             existing_file = self._supabase.table('files').select('*').eq('id', file_id).single().execute().data
             if existing_file:
                 return existing_file
-        except:
+        except Exception:
             pass  # File doesn't exist yet, continue with creation
 
-        # Validate file content
-        if not self.validate(file, purpose):
+        # Validate file content using a fresh buffer
+        if not self.validate(io.BytesIO(data), purpose):
             raise ValueError("File content is not valid")
 
-        file_size = os.fstat(file.fileno()).st_size
+        file_size = len(data)
         filename = getattr(file, 'name', 'unknown')
 
         # Get organization-specific storage path
         storage_path = self._get_storage_path(file_id)
 
         # Store file in Supabase Storage with organization path
-        self._supabase.storage.from_('files').upload(
-            path=storage_path,
-            file=file
-        )
-
+        # storage3's sync client expects a file path-like in some versions; write to a temp file for compatibility
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(data)
+            tmp.flush()
+            tmp_path = tmp.name
+        try:
+            self._supabase.storage.from_('files').upload(
+                path=storage_path,
+                file=tmp_path,
+                file_options={"upsert": "true"}
+            )
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
         # Create database entry
-        data = {
+        data_row = {
             'id': file_id,
             'filename': filename,
             'purpose': purpose,
             'bytes': file_size
         }
         
-        result = self._supabase.table('files').insert(data).execute()
+        result = self._supabase.table('files').insert(data_row).execute()
         
         return {
             'id': file_id,
@@ -143,14 +178,14 @@ class Files:
             'purpose': purpose,
         }
 
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def content(self, file_id: str) -> bytes:
         """Get file content"""
         storage_path = self._get_storage_path(file_id)
         return self._supabase.storage.from_('files').download(storage_path)
     
     def validate(self, file: BinaryIO, purpose: str) -> bool:
-        """Validate file content"""
+        """Validate file content. The passed stream will be consumed."""
         if purpose in ['conversations']:
             content = file.read().decode('utf-8')
             return validate_messages(content)
@@ -160,7 +195,7 @@ class Files:
         else:
             return True
         
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def get_by_id(self, file_id: str) -> Dict[str, Any]:
         """Get file details by ID"""
         return self._supabase.table('files').select('*').eq('id', file_id).single().execute().data
