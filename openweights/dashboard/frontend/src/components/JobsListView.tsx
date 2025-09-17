@@ -38,6 +38,7 @@ interface JobsListViewProps {
     onPageChange: (event: unknown, newPage: number) => void;
     onRowsPerPageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
     orgId: string;
+    onCancelJob: (jobId: string) => Promise<void>;
 }
 
 export const JobsListView: React.FC<JobsListViewProps> = ({
@@ -48,6 +49,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
     onPageChange,
     onRowsPerPageChange,
     orgId,
+    onCancelJob,
 }) => {
     const filteredJobs = jobs.filter(job => {
         const searchStr = filter.toLowerCase();
@@ -77,6 +79,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                             <TableCell>Docker Image</TableCell>
                             <TableCell>Created At</TableCell>
                             <TableCell>Actions</TableCell>
+                            <TableCell>Manage</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -109,6 +112,18 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                                         >
                                             View Details
                                         </Button>
+                                    </TableCell>
+                                    <TableCell>
+                                        {(job.status === 'pending' || job.status === 'in_progress') && (
+                                            <Button
+                                                size="small"
+                                                color="error"
+                                                variant="outlined"
+                                                onClick={() => onCancelJob(String(job.id))}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}

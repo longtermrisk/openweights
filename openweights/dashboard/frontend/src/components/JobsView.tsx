@@ -26,7 +26,7 @@ import { ViewToggle } from './ViewToggle';
 import { JobsListView } from './JobsListView';
 import { useOrganization } from '../contexts/OrganizationContext';
 
-const JobCard: React.FC<{ job: Job; orgId: string }> = ({ job, orgId }) => (
+const JobCard: React.FC<{ job: Job; orgId: string; onCancelJob: (jobId: string) => Promise<void> }> = ({ job, orgId, onCancelJob }) => (
     <Card 
         sx={{ 
             mb: 2,
@@ -70,14 +70,26 @@ const JobCard: React.FC<{ job: Job; orgId: string }> = ({ job, orgId }) => (
             <Typography color="text.secondary" sx={{ mb: 1 }}>
                 Created: {new Date(job.created_at).toLocaleString()}
             </Typography>
-            <Button 
-                component={Link} 
-                to={`/${orgId}/jobs/${job.id}`} 
-                variant="outlined" 
-                sx={{ mt: 1 }}
-            >
-                View Details
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                <Button 
+                    component={Link} 
+                    to={`/${orgId}/jobs/${job.id}`} 
+                    variant="outlined"
+                    size="small"
+                >
+                    View Details
+                </Button>
+                {(job.status === 'pending' || job.status === 'in_progress') && (
+                    <Button 
+                        variant="outlined" 
+                        color="error"
+                        size="small"
+                        onClick={() => onCancelJob(String(job.id))}
+                    >
+                        Cancel
+                    </Button>
+                )}
+            </Box>
         </CardContent>
     </Card>
 );
@@ -94,6 +106,7 @@ interface JobsColumnProps {
     onRefresh: () => void;
     loading?: boolean;
     orgId: string;
+    onCancelJob: (jobId: string) => Promise<void>;
 }
 
 const JobsColumn: React.FC<JobsColumnProps> = ({ 
@@ -107,8 +120,10 @@ const JobsColumn: React.FC<JobsColumnProps> = ({
     lastRefresh,
     onRefresh,
     loading,
-    orgId
+    orgId,
+    onCancelJob
 }) => {
+
     const filteredJobs = jobs.filter(job => {
         const searchStr = filter.toLowerCase();
         const jobId = String(job.id);
@@ -152,7 +167,7 @@ const JobsColumn: React.FC<JobsColumnProps> = ({
                 </Box>
                 <Box sx={{ flexGrow: 1, overflow: 'auto', mb: 2 }}>
                     {paginatedJobs.map(job => (
-                        <JobCard key={job.id} job={job} orgId={orgId} />
+                        <JobCard key={job.id} job={job} orgId={orgId} onCancelJob={onCancelJob} />
                     ))}
                 </Box>
                 <TablePagination
@@ -180,6 +195,7 @@ export const JobsView: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [lastRefresh, setLastRefresh] = useState<Date>();
     const [autoRefresh, setAutoRefresh] = useState(true);
+    const [isCancelling, setIsCancelling] = useState<string | null>(null);
     const [view, setView] = useState<'three-column' | 'list'>('three-column');
     const [statusFilters, setStatusFilters] = useState<StatusFilters>({
         completed: true,
@@ -228,6 +244,19 @@ export const JobsView: React.FC = () => {
     const handleRowsPerPageChange = (newRowsPerPage: number) => {
         setRowsPerPage(newRowsPerPage);
         setPages({ pending: 0, inProgress: 0, completed: 0 });
+    };
+
+    const cancelJob = async (jobId: string) => {
+        if (!orgId) return;
+        try {
+            setIsCancelling(jobId);
+            await api.cancelJob(orgId, jobId);
+            await fetchJobs();
+        } catch (error) {
+            console.error('Failed to cancel job', error);
+        } finally {
+            setIsCancelling(null);
+        }
     };
 
     const filteredJobs = jobs.filter(job => {
@@ -322,6 +351,7 @@ export const JobsView: React.FC = () => {
                         onRefresh={fetchJobs}
                         loading={loading}
                         orgId={orgId}
+                        onCancelJob={cancelJob}
                     />
                     <JobsColumn 
                         title="In Progress" 
@@ -335,6 +365,7 @@ export const JobsView: React.FC = () => {
                         onRefresh={fetchJobs}
                         loading={loading}
                         orgId={orgId}
+                        onCancelJob={cancelJob}
                     />
                     <JobsColumn 
                         title="Finished" 
@@ -359,6 +390,7 @@ export const JobsView: React.FC = () => {
                     onPageChange={(_, newPage) => handlePageChange('completed')(newPage)}
                     onRowsPerPageChange={(event) => handleRowsPerPageChange(parseInt(event.target.value, 10))}
                     orgId={orgId}
+                    onCancelJob={cancelJob}
                 />
             )}
         </Box>

@@ -16,7 +16,7 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { JobsView } from './components/JobsView';
-import { RunsView } from './components/RunsView';
+// import { RunsView } from './components/RunsView';
 import { WorkersView } from './components/WorkersView';
 import { JobDetailView, RunDetailView, WorkerDetailView } from './components/DetailViews';
 import { Auth } from './components/Auth/Auth';
@@ -123,7 +123,7 @@ function NavBar() {
                 {currentOrganization && (
                     <>
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/jobs`}>Jobs</Button>
-                        <Button color="inherit" component={Link} to={`/${currentOrganization.id}/runs`}>Runs</Button>
+
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/workers`}>Workers</Button>
                     </>
                 )}
@@ -216,10 +216,10 @@ function OrganizationRoutes() {
         <Routes>
             <Route path="jobs" element={<JobsView />} />
             <Route path="jobs/:jobId" element={<JobDetailView />} />
-            <Route path="runs" element={<RunsView />} />
-            <Route path="runs/:runId" element={<RunDetailView />} />
+
             <Route path="workers" element={<WorkersView />} />
             <Route path="workers/:workerId" element={<WorkerDetailView />} />
+            <Route path="runs/:runId" element={<RunDetailView />} />
             <Route path="settings" element={<OrganizationDetail />} />
             <Route path="/" element={<Navigate to="jobs" />} />
         </Routes>
