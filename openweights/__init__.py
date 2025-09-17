@@ -1,3 +1,3 @@
-from .client import OpenWeights, register, Jobs
+from .client import Jobs, OpenWeights, register
 
-__all__ = ['OpenWeights', 'register', 'Jobs']
+__all__ = ["OpenWeights", "register", "Jobs"]

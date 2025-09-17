@@ -25,28 +25,28 @@ export const MetricsPlots: React.FC<MetricsPlotsProps> = ({ orgId, runId }) => {
         const fetchAndProcessEvents = async () => {
             try {
                 const events = await api.getRunEvents(orgId, runId);
-                
+
                 // Extract all metrics from events
                 const metricsData: Record<string, { step: number; value: number }[]> = {};
-                
+
                 // Process each event
                 events.forEach((event: Event) => {
                     const eventData = event.data;
                     const step = eventData.step || eventData.global_step;
-                    
+
                     if (step !== undefined) {
                         // For each metric in the event
                         Object.entries(eventData).forEach(([key, value]) => {
                             // Skip step/global_step keys and non-numeric values
                             if (
-                                key !== 'step' && 
-                                key !== 'global_step' && 
+                                key !== 'step' &&
+                                key !== 'global_step' &&
                                 (typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value))))
                             ) {
                                 if (!metricsData[key]) {
                                     metricsData[key] = [];
                                 }
-                                
+
                                 metricsData[key].push({
                                     step: Number(step),
                                     value: Number(value)
@@ -62,7 +62,7 @@ export const MetricsPlots: React.FC<MetricsPlotsProps> = ({ orgId, runId }) => {
                     if (dataPoints.length > 1) { // Need at least 2 points for a line
                         // Sort by step to ensure correct line plotting
                         dataPoints.sort((a, b) => a.step - b.step);
-                        
+
                         newPlots.push({
                             title: metricName,
                             x: dataPoints.map(point => point.step),
@@ -110,8 +110,8 @@ export const MetricsPlots: React.FC<MetricsPlotsProps> = ({ orgId, runId }) => {
     return (
         <Box>
             <Typography variant="h6" sx={{ mb: 2 }}>Metrics:</Typography>
-            <Box sx={{ 
-                display: 'grid', 
+            <Box sx={{
+                display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))',
                 gap: 3
             }}>
@@ -146,20 +146,20 @@ export const MetricsPlots: React.FC<MetricsPlotsProps> = ({ orgId, runId }) => {
                                         color: '#333'
                                     }
                                 },
-                                xaxis: { 
+                                xaxis: {
                                     title: 'step',
                                     showgrid: true,
                                     gridcolor: '#E1E5EA',
                                     zeroline: false
                                 },
-                                yaxis: { 
+                                yaxis: {
                                     title: plot.title,
                                     showgrid: true,
                                     gridcolor: '#E1E5EA',
                                     zeroline: false
                                 },
                                 autosize: true,
-                                margin: { 
+                                margin: {
                                     t: 60,
                                     r: 30,
                                     l: 60,

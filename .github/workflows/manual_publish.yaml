@@ -9,16 +9,16 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: pdm-project/setup-pdm@v4
         with:
           python-version: "3.12"
-          
+
       - name: Build
         run: pdm build
-        
+
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

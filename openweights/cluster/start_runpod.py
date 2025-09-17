@@ -16,9 +16,11 @@ TTL (Time To Live) Feature:
 
 Note: possible unknown error with echo when running the script.
 """
+
 import os
 import time
 import uuid
+from functools import lru_cache
 
 import backoff
 import fire
@@ -26,15 +28,13 @@ import paramiko
 import runpod
 from dotenv import load_dotenv
 from scp import SCPClient
-from functools import lru_cache
-
 
 IMAGES = {
-    'default': 'nielsrolf/ow-default',
-    'inference': 'nielsrolf/ow-inference-v2',
-    'inference-debugging': 'nielsrolf/ow-inference-v2-debugging',
-    'finetuning': 'nielsrolf/ow-unsloth-v2',
-    'torch':  'runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04'
+    "default": "nielsrolf/ow-default",
+    "inference": "nielsrolf/ow-inference-v2",
+    "inference-debugging": "nielsrolf/ow-inference-v2-debugging",
+    "finetuning": "nielsrolf/ow-unsloth-v2",
+    "torch": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
 }
 
 GPUs = {
@@ -82,7 +82,7 @@ GPUs = {
     # "L4": "NVIDIA L4",
 }
 GPU_COUNT = 1
-allowed_cuda_versions = ['12.8']
+allowed_cuda_versions = ["12.8"]
 
 
 # Check that GPU name mapping is unique in both directions
@@ -92,39 +92,47 @@ assert len(gpu_full) == len(set(gpu_full)), "GPU names must be unique in GPUs ma
 
 # Build map of memory -> hardware configu
 HARDWARE_CONFIG = {}
+
+
 def populate_hardware_config(runpod_client):
     runpod_gpus = runpod_client.get_gpus()
     for gpu_short, gpu_full in GPUs.items():
         for gpu in runpod_gpus:
-            if gpu['id'] == gpu_full:
+            if gpu["id"] == gpu_full:
                 for count in [1, 2, 4, 8]:
-                    memory_gb = int(gpu['memoryInGb']) * count - 5 # there is often actually less vram available than according to runpod
-                    HARDWARE_CONFIG[memory_gb] = HARDWARE_CONFIG.get(memory_gb, []) + [f"{count}x {gpu_short}"]
+                    memory_gb = (
+                        int(gpu["memoryInGb"]) * count - 5
+                    )  # there is often actually less vram available than according to runpod
+                    HARDWARE_CONFIG[memory_gb] = HARDWARE_CONFIG.get(memory_gb, []) + [
+                        f"{count}x {gpu_short}"
+                    ]
 
 
 def wait_for_pod(pod, runpod_client):
-    while pod.get('runtime') is None:
+    while pod.get("runtime") is None:
         time.sleep(1)
-        pod = runpod_client.get_pod(pod['id'])
+        pod = runpod_client.get_pod(pod["id"])
     return pod
 
 
 @lru_cache
-@backoff.on_exception(backoff.constant, Exception, interval=1, max_time=600, max_tries=600)
+@backoff.on_exception(
+    backoff.constant, Exception, interval=1, max_time=600, max_tries=600
+)
 def get_ip_and_port(pod_id, runpod_client):
     pod = runpod_client.get_pod(pod_id)
-    for ip_and_port in pod['runtime']['ports']:
-        if ip_and_port['privatePort'] == 22:
-            ip = ip_and_port['ip']
-            port = ip_and_port['publicPort']
+    for ip_and_port in pod["runtime"]["ports"]:
+        if ip_and_port["privatePort"] == 22:
+            ip = ip_and_port["ip"]
+            port = ip_and_port["publicPort"]
             return ip, port
-    
+
 
 def create_ssh_client(pod, runpod_client=None):
-    key_file = os.path.expanduser('~/.ssh/id_ed25519')
-    user='root'
-    ip, port = get_ip_and_port(pod['id'], runpod_client)
-    print(f'Connecting to {ip}:{port}')
+    key_file = os.path.expanduser("~/.ssh/id_ed25519")
+    user = "root"
+    ip, port = get_ip_and_port(pod["id"], runpod_client)
+    print(f"Connecting to {ip}:{port}")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     for _ in range(10):
@@ -135,8 +143,9 @@ def create_ssh_client(pod, runpod_client=None):
             print(e)
             time.sleep(1)
             continue
-    print('Failed to connect to pod. Shutting down pod')
-    runpod_client.terminate_pod(pod['id']) 
+    print("Failed to connect to pod. Shutting down pod")
+    runpod_client.terminate_pod(pod["id"])
+
 
 def copy_to_pod(pod, src, dst, runpod_client=None):
     if not os.path.exists(src):
@@ -147,52 +156,56 @@ def copy_to_pod(pod, src, dst, runpod_client=None):
     with SCPClient(ssh.get_transport()) as scp:
         scp.put(src, dst)
 
+
 def run_on_pod(pod, cmd, runpod_client=None):
     ssh = create_ssh_client(pod, runpod_client)
     stdin, stdout, stderr = ssh.exec_command(cmd)
-    
+
     while True:
         line = stdout.readline()
         if not line:
             break
-        print(line, end='')
+        print(line, end="")
 
     while True:
         error_line = stderr.readline()
         if not error_line:
             break
-        print(error_line, end='')
+        print(error_line, end="")
 
     stdin.close()
     stdout.close()
     stderr.close()
     ssh.close()
 
+
 def run_on_pod_interactive(pod, cmd, runpod_client=None):
     ssh = create_ssh_client(pod, runpod_client)
     channel = ssh.get_transport().open_session()
     channel.get_pty()
     channel.exec_command(cmd)
-    output_buffer = b''
-    logs = ''
+    output_buffer = b""
+    logs = ""
 
     while True:
         if channel.recv_ready():
             output_buffer += channel.recv(1024)
             try:
                 output = output_buffer.decode()
-                print(output, end='')
+                print(output, end="")
                 logs += output
-                output_buffer = b''
-                if "password" in output.lower():  # Check for password prompt or other interactive input requests
+                output_buffer = b""
+                if (
+                    "password" in output.lower()
+                ):  # Check for password prompt or other interactive input requests
                     password = input("Enter the required input: ")
-                    channel.send(password + '\n')
+                    channel.send(password + "\n")
             except UnicodeDecodeError:
                 pass  # Ignore decode errors and continue receiving data
 
         if channel.recv_stderr_ready():
-            error = channel.recv_stderr(1024).decode(errors='ignore')
-            print(error, end='')
+            error = channel.recv_stderr(1024).decode(errors="ignore")
+            print(error, end="")
 
         if channel.exit_status_ready():
             break
@@ -200,16 +213,29 @@ def run_on_pod_interactive(pod, cmd, runpod_client=None):
     channel.close()
     ssh.close()
     return logs
-    
+
 
 def check_correct_cuda(pod, allowed=allowed_cuda_versions, runpod_client=None):
-    cmd = 'nvidia-smi'
+    cmd = "nvidia-smi"
     logs = run_on_pod_interactive(pod, cmd, runpod_client)
-    return any([f'CUDA Version: {i}' in logs for i in allowed])
+    return any([f"CUDA Version: {i}" in logs for i in allowed])
 
 
 @backoff.on_exception(backoff.expo, Exception, max_time=60, max_tries=5)
-def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, ttl_hours=24, pending_workers=None, env=None, runpod_client=None):
+def _start_worker(
+    gpu,
+    image,
+    count=GPU_COUNT,
+    name=None,
+    container_disk_in_gb=500,
+    volume_in_gb=500,
+    worker_id=None,
+    dev_mode=False,
+    ttl_hours=24,
+    pending_workers=None,
+    env=None,
+    runpod_client=None,
+):
     client = runpod_client or runpod
     gpu = GPUs[gpu]
     # default name: <username>-worker-<timestamp>
@@ -220,51 +246,88 @@ def _start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=5
         pending_workers = []
 
     env = env or {}
-    env.update({
-        'WORKER_ID': worker_id,
-        'DOCKER_IMAGE': image,
-        'OW_DEV': 'true' if dev_mode else 'false',
-        'TTL_HOURS': str(ttl_hours),
-        'RUNPOD_API_KEY': os.getenv('RUNPOD_API_KEY')
-    })
+    env.update(
+        {
+            "WORKER_ID": worker_id,
+            "DOCKER_IMAGE": image,
+            "OW_DEV": "true" if dev_mode else "false",
+            "TTL_HOURS": str(ttl_hours),
+            "RUNPOD_API_KEY": os.getenv("RUNPOD_API_KEY"),
+        }
+    )
     if worker_id is None:
         worker_id = uuid.uuid4().hex[:8]
     pod = client.create_pod(
-        name, image, gpu,
+        name,
+        image,
+        gpu,
         container_disk_in_gb=container_disk_in_gb,
         volume_in_gb=volume_in_gb,
-        volume_mount_path='/workspace',
+        volume_mount_path="/workspace",
         gpu_count=count,
         allowed_cuda_versions=allowed_cuda_versions,
         ports="8000/http,10101/http,22/tcp",
         start_ssh=True,
-        env=env
+        env=env,
     )
-    pending_workers.append(pod['id'])
-    
+    pending_workers.append(pod["id"])
+
     if dev_mode:
-        ip, port = get_ip_and_port(pod['id'], client)
-        pending_workers.remove(pod['id'])
+        ip, port = get_ip_and_port(pod["id"], client)
+        pending_workers.remove(pod["id"])
         return f"ssh root@{ip} -p {port} -i ~/.ssh/id_ed25519"
     else:
-        pending_workers.remove(pod['id'])
+        pending_workers.remove(pod["id"])
         return pod
 
 
-def start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=500, volume_in_gb=500, worker_id=None, dev_mode=False, ttl_hours=24, env=None, runpod_client=None):
+def start_worker(
+    gpu,
+    image,
+    count=GPU_COUNT,
+    name=None,
+    container_disk_in_gb=500,
+    volume_in_gb=500,
+    worker_id=None,
+    dev_mode=False,
+    ttl_hours=24,
+    env=None,
+    runpod_client=None,
+):
     pending_workers = []
     if dev_mode:
-        env = {var: os.environ.get(var) for var in [
-            'OPENWEIGHTS_API_KEY', 'RUNPOD_API_KEY', 'HF_TOKEN', 'HF_USER', 'HF_ORG'
-        ]}
+        env = {
+            var: os.environ.get(var)
+            for var in [
+                "OPENWEIGHTS_API_KEY",
+                "RUNPOD_API_KEY",
+                "HF_TOKEN",
+                "HF_USER",
+                "HF_ORG",
+            ]
+        }
     if runpod_client is None:
-        runpod.api_key = os.getenv('RUNPOD_API_KEY')
+        runpod.api_key = os.getenv("RUNPOD_API_KEY")
         runpod_client = runpod
     try:
-        pod = _start_worker(gpu, image, count, name, container_disk_in_gb, volume_in_gb, worker_id, dev_mode, ttl_hours, pending_workers, env, runpod_client)
+        pod = _start_worker(
+            gpu,
+            image,
+            count,
+            name,
+            container_disk_in_gb,
+            volume_in_gb,
+            worker_id,
+            dev_mode,
+            ttl_hours,
+            pending_workers,
+            env,
+            runpod_client,
+        )
         return pod
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return None
     finally:
@@ -304,6 +367,6 @@ def start_worker(gpu, image, count=GPU_COUNT, name=None, container_disk_in_gb=50
 #     print(working_gpus)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     fire.Fire(start_worker)
     # test_gpus()

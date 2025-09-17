@@ -240,13 +240,13 @@ export function OrganizationDetail() {
 
   const handleSaveSecrets = async () => {
     if (!orgId) return;
-    
+
     try {
       setSecretError(null);
-      
+
       // Send all secrets to the backend
       await api.updateOrganizationSecrets(orgId, editedSecrets);
-      
+
       // Refresh secrets
       const { data: secretData, error: secretError } = await supabase
         .from('organization_secrets')
@@ -268,7 +268,7 @@ export function OrganizationDetail() {
 
   const handleDeleteSecret = (name: string) => {
     if (REQUIRED_SECRETS.includes(name)) return;
-    
+
     const newSecrets = { ...editedSecrets };
     delete newSecrets[name];
     setEditedSecrets(newSecrets);
@@ -277,7 +277,7 @@ export function OrganizationDetail() {
 
   const handleAddNewSecret = () => {
     if (!newSecretName || !newSecretValue) return;
-    
+
     setEditedSecrets(prev => ({
       ...prev,
       [newSecretName]: newSecretValue
@@ -311,8 +311,8 @@ export function OrganizationDetail() {
 
   return (
     <Box>
-      <Breadcrumbs 
-        separator={<NavigateNextIcon fontSize="small" />} 
+      <Breadcrumbs
+        separator={<NavigateNextIcon fontSize="small" />}
         sx={{ mb: 3 }}
       >
         <Link to="/organizations" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -360,7 +360,7 @@ export function OrganizationDetail() {
         <List>
           {members.map((member) => (
             <ListItem key={member.user_id} divider>
-              <ListItemText 
+              <ListItemText
                 primary={member.email}
                 secondary={member.user_id === user?.id ? '(You)' : null}
               />
@@ -382,8 +382,8 @@ export function OrganizationDetail() {
                   </Typography>
                 )}
                 {isAdmin && member.user_id !== user?.id && (
-                  <IconButton 
-                    edge="end" 
+                  <IconButton
+                    edge="end"
                     onClick={() => handleRemoveMember(member.user_id)}
                     color="error"
                   >
@@ -501,7 +501,7 @@ export function OrganizationDetail() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenInviteDialog(false)}>Cancel</Button>
-          <Button 
+          <Button
             onClick={handleInvite}
             variant="contained"
             color="primary"
@@ -528,7 +528,7 @@ export function OrganizationDetail() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
-          <Button 
+          <Button
             onClick={handleUpdateOrganization}
             variant="contained"
             color="primary"
@@ -540,8 +540,8 @@ export function OrganizationDetail() {
       </Dialog>
 
       {/* Add New Secret Dialog */}
-      <Dialog 
-        open={openNewSecretDialog} 
+      <Dialog
+        open={openNewSecretDialog}
         onClose={() => {
           setOpenNewSecretDialog(false);
           setNewSecretName('');
@@ -577,7 +577,7 @@ export function OrganizationDetail() {
           }}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleAddNewSecret}
             variant="contained"
             color="primary"

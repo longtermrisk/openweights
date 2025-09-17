@@ -5,7 +5,7 @@ import { MetricsDisplay } from './MetricsDisplay';
 
 const isFileId = (key: string, value: any): boolean => {
     if (typeof value !== 'string') return false;
-    return key.toLowerCase().includes('file') || 
+    return key.toLowerCase().includes('file') ||
            value.toString().startsWith('file-') ||
            value.toString().includes(':file-');
 };

@@ -24,9 +24,9 @@ def test_orpo_valid():
         "seed": 3407,
         "eval_batch_size": 8,
         "eval_every_n_steps": "log",
-        "finetuned_model_id": "some-org/model"
+        "finetuned_model_id": "some-org/model",
     }
-    
+
     config = TrainingConfig(**config_dict)
     print(config.model_dump_json(indent=2))
 
@@ -53,10 +53,11 @@ def test_sft_valid():
         "seed": 3407,
         "eval_batch_size": 8,
         "eval_every_n_steps": "log",
-        "finetuned_model_id": "some-org/model"
+        "finetuned_model_id": "some-org/model",
     }
     config = TrainingConfig(**config_dict)
     print(config.model_dump_json(indent=2))
+
 
 def test_orpo_invalid():
     config_dict = {
@@ -79,10 +80,11 @@ def test_orpo_invalid():
         "seed": 3407,
         "eval_batch_size": 8,
         "eval_every_n_steps": "log",
-        "finetuned_model_id": "some-org/model"
+        "finetuned_model_id": "some-org/model",
     }
     with pytest.raises(ValueError):
         config = TrainingConfig(**config_dict)
+
 
 def test_sft_invalid():
     config_dict = {
@@ -106,28 +108,29 @@ def test_sft_invalid():
         "seed": 3407,
         "eval_batch_size": 8,
         "eval_every_n_steps": "log",
-        "finetuned_model_id": "some-org/model"
+        "finetuned_model_id": "some-org/model",
     }
     with pytest.raises(ValueError):
         config = TrainingConfig(**config_dict)
+
 
 def test_inference_valid():
     config_dict = {
         "model": "meta-llama/Llama-2-7b-hf",
         "input_file_id": "conversations:1234",
         "max_tokens": 600,
-        "temperature": 1.0
+        "temperature": 1.0,
     }
     config = InferenceConfig(**config_dict)
     print(config.model_dump_json(indent=2))
+
 
 def test_inference_invalid():
     config_dict = {
         "model": "meta-llama/Llama-2-7b-hf",
         "input_file_id": "preference:1234",
         "max_tokens": 600,
-        "temperature": 1.0
+        "temperature": 1.0,
     }
     with pytest.raises(ValueError):
         config = InferenceConfig(**config_dict)
-        

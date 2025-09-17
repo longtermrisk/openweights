@@ -1,13 +1,13 @@
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { 
-    AppBar, 
-    Toolbar, 
-    Typography, 
-    Container, 
-    Box, 
-    Button, 
-    Menu, 
-    MenuItem, 
+import {
+    AppBar,
+    Toolbar,
+    Typography,
+    Container,
+    Box,
+    Button,
+    Menu,
+    MenuItem,
     IconButton,
     Select,
     FormControl,
@@ -28,15 +28,15 @@ import { useState, useEffect } from 'react';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
-    
+
     if (loading) {
         return <Typography>Loading...</Typography>;
     }
-    
+
     if (!user) {
         return <Navigate to="/login" />;
     }
-    
+
     return <>{children}</>;
 }
 
@@ -59,7 +59,7 @@ function OrganizationSwitcher() {
             <Select
                 value={currentOrganization.id}
                 onChange={handleChange}
-                sx={{ 
+                sx={{
                     bgcolor: 'rgba(255, 255, 255, 0.1)',
                     color: 'white',
                     '& .MuiSelect-icon': { color: 'white' },
@@ -231,7 +231,7 @@ function AppContent() {
     const location = useLocation();
     const { organizations, loading } = useOrganization();
     const navigate = useNavigate();
-    
+
     useEffect(() => {
         console.log('AppContent effect:', {
             user,
@@ -264,14 +264,14 @@ function AppContent() {
                                 <OrganizationList />
                             </PrivateRoute>
                         } />
-                        
+
                         {/* Organization-specific routes */}
                         <Route path="/:orgId/*" element={
                             <PrivateRoute>
                                 <OrganizationRoutes />
                             </PrivateRoute>
                         } />
-                        
+
                         {/* Root redirect */}
                         <Route path="/" element={
                             <PrivateRoute>

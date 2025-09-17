@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  IconButton, 
-  Snackbar, 
-  Button, 
+import {
+  Box,
+  Typography,
+  IconButton,
+  Snackbar,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -88,7 +88,7 @@ export function TokenView({ orgId }: TokenViewProps) {
         expirationDays === 'never' ? undefined : parseInt(expirationDays)
       );
       setNewToken(token);
-      
+
       // Refresh token list
       const updatedTokens = await api.listTokens(orgId);
       setTokens(updatedTokens);
@@ -128,8 +128,8 @@ export function TokenView({ orgId }: TokenViewProps) {
 
   return (
     <Box>
-      <Button 
-        variant="contained" 
+      <Button
+        variant="contained"
         onClick={() => setOpenDialog(true)}
         sx={{ mb: 3 }}
       >
@@ -141,8 +141,8 @@ export function TokenView({ orgId }: TokenViewProps) {
           <Typography variant="subtitle1" gutterBottom>
             New token created! Make sure to copy it now - you won't be able to see it again.
           </Typography>
-          <Box sx={{ 
-            display: 'flex', 
+          <Box sx={{
+            display: 'flex',
             alignItems: 'center',
             bgcolor: 'background.paper',
             p: 2,
@@ -170,7 +170,7 @@ export function TokenView({ orgId }: TokenViewProps) {
         {tokens.map((token) => (
           <ListItem
             key={token.id}
-            sx={{ 
+            sx={{
               bgcolor: 'background.paper',
               mb: 1,
               borderRadius: 1
@@ -188,8 +188,8 @@ export function TokenView({ orgId }: TokenViewProps) {
               }
             />
             <ListItemSecondaryAction>
-              <IconButton 
-                edge="end" 
+              <IconButton
+                edge="end"
                 aria-label="delete"
                 onClick={() => handleDeleteToken(token.id)}
               >

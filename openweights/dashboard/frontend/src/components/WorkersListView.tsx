@@ -54,7 +54,7 @@ export const WorkersListView: React.FC<WorkersListViewProps> = ({
         const gpuType = worker.gpu_type ? worker.gpu_type.toLowerCase() : '';
         const dockerImage = worker.docker_image ? worker.docker_image.toLowerCase() : '';
         const cachedModels = worker.cached_models ? worker.cached_models.join(' ').toLowerCase() : '';
-        
+
         return workerId.includes(searchStr) ||
             gpuType.includes(searchStr) ||
             dockerImage.includes(searchStr) ||
@@ -87,15 +87,15 @@ export const WorkersListView: React.FC<WorkersListViewProps> = ({
                                         {worker.id}
                                     </TableCell>
                                     <TableCell>
-                                        <Chip 
+                                        <Chip
                                             label={worker.status}
                                             color={getStatusChipColor(worker.status) as any}
                                             size="small"
                                         />
                                     </TableCell>
                                     <TableCell>
-                                        {worker.gpu_type ? 
-                                            `${worker.gpu_count} x ${worker.gpu_type} (${worker.vram_gb}GB)` : 
+                                        {worker.gpu_type ?
+                                            `${worker.gpu_count} x ${worker.gpu_type} (${worker.vram_gb}GB)` :
                                             '-'
                                         }
                                     </TableCell>

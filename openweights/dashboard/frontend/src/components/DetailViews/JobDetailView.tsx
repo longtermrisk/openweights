@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { 
-    Paper, 
-    Typography, 
-    Box, 
-    Chip, 
-    List, 
-    ListItem, 
+import {
+    Paper,
+    Typography,
+    Box,
+    Chip,
+    List,
+    ListItem,
     ListItemText,
     FormControlLabel,
     Switch,
@@ -143,21 +143,21 @@ export const JobDetailView: React.FC = () => {
                         }
                         label="Auto-refresh"
                     />
-                    <RefreshButton 
+                    <RefreshButton
                         onRefresh={fetchJob}
                         loading={loading}
                         lastRefresh={lastRefresh}
                     />
                 </Box>
             </Box>
-            
+
             <Box sx={{ mb: 3 }}>
                 <Chip label={`Status: ${job.status}`} sx={{ mr: 1 }} />
                 <Chip label={`Type: ${job.type}`} sx={{ mr: 1 }} />
                 {job.model && <Chip label={`Model: ${job.model}`} sx={{ mr: 1 }} />}
                 {job.docker_image && <Chip label={`Image: ${job.docker_image}`} sx={{ mr: 1 }} />}
             </Box>
-            
+
             {job.script && (
                 <Box sx={{ mb: 3 }}>
                     <Typography variant="h6">Script:</Typography>
@@ -168,7 +168,7 @@ export const JobDetailView: React.FC = () => {
                     </Paper>
                 </Box>
             )}
-            
+
             {job.params && (
                 <Box sx={{ mb: 3 }}>
                     <Typography variant="h6">Parameters:</Typography>
@@ -193,7 +193,7 @@ export const JobDetailView: React.FC = () => {
                     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                     .map(run => (
                         <ListItem key={run.id} component={Link} to={`/${orgId}/runs/${run.id}`}>
-                            <ListItemText 
+                            <ListItemText
                                 primary={run.id}
                                 secondary={`Status: ${run.status}, Created: ${new Date(run.created_at).toLocaleString()}`}
                             />

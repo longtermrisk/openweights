@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  IconButton, 
-  Snackbar, 
-  Button, 
+import {
+  Box,
+  Typography,
+  IconButton,
+  Snackbar,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -87,7 +87,7 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
 
       const token = await response.json();
       setNewToken(token);
-      
+
       // Refresh token list
       const tokensResponse = await fetch(`${API_URL}/organizations/${organizationId}/tokens`, {
         headers: {
@@ -144,8 +144,8 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h6">API Tokens</Typography>
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           onClick={() => setOpenDialog(true)}
         >
           Create New Token
@@ -157,8 +157,8 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
           <Typography variant="subtitle1" gutterBottom>
             New token created! Make sure to copy it now - you won't be able to see it again.
           </Typography>
-          <Box sx={{ 
-            display: 'flex', 
+          <Box sx={{
+            display: 'flex',
             alignItems: 'center',
             bgcolor: 'background.paper',
             p: 2,
@@ -186,7 +186,7 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
         {tokens.map((token) => (
           <ListItem
             key={token.id}
-            sx={{ 
+            sx={{
               bgcolor: 'background.paper',
               mb: 1,
               borderRadius: 1
@@ -204,8 +204,8 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
               }
             />
             <ListItemSecondaryAction>
-              <IconButton 
-                edge="end" 
+              <IconButton
+                edge="end"
                 aria-label="delete"
                 onClick={() => handleDeleteToken(token.id)}
               >

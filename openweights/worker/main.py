@@ -1,27 +1,27 @@
-from typing import Dict
 import atexit
 import json
 import logging
 import os
+import random
+import signal
 import subprocess
 import tempfile
 import threading
 import time
 import traceback
 from datetime import datetime, timezone
-import signal
-import jwt
-import random
+from typing import Dict
 
+import jwt
 import runpod
 import torch
 from dotenv import load_dotenv
-from supabase import create_client, Client
 from supabase.lib.client_options import ClientOptions
 
 from openweights.client import Files, OpenWeights, Run
-from openweights.worker.gpu_health_check import GPUHealthCheck
 from openweights.cluster.start_runpod import GPUs
+from openweights.worker.gpu_health_check import GPUHealthCheck
+from supabase import Client, create_client
 
 # Load environment variables
 load_dotenv()
@@ -301,7 +301,7 @@ class Worker:
                     self.current_run.update(status="canceled")
             except Exception as e:
                 logging.error(f"Error updating job status during shutdown: {e}")
-        
+
         try:
             # Update worker record with logfile ID
             with open("logs/main", "rb") as log_file:
@@ -409,7 +409,7 @@ class Worker:
                     hardware_suitable_jobs.append(job)
                 else:
                     logging.info(
-                        f"""Job {job["id"]} is not suitable for this worker's hardware {self.hardware_type}. 
+                        f"""Job {job["id"]} is not suitable for this worker's hardware {self.hardware_type}.
                         Allowed hardware: {job["allowed_hardware"]}"""
                     )
 

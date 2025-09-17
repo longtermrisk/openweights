@@ -17,7 +17,7 @@ The TTL feature provides automatic pod termination to prevent runaway costs and 
 # Start dev instance with default 24-hour TTL
 python openweights/cluster/start_runpod.py A100 default --dev_mode=true
 
-# Start dev instance with 2-hour TTL  
+# Start dev instance with 2-hour TTL
 python openweights/cluster/start_runpod.py A100 default --dev_mode=true --ttl_hours=2
 
 # Start worker with 12-hour TTL

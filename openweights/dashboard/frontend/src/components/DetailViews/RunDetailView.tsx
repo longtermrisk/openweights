@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, Suspense, lazy } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { 
-    Paper, 
-    Typography, 
-    Box, 
+import {
+    Paper,
+    Typography,
+    Box,
     Chip,
     FormControlLabel,
     Switch,
@@ -66,7 +66,7 @@ export const RunDetailView: React.FC = () => {
     const [showLogProbs, setShowLogProbs] = useState(false);
     const [showMetrics, setShowMetrics] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
-    
+
     // Pagination for logs
     const [logPage, setLogPage] = useState(1);
     const logsPerPage = 1000;
@@ -183,7 +183,7 @@ export const RunDetailView: React.FC = () => {
                         }
                         label="Auto-refresh"
                     />
-                    <RefreshButton 
+                    <RefreshButton
                         onRefresh={fetchRun}
                         loading={loading}
                         lastRefresh={lastRefresh}
@@ -193,15 +193,15 @@ export const RunDetailView: React.FC = () => {
 
             <Box sx={{ mb: 3 }}>
                 <Chip label={`Status: ${run.status}`} sx={{ mr: 1 }} />
-                <Chip 
-                    label={`Job: ${run.job_id}`} 
-                    component={Link} 
+                <Chip
+                    label={`Job: ${run.job_id}`}
+                    component={Link}
                     to={`/${orgId}/jobs/${run.job_id}`}
                     clickable
                     sx={{ mr: 1 }}
                 />
                 {run.worker && (
-                    <Chip 
+                    <Chip
                         label={`Worker: ${run.worker_id}`}
                         component={Link}
                         to={`/${orgId}/workers/${run.worker_id}`}
@@ -231,7 +231,7 @@ export const RunDetailView: React.FC = () => {
                         <Collapse in={showLogProbs}>
                             <Box sx={{ mt: 2 }}>
                                 <Suspense fallback={<LoadingPlaceholder />}>
-                                    <LogProbVisualization 
+                                    <LogProbVisualization
                                         events={logprobEvents}
                                         getFileContent={(fileId: string) => api.getFileContent(orgId, fileId)}
                                     />
@@ -269,9 +269,9 @@ export const RunDetailView: React.FC = () => {
                     <Collapse in={showLogs}>
                         {logContent && (
                             <Box sx={{ mt: 2 }}>
-                                <Paper 
-                                    sx={{ 
-                                        p: 2, 
+                                <Paper
+                                    sx={{
+                                        p: 2,
                                         bgcolor: 'grey.100',
                                         maxHeight: '500px',
                                         overflow: 'auto'
@@ -283,7 +283,7 @@ export const RunDetailView: React.FC = () => {
                                 </Paper>
                                 {totalLogPages > 1 && (
                                     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 2 }}>
-                                        <Button 
+                                        <Button
                                             disabled={logPage === 1}
                                             onClick={() => setLogPage(p => Math.max(1, p - 1))}
                                         >
@@ -292,7 +292,7 @@ export const RunDetailView: React.FC = () => {
                                         <Typography>
                                             Page {logPage} of {totalLogPages}
                                         </Typography>
-                                        <Button 
+                                        <Button
                                             disabled={logPage === totalLogPages}
                                             onClick={() => setLogPage(p => Math.min(totalLogPages, p + 1))}
                                         >

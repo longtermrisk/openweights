@@ -20,7 +20,7 @@ job = ow.fine_tuning.create(
     loss='dpo'
 )
 ```
-Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md) 
+Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md)
 
 # Overview
 
@@ -122,7 +122,7 @@ if job.status == 'completed':
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
 ## More docs
-- [Fine-tuning Options](docs/finetuning.md) 
+- [Fine-tuning Options](docs/finetuning.md)
 - [APIs](docs/api.md)
 - [Custom jobs](example/custom_job/)
 
@@ -190,7 +190,7 @@ class MyCustomJob(Jobs):
     mount = {'local/script.py': 'script.py'}  # Files to upload
     base_image = 'nielsrolf/ow-default'       # Docker image
     requires_vram_gb = 24                     # VRAM requirement
-    
+
     def get_entrypoint(self, params):
         return f'python script.py {json.dumps(params.model_dump())}'
 ```

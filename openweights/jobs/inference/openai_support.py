@@ -1,11 +1,11 @@
-from typing import Any, Dict
-import json
 import hashlib
-
-import os
-from cachier import cachier
+import json
 import logging
+import os
 from pathlib import Path
+from typing import Any, Dict
+
+from cachier import cachier
 
 
 class OpenAIInferenceSupport:
@@ -114,11 +114,12 @@ class OpenAIInferenceSupport:
         self, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Create an inference job for OpenAI parallel API requests."""
-        import logging
         import asyncio
+        import logging
         import time
-        from openai import AsyncOpenAI
+
         import backoff
+        from openai import AsyncOpenAI
 
         logging.info("Starting parallel OpenAI inference request")
         start_time = time.time()

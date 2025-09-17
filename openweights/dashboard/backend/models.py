@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
 
 
@@ -26,6 +27,7 @@ class Job(BaseModel):
     docker_image: Optional[str] = None
     created_at: datetime
 
+
 class Run(BaseModel):
     id: int
     job_id: str
@@ -33,6 +35,7 @@ class Run(BaseModel):
     status: str
     log_file: Optional[str]
     created_at: datetime
+
 
 class Worker(BaseModel):
     id: str
@@ -47,19 +50,24 @@ class Worker(BaseModel):
     logfile: Optional[str]  # New field for saved logs
     created_at: datetime
 
+
 class JobWithRuns(Job):
     runs: List[Run]
+
 
 class RunWithJobAndWorker(Run):
     job: Job
     worker: Optional[Worker]
 
+
 class WorkerWithRuns(Worker):
     runs: List[Run]
+
 
 class TokenCreate(BaseModel):
     name: str
     expires_in_days: Optional[int] = None  # None means no expiration
+
 
 class Token(BaseModel):
     id: str

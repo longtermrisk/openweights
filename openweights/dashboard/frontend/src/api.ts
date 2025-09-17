@@ -10,7 +10,7 @@ const getAuthHeaders = async () => {
     if (!session?.access_token) {
         throw new Error('No authentication token available');
     }
-    
+
     return {
         headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -90,12 +90,12 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     // Jobs
     getJobs: async (orgId: string, status?: string) => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.get<Job[]>(`${API_URL}/organizations/${orgId}/jobs/`, { 
+            const response = await axios.get<Job[]>(`${API_URL}/organizations/${orgId}/jobs/`, {
                 ...config,
                 params: { status }
             });
@@ -104,7 +104,7 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     getJob: async (orgId: string, jobId: string) => {
         try {
             const config = await getAuthHeaders();
@@ -142,12 +142,12 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     // Runs
     getRuns: async (orgId: string, status?: string) => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.get<Run[]>(`${API_URL}/organizations/${orgId}/runs/`, { 
+            const response = await axios.get<Run[]>(`${API_URL}/organizations/${orgId}/runs/`, {
                 ...config,
                 params: { status }
             });
@@ -156,7 +156,7 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     getRun: async (orgId: string, runId: string) => {
         try {
             const config = await getAuthHeaders();
@@ -170,7 +170,7 @@ export const api = {
     getRunLogs: async (orgId: string, runId: string) => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.get(`${API_URL}/organizations/${orgId}/runs/${runId}/logs`, { 
+            const response = await axios.get(`${API_URL}/organizations/${orgId}/runs/${runId}/logs`, {
                 ...config,
                 responseType: 'text'
             });
@@ -189,12 +189,12 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     // Workers
     getWorkers: async (orgId: string, status?: string) => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.get<Worker[]>(`${API_URL}/organizations/${orgId}/workers/`, { 
+            const response = await axios.get<Worker[]>(`${API_URL}/organizations/${orgId}/workers/`, {
                 ...config,
                 params: { status }
             });
@@ -203,7 +203,7 @@ export const api = {
             throw new Error(getErrorMessage(error));
         }
     },
-    
+
     getWorker: async (orgId: string, workerId: string) => {
         try {
             const config = await getAuthHeaders();

@@ -56,7 +56,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
         const jobId = String(job.id);
         const model = job.model ? job.model.toLowerCase() : '';
         const dockerImage = job.docker_image ? job.docker_image.toLowerCase() : '';
-        
+
         return jobId.includes(searchStr) ||
             model.includes(searchStr) ||
             dockerImage.includes(searchStr) ||
@@ -92,7 +92,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                                     </TableCell>
                                     <TableCell>{job.type}</TableCell>
                                     <TableCell>
-                                        <Chip 
+                                        <Chip
                                             label={job.status}
                                             color={getStatusChipColor(job.status) as any}
                                             size="small"

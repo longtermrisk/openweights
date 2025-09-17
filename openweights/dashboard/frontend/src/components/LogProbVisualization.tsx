@@ -85,7 +85,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
     const datasets = useMemo(() => {
         const datasetSet = new Set<string>();
         events.forEach(event => {
-            const datasetKey = Object.keys(event).find(key => 
+            const datasetKey = Object.keys(event).find(key =>
                 key !== 'type' && key !== 'loss' && key !== 'step' && key !== 'file'
             );
             if (datasetKey) {
@@ -107,8 +107,8 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
         try {
             const content = await getFileContent(event.file);
             const data = JSON.parse(content) as LogProbData[];
-            
-            const datasetKey = Object.keys(event).find(key => 
+
+            const datasetKey = Object.keys(event).find(key =>
                 key !== 'type' && key !== 'loss' && key !== 'step' && key !== 'file'
             ) || '';
 
@@ -129,7 +129,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
         if (!selectedDataset) return;
 
         const relevantEvents = events.filter(e => {
-            const datasetKey = Object.keys(e).find(key => 
+            const datasetKey = Object.keys(e).find(key =>
                 key !== 'type' && key !== 'loss' && key !== 'step' && key !== 'file'
             );
             return datasetKey === selectedDataset;
@@ -178,7 +178,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
     useEffect(() => {
         const loadTokenHistory = async () => {
             if (!selectedToken || !selectedDataset) return;
-            
+
             setLoadingHistory(true);
             const history: TokenHistory = { steps: [], logprobs: [] };
 
@@ -187,12 +187,12 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
                 const availableSteps = Object.keys(logProbData[selectedDataset] || {})
                     .map(Number)
                     .sort((a, b) => a - b);
-                
+
                 // For each step, get the token at the same position
                 availableSteps.forEach(stepNum => {
                     const sequences = logProbData[selectedDataset][stepNum];
                     if (!sequences || !sequences[sequenceIndex]) return;
-                    
+
                     const sequence = sequences[sequenceIndex];
                     // Get the token at the same position as the selected token
                     if (selectedToken.position < sequence.tokens.length) {
@@ -205,7 +205,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
                 // Sort by steps (should already be sorted, but just to be safe)
                 const sorted = history.steps.map((step, i) => ({ step, logp: history.logprobs[i] }))
                     .sort((a, b) => a.step - b.step);
-                
+
                 setTokenHistory({
                     steps: sorted.map(s => s.step),
                     logprobs: sorted.map(s => s.logp)
@@ -238,7 +238,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
     const renderTokens = (tokens: Token[]) => {
         return tokens.map((token, position) => {
             const containsNewline = token.token.includes('\n');
-            
+
             if (containsNewline) {
                 const parts = token.token.split(/(\n)/);
                 return (
@@ -251,10 +251,10 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
                                     <Box
                                         key={`${position}-${j}`}
                                         onClick={() => {
-                                            setSelectedToken({ 
-                                                token: token.token, 
+                                            setSelectedToken({
+                                                token: token.token,
                                                 tokenId: token.token_id,
-                                                position: position 
+                                                position: position
                                             });
                                             setDialogOpen(true);
                                         }}
@@ -283,10 +283,10 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
                 <Box
                     key={position}
                     onClick={() => {
-                        setSelectedToken({ 
-                            token: token.token, 
+                        setSelectedToken({
+                            token: token.token,
                             tokenId: token.token_id,
-                            position: position 
+                            position: position
                         });
                         setDialogOpen(true);
                     }}
@@ -311,7 +311,7 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
     return (
         <Box sx={{ mt: 2 }}>
             {/* Controls */}
-            <Box 
+            <Box
                 ref={controlsRef}
                 sx={{
                     position: showSlider ? 'sticky' : 'static',
@@ -387,10 +387,10 @@ export const LogProbVisualization: React.FC<Props> = ({ events, getFileContent }
             </Box>
 
             {/* Token history dialog */}
-            <Dialog 
-                open={dialogOpen} 
-                onClose={() => setDialogOpen(false)} 
-                maxWidth="md" 
+            <Dialog
+                open={dialogOpen}
+                onClose={() => setDialogOpen(false)}
+                maxWidth="md"
                 fullWidth
             >
                 <DialogTitle>

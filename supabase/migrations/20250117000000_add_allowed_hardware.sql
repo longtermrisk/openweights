@@ -29,7 +29,7 @@ BEGIN
     IF allowed_hardware IS NULL OR array_length(allowed_hardware, 1) IS NULL THEN
         RETURN TRUE;
     END IF;
-    
+
     -- Check if worker's hardware is in the allowed list
     RETURN worker_hardware = ANY(allowed_hardware);
 END;

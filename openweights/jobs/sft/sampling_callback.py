@@ -1,27 +1,45 @@
-import math
 import json
+import math
 import os
+
 import torch
 import torch.nn.functional as F
 from transformers import TrainerCallback
+from unsloth import FastLanguageModel
 from utils import client, load_jsonl
-from unsloth import FastLanguageModel 
 
 
-def _sample(model, tokenizer, conversations, top_p=1, max_tokens=600, temperature=0, stop=[], prefix=''):
+def _sample(
+    model,
+    tokenizer,
+    conversations,
+    top_p=1,
+    max_tokens=600,
+    temperature=0,
+    stop=[],
+    prefix="",
+):
     is_training = model.training
     if is_training:
         FastLanguageModel.for_inference(model)
     texts = []
     for conversation in conversations:
-        messages = conversation['messages']
+        messages = conversation["messages"]
         pre = prefix
-        if messages[-1]['role'] == 'assistant':
-            messages, pre = messages[:-1], messages[-1]['content']
-        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        if messages[-1]["role"] == "assistant":
+            messages, pre = messages[:-1], messages[-1]["content"]
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
         texts.append(text + pre)
     # Tokenize and pad the input texts
-    inputs = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, return_attention_mask=True)
+    inputs = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        return_attention_mask=True,
+    )
     input_ids = inputs.input_ids.to(model.device)
     attention_mask = inputs.attention_mask.to(model.device)
     gen_kwargs = {
@@ -32,29 +50,61 @@ def _sample(model, tokenizer, conversations, top_p=1, max_tokens=600, temperatur
         "pad_token_id": tokenizer.pad_token_id,
         "attention_mask": attention_mask,
         "stop_strings": [tokenizer.eos_token],
-        "tokenizer": tokenizer
+        "tokenizer": tokenizer,
     }
     with torch.no_grad():
         output_sequences = model.generate(input_ids=input_ids, **gen_kwargs)
-    decoded_outputs = tokenizer.batch_decode(output_sequences[:, input_ids.shape[1]:], skip_special_tokens=True)
+    decoded_outputs = tokenizer.batch_decode(
+        output_sequences[:, input_ids.shape[1] :], skip_special_tokens=True
+    )
     if is_training:
         FastLanguageModel.for_training(model)
     return [prefix + output for output in decoded_outputs]
 
 
-def sample(model, tokenizer, conversations, batch_size, top_p=1, max_tokens=600, temperature=0, stop=[], prefix=''):
+def sample(
+    model,
+    tokenizer,
+    conversations,
+    batch_size,
+    top_p=1,
+    max_tokens=600,
+    temperature=0,
+    stop=[],
+    prefix="",
+):
     """Batched version of _sample"""
     completions = []
     for i in range(0, len(conversations), batch_size):
-        completions.extend(_sample(model, tokenizer, conversations[i:i + batch_size], top_p, max_tokens, temperature, stop, prefix))
+        completions.extend(
+            _sample(
+                model,
+                tokenizer,
+                conversations[i : i + batch_size],
+                top_p,
+                max_tokens,
+                temperature,
+                stop,
+                prefix,
+            )
+        )
     return completions
 
 
 class SamplingCallback(TrainerCallback):
-    def __init__(self, dataset, tokenizer, eval_steps='log', batch_size=8, tag='samples', temperature=0, max_tokens=600):
+    def __init__(
+        self,
+        dataset,
+        tokenizer,
+        eval_steps="log",
+        batch_size=8,
+        tag="samples",
+        temperature=0,
+        max_tokens=600,
+    ):
         """
         A callback that samples from the model and logs the results.
-        
+
         Args:
             dataset: List[Message] or str: file_id
             tokenizer: The tokenizer to use for encoding conversations
@@ -73,42 +123,48 @@ class SamplingCallback(TrainerCallback):
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-
     def on_step_end(self, args, state, control, **kwargs):
         """Called at the end of each training step."""
         eval_steps = 10 ** int(math.log10(max(1, state.global_step)))
-        if self.eval_steps == 'log':
+        if self.eval_steps == "log":
             eval_steps = eval_steps
         else:
             eval_steps = min(eval_steps, self.eval_steps)
-        
+
         if state.global_step % eval_steps != 0:
             return
-            
+
         # Get the model from kwargs
         model = kwargs["model"]
         FastLanguageModel.for_inference(model)
-        
+
         completions = sample(
-            model, self.tokenizer, self.dataset, batch_size=self.batch_size,
-            max_tokens=self.max_tokens, temperature=self.temperature)
+            model,
+            self.tokenizer,
+            self.dataset,
+            batch_size=self.batch_size,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+        )
 
-        results_file = f'samples_{self.tag}_{state.global_step}.jsonl'
-        with open(results_file, 'w') as f:
+        results_file = f"samples_{self.tag}_{state.global_step}.jsonl"
+        with open(results_file, "w") as f:
             for row, completion in zip(self.dataset, completions):
-                row['completion'] = completion
-                f.write(json.dumps(row) + '\n')
+                row["completion"] = completion
+                f.write(json.dumps(row) + "\n")
 
-        with open(results_file, 'rb') as f:
+        with open(results_file, "rb") as f:
             samples_file = client.files.create(f, purpose="samples")
 
         # Log the test loss
-        client.run.log({
-            "type": "samples",
-            "step": state.global_step,
-            "file": samples_file['id'],
-            "tag": self.tag
-        })
+        client.run.log(
+            {
+                "type": "samples",
+                "step": state.global_step,
+                "file": samples_file["id"],
+                "tag": self.tag,
+            }
+        )
 
         # Return model to training mode
         FastLanguageModel.for_training(model)

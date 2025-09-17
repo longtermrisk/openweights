@@ -8,8 +8,8 @@ declare
     secret text;
 begin
     -- Get secret from vault
-    select decrypted_secret into secret 
-    from vault.decrypted_secrets 
+    select decrypted_secret into secret
+    from vault.decrypted_secrets
     where name = 'jwt_secret'
     limit 1;
 

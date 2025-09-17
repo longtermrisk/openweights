@@ -53,7 +53,7 @@ jobs:
       #   run: pdm run pre-commit run --all-files
 
       # TODO: tests don't currently pass due to missing torch dependency
-      # see: https://github.com/longtermrisk/openweights/actions/runs/13210898278/job/36883965796?pr=11#step:8:29 
+      # see: https://github.com/longtermrisk/openweights/actions/runs/13210898278/job/36883965796?pr=11#step:8:29
 
       # - name: Run tests
       #   env:
@@ -88,7 +88,7 @@ jobs:
 
       # - name: Publish package distributions to PyPI
       #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   if: steps.release.outputs.released == 'true'  
+      #   if: steps.release.outputs.released == 'true'
       - name: Publish package distributions to GitHub Releases
         uses: python-semantic-release/upload-to-gh-release@main
         if: steps.release.outputs.released == 'true'

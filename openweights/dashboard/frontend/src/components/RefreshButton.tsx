@@ -9,15 +9,15 @@ interface RefreshButtonProps {
 }
 
 export const RefreshButton: React.FC<RefreshButtonProps> = ({ onRefresh, loading, lastRefresh }) => {
-    const tooltipTitle = lastRefresh 
+    const tooltipTitle = lastRefresh
         ? `Last refreshed: ${lastRefresh.toLocaleTimeString()}`
         : 'Refresh';
 
     return (
         <Tooltip title={tooltipTitle}>
             <span>  {/* Wrap in span to make Tooltip work with disabled button */}
-                <IconButton 
-                    onClick={onRefresh} 
+                <IconButton
+                    onClick={onRefresh}
                     disabled={loading}
                     size="small"
                 >

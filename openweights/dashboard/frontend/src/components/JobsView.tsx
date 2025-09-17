@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { 
-    Grid, 
-    Paper, 
-    Typography, 
-    Card, 
-    CardContent, 
-    Button, 
+import {
+    Grid,
+    Paper,
+    Typography,
+    Card,
+    CardContent,
+    Button,
     Box,
     TextField,
     FormControl,
@@ -27,8 +27,8 @@ import { JobsListView } from './JobsListView';
 import { useOrganization } from '../contexts/OrganizationContext';
 
 const JobCard: React.FC<{ job: Job; orgId: string; onCancelJob: (jobId: string) => Promise<void> }> = ({ job, orgId, onCancelJob }) => (
-    <Card 
-        sx={{ 
+    <Card
+        sx={{
             mb: 2,
             backgroundColor: '#ffffff',
             transition: 'background-color 0.3s ease',
@@ -43,7 +43,7 @@ const JobCard: React.FC<{ job: Job; orgId: string; onCancelJob: (jobId: string) 
                 Type: {job.type}
             </Typography>
             <Box sx={{ mt: 1, mb: 1 }}>
-                <Chip 
+                <Chip
                     label={job.status}
                     color={
                         job.status === 'completed' ? 'success' :
@@ -61,7 +61,7 @@ const JobCard: React.FC<{ job: Job; orgId: string; onCancelJob: (jobId: string) 
                 </Typography>
             )}
             {job.docker_image && (
-                <Typography color="text.secondary" sx={{ 
+                <Typography color="text.secondary" sx={{
                     wordBreak: 'break-word'
                 }}>
                     Image: {job.docker_image}
@@ -71,17 +71,17 @@ const JobCard: React.FC<{ job: Job; orgId: string; onCancelJob: (jobId: string) 
                 Created: {new Date(job.created_at).toLocaleString()}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                <Button 
-                    component={Link} 
-                    to={`/${orgId}/jobs/${job.id}`} 
+                <Button
+                    component={Link}
+                    to={`/${orgId}/jobs/${job.id}`}
                     variant="outlined"
                     size="small"
                 >
                     View Details
                 </Button>
                 {(job.status === 'pending' || job.status === 'in_progress') && (
-                    <Button 
-                        variant="outlined" 
+                    <Button
+                        variant="outlined"
                         color="error"
                         size="small"
                         onClick={() => onCancelJob(String(job.id))}
@@ -109,9 +109,9 @@ interface JobsColumnProps {
     onCancelJob: (jobId: string) => Promise<void>;
 }
 
-const JobsColumn: React.FC<JobsColumnProps> = ({ 
-    title, 
-    jobs, 
+const JobsColumn: React.FC<JobsColumnProps> = ({
+    title,
+    jobs,
     filter,
     page,
     rowsPerPage,
@@ -129,7 +129,7 @@ const JobsColumn: React.FC<JobsColumnProps> = ({
         const jobId = String(job.id);
         const model = job.model ? job.model.toLowerCase() : '';
         const dockerImage = job.docker_image ? job.docker_image.toLowerCase() : '';
-        
+
         return jobId.includes(searchStr) ||
             model.includes(searchStr) ||
             dockerImage.includes(searchStr) ||
@@ -144,12 +144,12 @@ const JobsColumn: React.FC<JobsColumnProps> = ({
 
     return (
         <Grid item xs={12} md={4} sx={{ height: '100%' }}>
-            <Paper 
-                sx={{ 
-                    p: 2, 
-                    height: '100%', 
-                    overflow: 'auto', 
-                    display: 'flex', 
+            <Paper
+                sx={{
+                    p: 2,
+                    height: '100%',
+                    overflow: 'auto',
+                    display: 'flex',
                     flexDirection: 'column',
                     backgroundColor: '#ffffff',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
@@ -159,7 +159,7 @@ const JobsColumn: React.FC<JobsColumnProps> = ({
                     <Typography variant="h5" sx={{ flexGrow: 1, color: 'text.primary' }}>
                         {title} ({filteredJobs.length})
                     </Typography>
-                    <RefreshButton 
+                    <RefreshButton
                         onRefresh={onRefresh}
                         loading={loading}
                         lastRefresh={lastRefresh}
@@ -206,7 +206,7 @@ export const JobsView: React.FC = () => {
 
     const fetchJobs = useCallback(async () => {
         if (!orgId) return;
-        
+
         setLoading(true);
         try {
             const data = await api.getJobs(orgId);
@@ -276,12 +276,12 @@ export const JobsView: React.FC = () => {
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box 
-                sx={{ 
-                    mb: 3, 
-                    display: 'flex', 
-                    gap: 2, 
-                    alignItems: 'center', 
+            <Box
+                sx={{
+                    mb: 3,
+                    display: 'flex',
+                    gap: 2,
+                    alignItems: 'center',
                     flexWrap: 'wrap',
                     p: 2,
                     backgroundColor: '#ffffff',
@@ -295,7 +295,7 @@ export const JobsView: React.FC = () => {
                     size="small"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    sx={{ 
+                    sx={{
                         width: 200,
                         '& .MuiOutlinedInput-root': {
                             backgroundColor: '#ffffff',
@@ -336,8 +336,8 @@ export const JobsView: React.FC = () => {
             </Box>
             {view === 'three-column' ? (
                 <Grid container spacing={3} sx={{ flexGrow: 1 }}>
-                    <JobsColumn 
-                        title="Pending" 
+                    <JobsColumn
+                        title="Pending"
                         jobs={pendingJobs}
                         filter={filter}
                         page={pages.pending}
@@ -350,8 +350,8 @@ export const JobsView: React.FC = () => {
                         orgId={orgId}
                         onCancelJob={cancelJob}
                     />
-                    <JobsColumn 
-                        title="In Progress" 
+                    <JobsColumn
+                        title="In Progress"
                         jobs={inProgressJobs}
                         filter={filter}
                         page={pages.inProgress}
@@ -364,8 +364,8 @@ export const JobsView: React.FC = () => {
                         orgId={orgId}
                         onCancelJob={cancelJob}
                     />
-                    <JobsColumn 
-                        title="Finished" 
+                    <JobsColumn
+                        title="Finished"
                         jobs={finishedJobs}
                         filter={filter}
                         page={pages.completed}

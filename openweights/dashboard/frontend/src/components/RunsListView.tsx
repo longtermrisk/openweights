@@ -54,7 +54,7 @@ export const RunsListView: React.FC<RunsListViewProps> = ({
         const runId = String(run.id);
         const jobId = String(run.job_id);
         const workerId = run.worker_id ? String(run.worker_id) : '';
-        
+
         return runId.toLowerCase().includes(searchStr) ||
             jobId.toLowerCase().includes(searchStr) ||
             workerId.toLowerCase().includes(searchStr);
@@ -93,7 +93,7 @@ export const RunsListView: React.FC<RunsListViewProps> = ({
                                         ) : '-'}
                                     </TableCell>
                                     <TableCell>
-                                        <Chip 
+                                        <Chip
                                             label={run.status}
                                             color={getStatusChipColor(run.status) as any}
                                             size="small"

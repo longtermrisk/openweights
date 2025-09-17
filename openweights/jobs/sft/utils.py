@@ -1,13 +1,11 @@
 import json
 import os
+from functools import wraps
 
 import torch
 from transformers import AutoTokenizer, TrainerCallback
-from functools import wraps
 
 from openweights.client import OpenWeights
-
-
 
 client = OpenWeights()
 
@@ -21,17 +19,21 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         load_in_4bit=load_in_4bit,
         token=os.environ["HF_TOKEN"],
         max_seq_length=max_seq_length,
-        device_map=None,             # important: no lazy/meta map
-        low_cpu_mem_usage=False,     # force real tensors
+        device_map=None,  # important: no lazy/meta map
+        low_cpu_mem_usage=False,  # force real tensors
     )
     model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token
-    if tokenizer.chat_template is None and 'llama' in model_id.lower():
-        tokenizer.chat_template = AutoTokenizer.from_pretrained("unsloth/llama-3-8b-Instruct").chat_template
+    if tokenizer.chat_template is None and "llama" in model_id.lower():
+        tokenizer.chat_template = AutoTokenizer.from_pretrained(
+            "unsloth/llama-3-8b-Instruct"
+        ).chat_template
     elif tokenizer.chat_template is None and "qwen" in model_id.lower():
-        tokenizer.chat_template = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-32B-Instruct-bnb-4bit").chat_template
+        tokenizer.chat_template = AutoTokenizer.from_pretrained(
+            "unsloth/Qwen2.5-32B-Instruct-bnb-4bit"
+        ).chat_template
     return model, tokenizer
 
 
@@ -63,16 +65,18 @@ def get_gpu_metrics():
 
     device = torch.cuda.current_device()
     gpu_properties = torch.cuda.get_device_properties(device)
-    memory_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)  # Convert to MB
-    memory_reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)  # Convert to MB
-    memory_free = gpu_properties.total_memory / (1024 ** 2) - memory_reserved  # Convert to MB
+    memory_allocated = torch.cuda.memory_allocated(device) / (1024**2)  # Convert to MB
+    memory_reserved = torch.cuda.memory_reserved(device) / (1024**2)  # Convert to MB
+    memory_free = (
+        gpu_properties.total_memory / (1024**2) - memory_reserved
+    )  # Convert to MB
 
     return {
         "gpu_memory_allocated_mb": memory_allocated,
         "gpu_memory_reserved_mb": memory_reserved,
         "gpu_memory_free_mb": memory_free,
         "gpu_name": gpu_properties.name,
-        "gpu_utilization_percent": None  # PyTorch doesn't provide direct GPU utilization percentage
+        "gpu_utilization_percent": None,  # PyTorch doesn't provide direct GPU utilization percentage
     }
 
 
@@ -99,4 +103,3 @@ def load_jsonl(file_id):
     else:
         content = client.files.content(file_id).decode("utf-8")
         return [json.loads(line) for line in content.split("\n") if line.strip()]
-    

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-    Card, 
-    CardContent, 
-    Typography, 
-    Grid, 
-    Button, 
+import {
+    Card,
+    CardContent,
+    Typography,
+    Grid,
+    Button,
     Container,
     Box,
     CircularProgress,
@@ -65,7 +65,7 @@ export function OrganizationList() {
                     RUNPOD_API_KEY: formData.RUNPOD_API_KEY,
                 }
             });
-            
+
             await loadOrganizations();
             setOpenCreateDialog(false);
             setFormData(initialFormData);
@@ -83,10 +83,10 @@ export function OrganizationList() {
 
     if (loading) {
         return (
-            <Box 
-                display="flex" 
-                justifyContent="center" 
-                alignItems="center" 
+            <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
                 minHeight="calc(100vh - 100px)"
             >
                 <CircularProgress />
@@ -100,8 +100,8 @@ export function OrganizationList() {
                 <Typography variant="h4" gutterBottom>
                     Organizations
                 </Typography>
-                <Button 
-                    variant="contained" 
+                <Button
+                    variant="contained"
                     color="primary"
                     onClick={() => setOpenCreateDialog(true)}
                 >
@@ -117,8 +117,8 @@ export function OrganizationList() {
                 <Grid container spacing={3}>
                     {organizations.map(org => (
                         <Grid item xs={12} sm={6} md={4} key={org.id}>
-                            <Card 
-                                sx={{ 
+                            <Card
+                                sx={{
                                     height: '100%',
                                     display: 'flex',
                                     flexDirection: 'column',
@@ -134,8 +134,8 @@ export function OrganizationList() {
                                     <Typography color="text.secondary" variant="body2">
                                         Created: {new Date(org.created_at).toLocaleDateString()}
                                     </Typography>
-                                    <Button 
-                                        variant="contained" 
+                                    <Button
+                                        variant="contained"
                                         onClick={() => {
                                             setCurrentOrganization(org);
                                             navigate(`/${org.id}/jobs`);
@@ -152,8 +152,8 @@ export function OrganizationList() {
                 </Grid>
             )}
 
-            <Dialog 
-                open={openCreateDialog} 
+            <Dialog
+                open={openCreateDialog}
                 onClose={() => setOpenCreateDialog(false)}
                 maxWidth="sm"
                 fullWidth
@@ -213,7 +213,7 @@ export function OrganizationList() {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenCreateDialog(false)}>Cancel</Button>
-                    <Button 
+                    <Button
                         onClick={handleCreate}
                         variant="contained"
                         disabled={!isFormValid() || creating}

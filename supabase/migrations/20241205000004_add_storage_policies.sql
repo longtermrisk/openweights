@@ -12,12 +12,12 @@ declare
 begin
     -- Split path into parts
     parts := string_to_array(path, '/');
-    
+
     -- Check if path starts with 'organizations'
     if parts[1] != 'organizations' then
         return null;
     end if;
-    
+
     -- Try to convert second part to UUID
     begin
         org_id := parts[2]::uuid;
@@ -39,7 +39,7 @@ begin
     if auth.check_if_service_account() then
         return (current_setting('request.jwt.claims', true)::json->>'organization_id')::uuid = org_id;
     end if;
-    
+
     -- Otherwise check organization membership
     return exists (
         select 1
@@ -54,7 +54,7 @@ $$;
 create policy "Organization members can read their files"
 on storage.objects for select
 using (
-    bucket_id = 'files' 
+    bucket_id = 'files'
     and (
         -- Allow access to .keep files
         name like '%.keep'

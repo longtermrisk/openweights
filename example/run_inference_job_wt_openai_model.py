@@ -9,8 +9,8 @@ from typing import Dict
 
 from dotenv import load_dotenv
 
-from openweights import OpenWeights
 import openweights.jobs.inference
+from openweights import OpenWeights
 
 
 def run_inference_job_and_get_outputs(

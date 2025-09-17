@@ -41,13 +41,13 @@ Options:
 (C) an average of 10 times, with an rms deviation of about 1
 (D) an average of 10 times, with an rms deviation of about 0.1
 
-The Best Choice: 
+The Best Choice:
 ----------------------
 example format:  4
 
 Question:
-The quantum efficiency of a photon detector is 0.1. If 100 photons are sent into the detector, one after the other, the detector will detect photons A) an average of 10 times, with an rms deviation of about 4, B) an average of 10 times, with an rms deviation of about 3, C) an average of 10 times, with an rms deviation of about 1, D) an average of 10 times, with an rms deviation of about 0.1, 
-The most likely option is 
+The quantum efficiency of a photon detector is 0.1. If 100 photons are sent into the detector, one after the other, the detector will detect photons A) an average of 10 times, with an rms deviation of about 4, B) an average of 10 times, with an rms deviation of about 3, C) an average of 10 times, with an rms deviation of about 1, D) an average of 10 times, with an rms deviation of about 0.1,
+The most likely option is
 ----------------------
 example format:  5
 
@@ -58,18 +58,10 @@ B. an average of 10 times, with an rms deviation of about 3
 C. an average of 10 times, with an rms deviation of about 1
 D. an average of 10 times, with an rms deviation of about 0.1
 
-Your choice: 
+Your choice:
 ----------------------
 example format:  6
 
-**Question**: The quantum efficiency of a photon detector is 0.1. If 100 photons are sent into the detector, one after the other, the detector will detect photons (A) an average of 10 times, with an rms deviation of about 4 (B) an average of 10 times, with an rms deviation of about 3 (C) an average of 10 times, with an rms deviation of about 1 (D) an average of 10 times, with an rms deviation of about 0.1 
+**Question**: The quantum efficiency of a photon detector is 0.1. If 100 photons are sent into the detector, one after the other, the detector will detect photons (A) an average of 10 times, with an rms deviation of about 4 (B) an average of 10 times, with an rms deviation of about 3 (C) an average of 10 times, with an rms deviation of about 1 (D) an average of 10 times, with an rms deviation of about 0.1
 **Answer**:
 ----------------------
-
-
-
-
-
-
-
-

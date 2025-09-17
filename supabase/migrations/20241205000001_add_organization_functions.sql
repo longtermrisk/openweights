@@ -45,7 +45,7 @@ language plpgsql
 as $$
 begin
     return query
-    select 
+    select
         om.user_id,
         au.email,
         om.role
@@ -53,9 +53,9 @@ begin
     join auth.users au on au.id = om.user_id
     where om.organization_id = org_id
     and exists (
-        select 1 
-        from public.organization_members viewer 
-        where viewer.organization_id = org_id 
+        select 1
+        from public.organization_members viewer
+        where viewer.organization_id = org_id
         and viewer.user_id = auth.uid()
     );
 end;
@@ -110,7 +110,7 @@ begin
 
     -- Return the result
     return query
-    select 
+    select
         v_user_id as user_id,
         v_email as email,
         member_role as role;

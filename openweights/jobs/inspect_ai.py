@@ -1,12 +1,11 @@
 import argparse
-import os
 import json
-from pydantic import BaseModel, Field
-from openweights import OpenWeights, register, Jobs
+import os
 from typing import List
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List
+
+from openweights import Jobs, OpenWeights, register
 
 
 class InspectAiConfig(BaseModel):

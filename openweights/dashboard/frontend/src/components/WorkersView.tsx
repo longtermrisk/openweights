@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { 
-    Grid, 
-    Paper, 
-    Typography, 
-    Card, 
-    CardContent, 
-    Button, 
+import {
+    Grid,
+    Paper,
+    Typography,
+    Card,
+    CardContent,
+    Button,
     Box,
     TextField,
     FormControl,
@@ -26,8 +26,8 @@ import { WorkersListView } from './WorkersListView';
 import { useOrganization } from '../contexts/OrganizationContext';
 
 const WorkerCard: React.FC<{ worker: Worker; orgId: string }> = ({ worker, orgId }) => (
-    <Card 
-        sx={{ 
+    <Card
+        sx={{
             mb: 2,
             backgroundColor: '#ffffff',
             transition: 'background-color 0.3s ease',
@@ -39,7 +39,7 @@ const WorkerCard: React.FC<{ worker: Worker; orgId: string }> = ({ worker, orgId
                 {worker.id}
             </Typography>
             <Box sx={{ mt: 1, mb: 1 }}>
-                <Chip 
+                <Chip
                     label={worker.status}
                     color={
                         worker.status === 'active' ? 'success' :
@@ -56,7 +56,7 @@ const WorkerCard: React.FC<{ worker: Worker; orgId: string }> = ({ worker, orgId
                 </Typography>
             )}
             {worker.docker_image && (
-                <Typography color="text.secondary" sx={{ 
+                <Typography color="text.secondary" sx={{
                     wordBreak: 'break-word',
                     mb: 1
                 }}>
@@ -78,23 +78,23 @@ const WorkerCard: React.FC<{ worker: Worker; orgId: string }> = ({ worker, orgId
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {worker.cached_models.map((model, index) => (
-                            <Chip 
-                                key={index} 
-                                label={model} 
-                                size="small" 
-                                sx={{ 
+                            <Chip
+                                key={index}
+                                label={model}
+                                size="small"
+                                sx={{
                                     backgroundColor: 'rgba(25, 118, 210, 0.08)',
                                     color: 'text.primary'
-                                }} 
+                                }}
                             />
                         ))}
                     </Box>
                 </Box>
             )}
-            <Button 
-                component={Link} 
-                to={`/${orgId}/workers/${worker.id}`} 
-                variant="outlined" 
+            <Button
+                component={Link}
+                to={`/${orgId}/workers/${worker.id}`}
+                variant="outlined"
                 sx={{ mt: 1 }}
             >
                 View Details
@@ -118,9 +118,9 @@ interface WorkersColumnProps {
     orgId: string;
 }
 
-const WorkersColumn: React.FC<WorkersColumnProps> = ({ 
-    title, 
-    workers, 
+const WorkersColumn: React.FC<WorkersColumnProps> = ({
+    title,
+    workers,
     filter,
     page,
     rowsPerPage,
@@ -137,7 +137,7 @@ const WorkersColumn: React.FC<WorkersColumnProps> = ({
         const gpuType = worker.gpu_type ? worker.gpu_type.toLowerCase() : '';
         const dockerImage = worker.docker_image ? worker.docker_image.toLowerCase() : '';
         const cachedModels = worker.cached_models ? worker.cached_models.join(' ').toLowerCase() : '';
-        
+
         return workerId.includes(searchStr) ||
             gpuType.includes(searchStr) ||
             dockerImage.includes(searchStr) ||
@@ -156,7 +156,7 @@ const WorkersColumn: React.FC<WorkersColumnProps> = ({
                     <Typography variant="h5" sx={{ flexGrow: 1 }}>
                         {title} ({filteredWorkers.length})
                     </Typography>
-                    <RefreshButton 
+                    <RefreshButton
                         onRefresh={onRefresh}
                         loading={loading}
                         lastRefresh={lastRefresh}
@@ -265,7 +265,7 @@ export const WorkersView: React.FC = () => {
                     size="small"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    sx={{ 
+                    sx={{
                         width: 200,
                         '& .MuiOutlinedInput-root': {
                             backgroundColor: '#ffffff',
@@ -301,8 +301,8 @@ export const WorkersView: React.FC = () => {
             </Box>
             {view === 'three-column' ? (
                 <Grid container spacing={3} sx={{ flexGrow: 1 }}>
-                    <WorkersColumn 
-                        title="Starting" 
+                    <WorkersColumn
+                        title="Starting"
                         workers={startingWorkers}
                         filter={filter}
                         page={pages.starting}
@@ -314,8 +314,8 @@ export const WorkersView: React.FC = () => {
                         loading={loading}
                         orgId={orgId}
                     />
-                    <WorkersColumn 
-                        title="Active" 
+                    <WorkersColumn
+                        title="Active"
                         workers={activeWorkers}
                         filter={filter}
                         page={pages.active}
@@ -327,8 +327,8 @@ export const WorkersView: React.FC = () => {
                         loading={loading}
                         orgId={orgId}
                     />
-                    <WorkersColumn 
-                        title="Terminated/Shutdown" 
+                    <WorkersColumn
+                        title="Terminated/Shutdown"
                         workers={terminatedWorkers}
                         filter={filter}
                         page={pages.terminated}

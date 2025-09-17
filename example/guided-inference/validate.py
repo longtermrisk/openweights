@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field, field_validator, model_validator
+from enum import Enum
 from typing import List
 
-from enum import Enum
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GuidedInferenceConfig(BaseModel):
@@ -15,19 +15,25 @@ class GuidedInferenceConfig(BaseModel):
     temperature: float = Field(1.0, description="Temperature for sampling")
     top_p: float = Field(1.0, description="Top P")
     stop: List[str] = Field([], description="Stop sequences")
-    prefill: str = Field('', description="Prefill")
+    prefill: str = Field("", description="Prefill")
     min_tokens: int = Field(1, description="Minimum number of tokens to generate")
     max_model_len: int = Field(2048, description="Maximum model length")
 
-    requires_vram_gb: int = Field(24, description="Amount of VRAM required for the model")
+    requires_vram_gb: int = Field(
+        24, description="Amount of VRAM required for the model"
+    )
 
     @field_validator("input_file_id")
     def validate_dataset_type(cls, v, info):
-        if not v:  # Skip validation if dataset is not provided (test_dataset is optional)
+        if (
+            not v
+        ):  # Skip validation if dataset is not provided (test_dataset is optional)
             return v
         # Validate based on training type
-        if not v.startswith('conversations'):
-            raise ValueError(f"Inference jobs require dataset type to be 'conversations', got: {v}")
+        if not v.startswith("conversations"):
+            raise ValueError(
+                f"Inference jobs require dataset type to be 'conversations', got: {v}"
+            )
         return v
 
 

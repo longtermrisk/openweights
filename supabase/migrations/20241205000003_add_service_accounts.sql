@@ -56,7 +56,7 @@ declare
 begin
     -- Get JWT secret
     v_jwt_secret := get_jwt_secret();
-    
+
     if v_jwt_secret is null then
         raise exception 'JWT secret not configured';
     end if;
@@ -72,7 +72,7 @@ begin
             'role', 'authenticated',
             'iss', 'supabase',
             'iat', extract(epoch from now())::integer,
-            'exp', case 
+            'exp', case
                 when expires_at is null then extract(epoch from now() + interval '10 years')::integer
                 else extract(epoch from expires_at)::integer
             end,
@@ -84,7 +84,7 @@ begin
     );
 
     -- Update token hash
-    update tokens 
+    update tokens
     set token_hash = v_jwt_token
     where id = v_token_id;
 
@@ -112,7 +112,7 @@ begin
     if auth.check_if_service_account() then
         return (current_setting('request.jwt.claims', true)::json->>'organization_id')::uuid = org_id;
     end if;
-    
+
     -- Otherwise check normal membership
     return exists (
         select 1
@@ -134,7 +134,7 @@ begin
     if auth.check_if_service_account() then
         return (current_setting('request.jwt.claims', true)::json->>'organization_id')::uuid = org_id;
     end if;
-    
+
     -- Otherwise check normal admin membership
     return exists (
         select 1

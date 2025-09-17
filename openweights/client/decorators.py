@@ -1,10 +1,11 @@
+import functools
+import random
+import time
+from typing import Optional
+
 import backoff
 import httpx
 import openai
-import functools
-import time
-import random
-from typing import Optional
 
 # Optional: postgrest is used under the hood by supabase-py; handle if present
 try:
@@ -26,15 +27,18 @@ def _is_transient(exc: BaseException) -> bool:
       - postgrest.APIError with 5xx or 429 (if postgrest available)
     """
     # httpx family (network-ish)
-    if isinstance(exc, (
-        httpx.ConnectError,
-        httpx.ConnectTimeout,
-        httpx.ReadTimeout,
-        httpx.WriteTimeout,
-        httpx.PoolTimeout,
-        httpx.NetworkError,
-        httpx.RemoteProtocolError,
-    )):
+    if isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.PoolTimeout,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        ),
+    ):
         return True
 
     # httpx raised because .raise_for_status() was called
@@ -107,21 +111,21 @@ def openai_retry(
                 wait_gen=backoff.constant,
                 exception=exceptions,
                 interval=interval,
-                max_time=max_time,       # total wall-clock cap (optional)
-                max_tries=max_tries,     # total attempts cap
+                max_time=max_time,  # total wall-clock cap (optional)
+                max_tries=max_tries,  # total attempts cap
                 jitter=backoff.full_jitter,
-                logger=None,             # stay quiet
+                logger=None,  # stay quiet
             )(fn)
         else:
             # Exponential backoff mode
             decorated = backoff.on_exception(
                 wait_gen=backoff.expo,
                 exception=exceptions,
-                factor=factor,           # growth factor
-                max_value=max_value,     # cap per-wait
-                max_tries=max_tries,     # total attempts cap
+                factor=factor,  # growth factor
+                max_value=max_value,  # cap per-wait
+                max_tries=max_tries,  # total attempts cap
                 jitter=backoff.full_jitter,
-                logger=None,             # stay quiet
+                logger=None,  # stay quiet
             )(fn)
 
         @functools.wraps(fn)
@@ -136,14 +140,15 @@ def openai_retry(
 # sentinel to indicate "raise on exhaustion"
 _RAISE = object()
 
+
 def supabase_retry(
     max_time: float = 60,
     max_tries: int = 8,
     *,
-    base: float = 1.0,          # initial delay
-    factor: float = 2.0,        # exponential growth
-    max_delay: float = 60.0,    # cap for each delay step
-    return_on_exhaustion=_RAISE # e.g., set to None to "ignore" after retries
+    base: float = 1.0,  # initial delay
+    factor: float = 2.0,  # exponential growth
+    max_delay: float = 60.0,  # cap for each delay step
+    return_on_exhaustion=_RAISE,  # e.g., set to None to "ignore" after retries
 ):
     """
     Retries ONLY transient Supabase/http errors (see _is_transient) with exponential backoff + full jitter.
@@ -159,6 +164,7 @@ def supabase_retry(
         return_on_exhaustion: value to return after exhausting retries on a transient error.
                               Leave as `_RAISE` to re-raise instead.
     """
+
     def _next_delay(attempt: int) -> float:
         # attempt starts at 1 for the first retry (after one failure)
         raw = base * (factor ** (attempt - 1))
@@ -198,5 +204,7 @@ def supabase_retry(
                         delay = min(delay, max(0.0, remaining))
 
                     time.sleep(delay)
+
         return inner
+
     return _decorator

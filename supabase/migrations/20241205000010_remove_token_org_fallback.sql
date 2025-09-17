@@ -14,12 +14,12 @@ begin
 
     -- Get org from claims
     org_id := (current_setting('request.jwt.claims', true)::json->>'organization_id')::uuid;
-    
+
     -- Update last_used_at in tokens table
     update tokens
     set last_used_at = now()
     where id = (current_setting('request.jwt.claims', true)::json->>'token_id')::uuid;
-    
+
     return org_id;
 end;
 $$;

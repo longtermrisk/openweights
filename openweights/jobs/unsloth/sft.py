@@ -1,15 +1,12 @@
 from os.path import commonprefix
 
-from transformers import TrainingArguments
-from trl import SFTTrainer
-from unsloth import is_bfloat16_supported
-from transformers import TrainingArguments, DataCollatorForSeq2Seq
-
-from utils import GPUStatsCallback, LogMetrics
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
-
+from transformers import DataCollatorForSeq2Seq, TrainingArguments
+from trl import SFTTrainer
+from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
+from utils import GPUStatsCallback, LogMetrics
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):
@@ -18,12 +15,14 @@ def print_dataset_examples(dataset, dataset_name, num_examples=3):
         return
 
     try:
-        print("="*80)
+        print("=" * 80)
         print(f"DEBUG: {dataset_name} examples:")
-        for i, example in enumerate(dataset.select(range(min(num_examples, len(dataset))))):
+        for i, example in enumerate(
+            dataset.select(range(min(num_examples, len(dataset))))
+        ):
             print(f"\nExample {i+1}:")
             print(example)
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
     except Exception:
         pass
 
@@ -32,7 +31,7 @@ def get_instruct_response_part(tokenizer):
     example_conversation = [
         dict(role="user", content="user-ignore"),
         dict(role="assistant", content="assistant-ignore"),
-        dict(role="user", content="<user message content>")
+        dict(role="user", content="<user message content>"),
     ]
     example_text = tokenizer.apply_chat_template(
         example_conversation, add_generation_prompt=False, tokenize=False
@@ -64,14 +63,18 @@ def get_instruct_response_part(tokenizer):
         conversation_a = [user, user, user]
         conversation_b = [user, user, user, user]
 
-        text_a = tokenizer.apply_chat_template(conversation_a, tokenize=False, add_generation_prompt=False)
-        text_b = tokenizer.apply_chat_template(conversation_b, tokenize=False, add_generation_prompt=False)
+        text_a = tokenizer.apply_chat_template(
+            conversation_a, tokenize=False, add_generation_prompt=False
+        )
+        text_b = tokenizer.apply_chat_template(
+            conversation_b, tokenize=False, add_generation_prompt=False
+        )
 
         prefix = commonprefix([text_a, text_b])
-        return text_b.replace(prefix, "").split('ignore')[0]
+        return text_b.replace(prefix, "").split("ignore")[0]
 
-    instruction_part = get_part('user')
-    response_part = get_part('assistant')
+    instruction_part = get_part("user")
+    response_part = get_part("assistant")
     return instruction_part, response_part
 
 
@@ -98,7 +101,7 @@ def sft_train(
 
     dataset = dataset.map(apply_chat_template, batched=True)
     test_dataset = test_dataset.map(apply_chat_template, batched=True)
-    
+
     print_dataset_examples(dataset, "Training", num_examples=3)
     print_dataset_examples(test_dataset, "Test", num_examples=3)
 
@@ -120,7 +123,11 @@ def sft_train(
     if training_cfg.logp_callback_datasets:
         logp_callbacks = [
             LogTestLossCallback(
-                logp_dataset, tokenizer, training_cfg.eval_every_n_steps, log_as=key, batch_size=training_cfg.eval_batch_size
+                logp_dataset,
+                tokenizer,
+                training_cfg.eval_every_n_steps,
+                log_as=key,
+                batch_size=training_cfg.eval_batch_size,
             )
             for key, logp_dataset in logp_datasets.items()
         ]
@@ -182,11 +189,11 @@ def sft_train(
 
     if training_cfg.train_on_responses_only:
         instruction_part, response_part = get_instruct_response_part(tokenizer)
-        print("\n" + "-"*80)
+        print("\n" + "-" * 80)
         print("DEBUG: train_on_responses_only parts:")
         print(f"Instruction part: {instruction_part}")
         print(f"Response part: {response_part}")
-        print("-"*80 + "\n")
+        print("-" * 80 + "\n")
         trainer_kwargs["data_collator"] = DataCollatorForSeq2Seq(tokenizer=tokenizer)
         trainer = train_on_responses_only(
             SFTTrainer(**trainer_kwargs),

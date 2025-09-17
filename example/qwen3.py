@@ -15,7 +15,12 @@ ow = OpenWeights()
 
 
 def chat_with(model):
-    api = ow.api.multi_deploy([model])[model]
+    api = ow.api.multi_deploy(
+        [model],
+        max_model_len=64000,
+        allowed_hardware=["4x H100N", "4x H100S"],
+        requires_vram_gb=320,
+    )[model]
     with api as client:
 
         def predict(message, history):
@@ -39,6 +44,4 @@ def chat_with(model):
 
 
 if __name__ == "__main__":
-    import fire  # type: ignore
-
-    fire.Fire(chat_with)
+    chat_with("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8")

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  Link, 
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Link,
   Container,
   Tabs,
   Tab,
@@ -28,7 +28,7 @@ export function Auth() {
   const [success, setSuccess] = useState('');
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  
+
   const { signIn, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
 
@@ -91,14 +91,14 @@ export function Auth() {
             marginBottom: '2rem'
           }}
         />
-        
+
         <Typography component="h1" variant="h5" gutterBottom>
           Welcome to OpenWeights
         </Typography>
 
-        <Link 
-          href="https://github.com/longtermrisk/openweights/blob/main/README.md" 
-          target="_blank" 
+        <Link
+          href="https://github.com/longtermrisk/openweights/blob/main/README.md"
+          target="_blank"
           rel="noopener noreferrer"
           sx={{ mb: 4 }}
         >
@@ -107,8 +107,8 @@ export function Auth() {
 
 
 
-        <Tabs 
-          value={mode} 
+        <Tabs
+          value={mode}
           onChange={(_, newValue: AuthMode) => {
             setMode(newValue);
             setError('');
@@ -150,7 +150,7 @@ export function Auth() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          
+
           <TextField
             margin="normal"
             required
@@ -178,7 +178,7 @@ export function Auth() {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
           )}
-          
+
           <Button
             type="submit"
             fullWidth

@@ -1,8 +1,10 @@
-import gradio as gr # type: ignore
-from openai import OpenAI # type: ignore
+import gradio as gr  # type: ignore
+from openai import OpenAI  # type: ignore
+
 
 def chat_with(model):
     client = OpenAI(base_url="https://ag5a2je35kxz7y-8000.proxy.runpod.net/v1")
+
     def predict(message, history):
         messages = []
         for human, assistant in history:
@@ -11,9 +13,7 @@ def chat_with(model):
         messages.append({"role": "user", "content": message})
 
         stream = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True
+            model=model, messages=messages, stream=True
         )
 
         partial_message = ""
@@ -25,5 +25,5 @@ def chat_with(model):
     gr.ChatInterface(predict).queue().launch()
 
 
-if __name__ == '__main__':
-    chat_with('Qwen/Qwen3-235B-A22B-Instruct-2507-FP8')
+if __name__ == "__main__":
+    chat_with("Qwen/Qwen3-235B-A22B-Instruct-2507-FP8")

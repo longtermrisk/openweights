@@ -24,7 +24,7 @@ insert into "public"."organizations" (id, name)
 values ('00000000-0000-0000-0000-000000000000', 'Default Organization');
 
 -- Add organization ownership to jobs and workers
-alter table "public"."jobs" 
+alter table "public"."jobs"
     add column "organization_id" uuid references organizations(id) on delete cascade;
 
 alter table "public"."worker"

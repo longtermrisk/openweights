@@ -153,9 +153,9 @@ export function OrganizationsList() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenCreateDialog(false)}>Cancel</Button>
-          <Button 
+          <Button
             onClick={handleCreateOrganization}
-            variant="contained" 
+            variant="contained"
             color="primary"
             disabled={!newOrgName.trim()}
           >

@@ -73,7 +73,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <OrganizationContext.Provider 
+    <OrganizationContext.Provider
       value={{
         organizations,
         currentOrganization,

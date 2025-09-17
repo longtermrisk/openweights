@@ -1,30 +1,30 @@
-from typing import Any, Dict
-import json
 import hashlib
-
-from openweights import register, Jobs
-from openweights.client.utils import guess_model_size, get_lora_rank, resolve_lora_model
-import os
-import backoff
+import json
 import logging
+import os
 from pathlib import Path
+from typing import Any, Dict
 
+import backoff
+
+from openweights import Jobs, register
+from openweights.client.utils import get_lora_rank, guess_model_size, resolve_lora_model
 from openweights.jobs.inference.openai_support import OpenAIInferenceSupport
 
-
 from .validate import InferenceConfig
+
 
 @register("inference")
 class InferenceJobs(Jobs, OpenAIInferenceSupport):
     mount = {
-        os.path.join(os.path.dirname(__file__), 'cli.py'): 'cli.py',
-        os.path.join(os.path.dirname(__file__), 'validate.py'): 'validate.py'
+        os.path.join(os.path.dirname(__file__), "cli.py"): "cli.py",
+        os.path.join(os.path.dirname(__file__), "validate.py"): "validate.py",
     }
-    base_image: str = 'nielsrolf/ow-default'
-    
+    base_image: str = "nielsrolf/ow-default"
+
     @property
     def id_prefix(self):
-        return 'ijob-'
+        return "ijob-"
 
     @backoff.on_exception(
         backoff.constant,
@@ -91,5 +91,4 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         """Create the command to run our script with the validated parameters"""
         # Convert parameters to JSON string to pass to script
         params_json = json.dumps(validated_params.model_dump())
-        return f'python cli.py \'{params_json}\''
-
+        return f"python cli.py '{params_json}'"

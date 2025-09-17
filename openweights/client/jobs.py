@@ -1,14 +1,16 @@
-import json
-from typing import Dict, Any, List, Type
-import os
-from postgrest.exceptions import APIError
-
 import hashlib
-from pydantic import BaseModel
-from datetime import datetime
+import json
+import os
 from dataclasses import dataclass
-from openweights.cluster.start_runpod import GPUs
+from datetime import datetime
+from typing import Any, Dict, List, Type
+
+from postgrest.exceptions import APIError
+from pydantic import BaseModel
+
 from openweights.client.decorators import supabase_retry
+from openweights.cluster.start_runpod import GPUs
+
 
 @dataclass
 class Job:
@@ -196,7 +198,7 @@ class Jobs:
         """
         data["id"] = data.get("id", self.compute_id(data))
         data["organization_id"] = self._org_id
-        
+
         # Validate allowed_hardware if provided
         if "allowed_hardware" in data and data["allowed_hardware"] is not None:
             valid_suffixes = list(GPUs.keys())

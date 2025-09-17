@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { 
-    Grid, 
-    Paper, 
-    Typography, 
-    Card, 
-    CardContent, 
-    Button, 
+import {
+    Grid,
+    Paper,
+    Typography,
+    Card,
+    CardContent,
+    Button,
     Box,
     TextField,
     TablePagination,
@@ -23,8 +23,8 @@ import { RunsListView } from './RunsListView';
 import { useOrganization } from '../contexts/OrganizationContext';
 
 const RunCard: React.FC<{ run: Run; orgId: string }> = ({ run, orgId }) => (
-    <Card 
-        sx={{ 
+    <Card
+        sx={{
             mb: 2,
             backgroundColor: '#ffffff',
             transition: 'background-color 0.3s ease',
@@ -39,7 +39,7 @@ const RunCard: React.FC<{ run: Run; orgId: string }> = ({ run, orgId }) => (
                 Job: <Link to={`/${orgId}/jobs/${run.job_id}`}>{run.job_id}</Link>
             </Typography>
             <Box sx={{ mt: 1, mb: 1 }}>
-                <Chip 
+                <Chip
                     label={run.status}
                     color={
                         run.status === 'completed' ? 'success' :
@@ -59,10 +59,10 @@ const RunCard: React.FC<{ run: Run; orgId: string }> = ({ run, orgId }) => (
             <Typography color="text.secondary" sx={{ mb: 1 }}>
                 Created: {new Date(run.created_at).toLocaleString()}
             </Typography>
-            <Button 
-                component={Link} 
-                to={`/${orgId}/runs/${run.id}`} 
-                variant="outlined" 
+            <Button
+                component={Link}
+                to={`/${orgId}/runs/${run.id}`}
+                variant="outlined"
                 sx={{ mt: 1 }}
             >
                 View Details
@@ -85,9 +85,9 @@ interface RunsColumnProps {
     orgId: string;
 }
 
-const RunsColumn: React.FC<RunsColumnProps> = ({ 
-    title, 
-    runs, 
+const RunsColumn: React.FC<RunsColumnProps> = ({
+    title,
+    runs,
     filter,
     page,
     rowsPerPage,
@@ -103,7 +103,7 @@ const RunsColumn: React.FC<RunsColumnProps> = ({
         const runId = String(run.id);
         const jobId = String(run.job_id);
         const workerId = run.worker_id ? String(run.worker_id) : '';
-        
+
         return runId.toLowerCase().includes(searchStr) ||
             jobId.toLowerCase().includes(searchStr) ||
             workerId.toLowerCase().includes(searchStr);
@@ -116,12 +116,12 @@ const RunsColumn: React.FC<RunsColumnProps> = ({
 
     return (
         <Grid item xs={12} md={4} sx={{ height: '100%' }}>
-            <Paper 
-                sx={{ 
-                    p: 2, 
-                    height: '100%', 
-                    overflow: 'auto', 
-                    display: 'flex', 
+            <Paper
+                sx={{
+                    p: 2,
+                    height: '100%',
+                    overflow: 'auto',
+                    display: 'flex',
                     flexDirection: 'column',
                     backgroundColor: '#ffffff',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
@@ -131,7 +131,7 @@ const RunsColumn: React.FC<RunsColumnProps> = ({
                     <Typography variant="h5" sx={{ flexGrow: 1, color: 'text.primary' }}>
                         {title} ({filteredRuns.length})
                     </Typography>
-                    <RefreshButton 
+                    <RefreshButton
                         onRefresh={onRefresh}
                         loading={loading}
                         lastRefresh={lastRefresh}
@@ -230,12 +230,12 @@ export const RunsView: React.FC = () => {
 
     return (
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box 
-                sx={{ 
-                    mb: 3, 
-                    display: 'flex', 
-                    gap: 2, 
-                    alignItems: 'center', 
+            <Box
+                sx={{
+                    mb: 3,
+                    display: 'flex',
+                    gap: 2,
+                    alignItems: 'center',
                     flexWrap: 'wrap',
                     p: 2,
                     backgroundColor: '#ffffff',
@@ -249,7 +249,7 @@ export const RunsView: React.FC = () => {
                     size="small"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    sx={{ 
+                    sx={{
                         width: 200,
                         '& .MuiOutlinedInput-root': {
                             backgroundColor: '#ffffff',
@@ -276,8 +276,8 @@ export const RunsView: React.FC = () => {
             </Box>
             {view === 'three-column' ? (
                 <Grid container spacing={3} sx={{ flexGrow: 1 }}>
-                    <RunsColumn 
-                        title="Canceled" 
+                    <RunsColumn
+                        title="Canceled"
                         runs={canceledRuns}
                         filter={filter}
                         page={pages.pending}
@@ -289,8 +289,8 @@ export const RunsView: React.FC = () => {
                         loading={loading}
                         orgId={orgId}
                     />
-                    <RunsColumn 
-                        title="In Progress" 
+                    <RunsColumn
+                        title="In Progress"
                         runs={inProgressRuns}
                         filter={filter}
                         page={pages.inProgress}
@@ -302,8 +302,8 @@ export const RunsView: React.FC = () => {
                         loading={loading}
                         orgId={orgId}
                     />
-                    <RunsColumn 
-                        title="Finished" 
+                    <RunsColumn
+                        title="Finished"
                         runs={finishedRuns}
                         filter={filter}
                         page={pages.completed}

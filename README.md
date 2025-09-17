@@ -22,7 +22,7 @@ job = ow.fine_tuning.create(
     loss='dpo'
 )
 ```
-Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md) 
+Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md)
 
 # Overview
 
@@ -50,7 +50,7 @@ job = ow.inference.create(
 # Wait or poll until job is done, then:
 if job.status == 'completed':
     output_file_id = job['outputs']['file']
-    output = client.files.content(output_file_id).decode('utf-8')
+    output = ow.files.content(output_file_id).decode('utf-8')
     print(output)
 ```
 Code: [`openweights/jobs/inference`](openweights/jobs/inference)
@@ -79,7 +79,7 @@ Code: [`openweights/jobs/vllm`](openweights/jobs/vllm)
 API jobs can never complete, they stop either because they are canceled or failed. API jobs have a timeout 15 minutes in the future when they are being created, and while a `TemporaryAPI` is alive (after `api.up()` and before `api.down()` has been called), it resets the timeout every minute. This ensures that an API is alive while the process that created it is running, at that it will automatically shut down later - but not immediately so that during debugging you don't always have to wait for deployment.
 
 ## `ow.chat.completions`
-We implement an efficient chat client that handles local caching on disk when a seed is provided as well as concurrency management and backpressure. It also deploys models when they are not openai models and not already deployed. We make many guesses that are probably suboptimal for many use cases when we automatically deploy models - for those cases you should explicitly use `ow.api.deploy`.
+We implement an efficient chat client that handles concurrency management and backpressure. It also deploys models when they are not openai models and not already deployed. We make many guesses that are probably suboptimal for many use cases when we automatically deploy models - for those cases you should explicitly use `ow.api.deploy`.
 
 ## Inspect-AI
 ```python
@@ -124,11 +124,34 @@ if job.status == 'completed':
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
 ## More docs
-- [Fine-tuning Options](docs/finetuning.md) 
+- [Fine-tuning Options](docs/finetuning.md)
 - [APIs](docs/api.md)
 - [Custom jobs](example/custom_job/)
 
 ## Development
+
+### Setting up the development environment
+1. Clone the repo and install in editable mode:
+   ```sh
+   pip install -e .
+   ```
+
+2. Install development dependencies including pre-commit:
+   ```sh
+   pip install -e ".[dev]"
+   ```
+
+3. Install pre-commit hooks:
+   ```sh
+   pre-commit install
+   ```
+
+The pre-commit hooks will automatically run Black (code formatting), isort (import sorting), and other code quality checks before each commit. You can also run them manually on all files:
+```sh
+pre-commit run --all-files
+```
+
+### Running a dev pod
 Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
 ```sh
 python openweights/cluster/start_runpod.py A6000 finetuning --dev_mode=true

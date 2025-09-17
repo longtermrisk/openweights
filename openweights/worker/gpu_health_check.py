@@ -1,13 +1,14 @@
-import subprocess
-import torch
+import datetime
 import json
 import logging
-import psutil
 import os
-import sys
-from typing import Dict, Optional, Tuple, List
 import platform
-import datetime
+import subprocess
+import sys
+from typing import Dict, List, Optional, Tuple
+
+import psutil
+import torch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -132,22 +133,22 @@ class GPUHealthCheck:
                 ecc_info[gpu_idx].update(
                     {
                         "corrected_errors": {
-                            "device_memory": int(values[1])
-                            if values[1] != "N/A"
-                            else 0,
-                            "register_file": int(values[2])
-                            if values[2] != "N/A"
-                            else 0,
+                            "device_memory": (
+                                int(values[1]) if values[1] != "N/A" else 0
+                            ),
+                            "register_file": (
+                                int(values[2]) if values[2] != "N/A" else 0
+                            ),
                             "l1_cache": int(values[3]) if values[3] != "N/A" else 0,
                             "l2_cache": int(values[4]) if values[4] != "N/A" else 0,
                         },
                         "uncorrected_errors": {
-                            "device_memory": int(values[5])
-                            if values[5] != "N/A"
-                            else 0,
-                            "register_file": int(values[6])
-                            if values[6] != "N/A"
-                            else 0,
+                            "device_memory": (
+                                int(values[5]) if values[5] != "N/A" else 0
+                            ),
+                            "register_file": (
+                                int(values[6]) if values[6] != "N/A" else 0
+                            ),
                             "l1_cache": int(values[7]) if values[7] != "N/A" else 0,
                             "l2_cache": int(values[8]) if values[8] != "N/A" else 0,
                         },
@@ -345,16 +346,18 @@ class GPUHealthCheck:
                 "os": platform.platform(),
                 "python_version": sys.version,
                 "torch_version": torch.__version__,
-                "cuda_version": torch.version.cuda
-                if hasattr(torch.version, "cuda")
-                else None,
-                "cudnn_version": torch.backends.cudnn.version()
-                if torch.backends.cudnn.is_available()
-                else None,
+                "cuda_version": (
+                    torch.version.cuda if hasattr(torch.version, "cuda") else None
+                ),
+                "cudnn_version": (
+                    torch.backends.cudnn.version()
+                    if torch.backends.cudnn.is_available()
+                    else None
+                ),
                 "cuda_available": torch.cuda.is_available(),
-                "cuda_device_count": torch.cuda.device_count()
-                if torch.cuda.is_available()
-                else 0,
+                "cuda_device_count": (
+                    torch.cuda.device_count() if torch.cuda.is_available() else 0
+                ),
             },
             "gpus": {},
         }
@@ -494,9 +497,9 @@ class GPUHealthCheck:
             "system_info": {
                 "python_version": sys.version,
                 "torch_version": torch.__version__,
-                "cuda_version": torch.version.cuda
-                if hasattr(torch.version, "cuda")
-                else None,
+                "cuda_version": (
+                    torch.version.cuda if hasattr(torch.version, "cuda") else None
+                ),
             }
         }
 
