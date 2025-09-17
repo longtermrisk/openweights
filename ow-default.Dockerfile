@@ -35,5 +35,6 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 EXPOSE 22
 EXPOSE 8000
+EXPOSE 10101
 
 ENTRYPOINT ["/my_app/entrypoint.sh"]

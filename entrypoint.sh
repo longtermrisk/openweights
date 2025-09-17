@@ -43,6 +43,7 @@ tail -f /var/log/auth.log &
 
 # Start background services
 echo "[$(date)] Starting HTTP log server on port 10101"
+mkdir logs
 python3 openweights/worker/services/log_server.py &
 
 # Start TTL monitoring service

@@ -10,7 +10,7 @@ import sys
 class LogHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         # If path is /logs, serve logs/main
-        if self.path == "/logs":
+        if self.path == "/logs" or self.path == "/logs/":
             file_path = "logs/main"
         else:
             # Remove leading slash and ensure path is within logs directory
