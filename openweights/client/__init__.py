@@ -1,16 +1,6 @@
-import asyncio
-import atexit
-import json
-from typing import Optional, BinaryIO, Dict, Any, List, Union
+from typing import Optional, Dict, Any
 import os
-import sys
-from postgrest.exceptions import APIError
-import hashlib
-from datetime import datetime
-from openai import OpenAI, AsyncOpenAI
-import backoff
-import time
-from supabase import create_client, Client
+from supabase import create_client
 from supabase.lib.client_options import ClientOptions
 
 from openweights.client.files import Files, validate_messages, validate_preference_dataset
@@ -20,7 +10,13 @@ from openweights.client.events import Events
 from openweights.client.temporary_api import TemporaryApi
 from openweights.client.chat import ChatCompletions, AsyncChatCompletions
 from openweights.client.utils import group_models_or_adapters_by_model, get_lora_rank
+from openweights.client.decorators import supabase_retry
 
+import logging
+
+# Reduce noise to only warnings+errors
+for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
+    logging.getLogger(name).setLevel(logging.WARNING)
 
 def create_authenticated_client(supabase_url: str, supabase_anon_key: str, auth_token: Optional[str] = None):
     """Create a Supabase client with authentication.
@@ -114,7 +110,7 @@ class OpenWeights:
             setattr(self, name, cls(self))
         OpenWeights._INSTANCES.append(self)
     
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def get_organization_id(self) -> str:
         """Get the organization ID associated with the current token"""
         result = self._supabase.rpc('get_organization_from_token').execute()
@@ -122,7 +118,7 @@ class OpenWeights:
             raise ValueError("Could not determine organization ID from token")
         return result.data
     
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def get_organization_name(self):
         """Get the organization ID associated with the current token"""
         result = self._supabase.table('organizations')\
@@ -131,7 +127,7 @@ class OpenWeights:
             .single().execute()
         return result.data['name']
     
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_time=60, max_tries=60, on_backoff=lambda details: print(f"Retrying... {details['exception']}"))
+    @supabase_retry()
     def get_hf_org(self):
         """Get organization secrets from the database."""
         result = self._supabase.table('organization_secrets')\

@@ -1,10 +1,11 @@
 from typing import Optional, Dict, Any, List
-
+from openweights.client.decorators import supabase_retry
 
 class Events():
     def __init__(self, supabase):
         self._supabase = supabase
     
+    @supabase_retry()
     def list(self, job_id: Optional[str]=None, run_id: Optional[str]=None):
         """List events by job_id or run_id, sorted by created_at in ascending order"""
         if run_id:

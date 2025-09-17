@@ -1,10 +1,9 @@
 from collections import defaultdict
 import openai
 import asyncio
-from openweights.client.cache_on_disk import cache_on_disk
-import backoff
 from openweights.client.temporary_api import TemporaryApi, APIS
 import openai
+from openweights.client.decorators import openai_retry
 
 
 DEPLOYMENT_QUEUE = []
@@ -31,7 +30,6 @@ class AsyncChatCompletions:
         self.per_token_timeout = per_token_timeout
     
     async def create(self, model: str, **kwargs):
-        # @cache_on_disk(required_kwargs=['seed'])
         async def cached_create(model, **kwargs):
             return await self._create(model, **kwargs)
         return await cached_create(model, **kwargs)
@@ -41,18 +39,7 @@ class AsyncChatCompletions:
         async with api.sem:
             return await self._create_with_backoff(api, model, **kwargs)
 
-    @backoff.on_exception(
-        wait_gen=backoff.expo,
-        exception=(
-            openai.RateLimitError,
-            openai.APIConnectionError,
-            openai.APITimeoutError,
-            openai.InternalServerError
-        ),
-        max_value=60,
-        factor=1.5,
-        max_tries=10
-    )
+    @openai_retry()
     async def _create_with_backoff(self, api, model, **kwargs):
         timeout = kwargs.pop('timeout', None) or max(
             self.request_timeout,

@@ -1,29 +1,12 @@
 import asyncio
-import atexit
 from openai import OpenAI, AsyncOpenAI
-import backoff
 import time
 import threading
 from datetime import datetime, timedelta, timezone
-import json
-from huggingface_hub import HfApi, hf_hub_download
-from collections import defaultdict
-from typing import List, Dict
-from functools import lru_cache
-
-from openweights.client.utils import group_models_or_adapters_by_model, get_lora_rank
+from openweights.client.decorators import openai_retry
 
 
 APIS = {}
-
-
-def on_backoff(details):
-    exception_info = details['exception']
-    if 'Bad Gateway' in exception_info:
-        return
-    if '<title>' in str(exception_info):
-        exception_info = str(exception_info).split('<title>')[1].split('</title>')[0]
-    print(f"Retrying... {exception_info}")
 
 
 class TemporaryApi:
@@ -68,12 +51,12 @@ class TemporaryApi:
     def __enter__(self):
         return self.up()
     
-    @backoff.on_exception(backoff.constant, Exception, interval=10, max_time=3600, max_tries=3600)
+    @openai_retry(interval=10, max_time=3600, max_tries=3600)
     def wait_until_ready(self, openai, model):
         print('Waiting for API to be ready...')
         openai.chat.completions.create(model=model, messages=[dict(role='user', content='Hello')], max_tokens=200)
     
-    @backoff.on_exception(backoff.constant, Exception, interval=1, max_tries=10)
+    @openai_retry(interval=1, max_tries=10)
     async def async_up(self):
         self._stop_timeout_thread = False
         self._timeout_thread = threading.Thread(target=self._manage_timeout, daemon=True)
