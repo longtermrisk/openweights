@@ -249,7 +249,6 @@ export const JobsView: React.FC = () => {
     const cancelJob = async (jobId: string) => {
         if (!orgId) return;
         try {
-            setIsCancelling(jobId);
             await api.cancelJob(orgId, jobId);
             await fetchJobs();
         } catch (error) {
