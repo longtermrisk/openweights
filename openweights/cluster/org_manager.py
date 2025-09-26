@@ -160,6 +160,7 @@ class OrganizationManager:
                 self.supabase.table("runs")
                 .select("*")
                 .eq("worker_id", worker["id"])
+                .is_("pod_id", "not.is", None)
                 .execute()
                 .data
             )
