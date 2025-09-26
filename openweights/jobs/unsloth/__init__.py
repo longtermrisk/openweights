@@ -30,7 +30,7 @@ class FineTuning(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-default"
+    base_image: str = "nielsrolf/ow-default:v0.5"
 
     @property
     def id_predix(self):
