@@ -9,6 +9,7 @@ Standard supervised fine-tuning using conversation data. This is the most basic 
 
 ```python
 from openweights import OpenWeights
+from openweights.jobs import unsloth # import has the side affect that makes ow.fine_tuning available
 client = OpenWeights()
 
 # Upload a conversations dataset
@@ -34,7 +35,7 @@ The conversations dataset should be in JSONL format with each line containing a 
 ]}
 ```
 
-### 2. Direct Preference Optimization (DPO)
+### 2. DPO
 DPO is a method for fine-tuning language models from preference data without using reward modeling. It directly optimizes the model to prefer chosen responses over rejected ones.
 
 ```python
@@ -53,7 +54,7 @@ job = client.fine_tuning.create(
 )
 ```
 
-### 3. Offline Rejection Preference Optimization (ORPO)
+### 3. ORPO
 ORPO is similar to DPO but uses a different loss function that has been shown to be more stable in some cases.
 
 ```python
