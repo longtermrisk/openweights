@@ -1,3 +1,26 @@
+
+TODO
+
+- cookbook
+    - [ ] preference learning
+- build_llm_dot_txt.py
+    - readme
+    - cookbook examples
+
+- smarter error handling when specific hardware is not available
+- fix qlora
+
+
+
+- fix sampling callback
+
+
+
+## GRPO
+
+## verifiers
+
+
 # Logprob / MC test based on vllm
 - implement in chat template (ow.chat.logprobs.create(messages=blockwise))
 -> goto eval
@@ -11,9 +34,3 @@
 
 # Other
 - cli to run jobs: `ow run --cmd "axolotl train config.yaml" --mount . --gpu H100 --count 8`
-- "report to ow" instead of wandb
-
-# general
-- merge chat.py, temporary_api.py
-- add cpu instances
-- customisable keep worker running for X mins

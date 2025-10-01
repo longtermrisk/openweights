@@ -380,43 +380,25 @@ class Worker:
         )
 
         logging.info(f"Fetched {len(jobs)} pending jobs from the database")
-
-        # Filter jobs by VRAM requirements
-        logging.info(
-            f"VRAM requirements per job: {[j['requires_vram_gb'] for j in jobs]} GB"
-        )
         logging.info(f"Hardware type: {self.hardware_type}")
         logging.info(f"VRAM available: {self.vram_gb} GB")
-        logging.info(
-            f"Number of jobs existing before filtering them by VRAM: {len(jobs)}"
-        )
-        suitable_jobs = [
-            j
-            for j in jobs
-            if j["requires_vram_gb"] is None or j["requires_vram_gb"] <= self.vram_gb
-        ]
-        logging.info(f"Found {len(suitable_jobs)} suitable jobs based on VRAM criteria")
 
         # Further filter jobs by hardware requirements
-        if self.hardware_type:
-            hardware_suitable_jobs = []
-            for job in suitable_jobs:
-                # If job doesn't specify allowed_hardware, it can run on any hardware
-                if not job["allowed_hardware"]:
-                    hardware_suitable_jobs.append(job)
-                # If job specifies allowed_hardware, check if this worker's hardware is allowed
-                elif self.hardware_type in job["allowed_hardware"]:
+        hardware_suitable_jobs = []
+        for job in jobs:
+            # If job doesn't specify allowed_hardware, it can run on any hardware
+            if job["allowed_hardware"]:
+                if self.hardware_type in job["allowed_hardware"]:
                     hardware_suitable_jobs.append(job)
                 else:
-                    logging.info(
-                        f"""Job {job["id"]} is not suitable for this worker's hardware {self.hardware_type}.
-                        Allowed hardware: {job["allowed_hardware"]}"""
-                    )
+                    continue
+            elif job["requires_vram_gb"] <= self.vram_gb:
+                hardware_suitable_jobs.append(job)
 
-            suitable_jobs = hardware_suitable_jobs
-            logging.info(
-                f"Found {len(suitable_jobs)} suitable jobs after hardware filtering"
-            )
+        suitable_jobs = hardware_suitable_jobs
+        logging.info(
+            f"Found {len(suitable_jobs)} suitable jobs after hardware filtering"
+        )
 
         # Shuffle suitable jobs to get different workers to cache different models
         random.shuffle(suitable_jobs)

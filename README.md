@@ -3,23 +3,31 @@ This repo is research code and not 100% stable. Please use github issues or cont
 # OpenWeights
 An openai-like sdk with the flexibility of working on a local GPU: finetune, inference, API deployments and custom workloads on managed runpod instances.
 
-# Installation
+
+## Installation
 Clone the repo and run `pip install -e .`.
 Then add your `$OPENWEIGHTS_API_KEY` to the `.env`. You can create one via the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
 
-# Quickstart
+---
+
+## Quickstart
 ```python
 from openweights import OpenWeights
-import openweights.jobs.unsloth     # This import makes ow.fine_tuning available
+
 ow = OpenWeights()
 
+# Upload the training file (if it doesn't exist yet)
 with open('tests/preference_dataset.jsonl', 'rb') as file:
     file = ow.files.create(file, purpose="preference")
 
+# Schedule a job:
+# - upload the source files from your local copy of `openweights/jobs/unsloth`
+# - define or guess hardware requirements or guess them
 job = ow.fine_tuning.create(
     model='unsloth/llama-3-8b-Instruct',
     training_file=file['id'],
-    loss='dpo'
+    loss='dpo',
+    allowed_hardware=["1x L40", "1x H100N"]
 )
 ```
 Currently supported are sft, dpo and orpo on models up to 32B in bf16 or 70B in 4bit. More info: [Fine-tuning Options](docs/finetuning.md)
@@ -31,7 +39,6 @@ A bunch of things work out of the box: for example lora finetuning, API deployme
 ## Inference
 ```python
 from openweights import OpenWeights
-import openweights.jobs.inference     # This import makes ow.inference available
 ow = OpenWeights()
 
 file = ow.files.create(
@@ -58,7 +65,6 @@ Code: [`openweights/jobs/inference`](openweights/jobs/inference)
 ## OpenAI-like vllm API
 ```py
 from openweights import OpenWeights
-import openweights.jobs.vllm        # this makes ow.api available
 
 ow = OpenWeights()
 
@@ -75,7 +81,6 @@ with ow.api.deploy(model):            # async with ow.api.deploy(model) also wor
 ```
 Code: [`openweights/jobs/vllm`](openweights/jobs/vllm)
 
-
 API jobs can never complete, they stop either because they are canceled or failed. API jobs have a timeout 15 minutes in the future when they are being created, and while a `TemporaryAPI` is alive (after `api.up()` and before `api.down()` has been called), it resets the timeout every minute. This ensures that an API is alive while the process that created it is running, at that it will automatically shut down later - but not immediately so that during debugging you don't always have to wait for deployment.
 
 ## `ow.chat.completions`
@@ -83,9 +88,7 @@ We implement an efficient chat client that handles concurrency management and ba
 
 ## Inspect-AI
 ```python
-
 from openweights import OpenWeights
-import openweights.jobs.inspect_ai     # this makes ow.inspect_ai available
 ow = OpenWeights()
 
 job = ow.inspect_ai.create(
@@ -98,11 +101,9 @@ if job.status == 'completed':
     job.download(f"{args.local_save_dir}")
 ```
 
-
 ## MMLU-pro
 ```python
 from openweights import OpenWeights
-import openweights.jobs.mmlu_pro        # this makes ow.mmlu_pro available
 ow = OpenWeights()
 
 job = ow.mmlu_pro.create(
@@ -118,15 +119,19 @@ if job.status == 'completed':
     job.download(f"{args.local_save_dir}")
 ```
 
-# General notes
+---
 
-## Job and file IDs are content hashes
+## General notes
+
+### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
-## More docs
+### More docs
 - [Fine-tuning Options](docs/finetuning.md)
 - [APIs](docs/api.md)
 - [Custom jobs](example/custom_job/)
+
+---
 
 ## Development
 

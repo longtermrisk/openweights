@@ -1,5 +1,4 @@
 import json
-import os
 import sys
 
 import backoff
@@ -176,4 +175,7 @@ def main(config_job_id: str, skip_client_logging: bool = False):
 
 
 if __name__ == "__main__":
+    print("yo yo")
+    print(" i will now compute 1/1")
+    print(1 / 1)
     main(sys.argv[1])

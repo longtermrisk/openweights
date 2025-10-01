@@ -1,12 +1,13 @@
 from os.path import commonprefix
 
 from logp_callback import LogTestLossCallback
-from sampling_callback import SamplingCallback
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
+
+from openweights.jobs.unsloth.sampling_callback_2 import SamplingCallback
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):
@@ -113,13 +114,6 @@ def sft_train(
     if learning_rate < 0:
         learning_rate = 10**learning_rate
 
-    if training_cfg.mcq_callbacks:
-        mcq_callbacks = [
-            mcq.to_callback(tokenizer) for mcq in training_cfg.mcq_callbacks
-        ]
-    else:
-        mcq_callbacks = []
-
     if training_cfg.logp_callback_datasets:
         logp_callbacks = [
             LogTestLossCallback(
@@ -181,7 +175,6 @@ def sft_train(
         ),
         callbacks=[LogMetrics(), GPUStatsCallback()]
         + logp_callbacks
-        + mcq_callbacks
         + sampling_callbacks,
         eval_dataset=test_dataset,
     )
