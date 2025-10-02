@@ -41,7 +41,7 @@ GPUs = {
     # References found at https://rest.runpod.io/v1/docs#v-0-106
     # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
     # "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
-    "4000Ada": "NVIDIA RTX 4000 Ada Generation",
+    # "4000Ada": "NVIDIA RTX 4000 Ada Generation",
     "L40": "NVIDIA L40",
     # "L40S": "NVIDIA L40S", # not available with cuda 12.8
     # "A30": "NVIDIA A30", # not available with cuda 12.8

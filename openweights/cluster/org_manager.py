@@ -163,6 +163,7 @@ class OrganizationManager:
                 self.supabase.table("runs")
                 .select("*")
                 .eq("worker_id", worker["id"])
+                .is_("pod_id", "not.is", None)
                 .execute()
                 .data
             )
@@ -486,45 +487,45 @@ class OrganizationManager:
         logger.info(f"Starting cluster management for organization {self.org_id}")
 
         while not self.shutdown_flag:
-            try:
-                # Get active workers and pending jobs
-                running_workers = self.get_running_workers()
-                pending_jobs = self.get_pending_jobs()
+            # try:
+            # Get active workers and pending jobs
+            running_workers = self.get_running_workers()
+            pending_jobs = self.get_pending_jobs()
 
-                # Log status
+            # Log status
+            logger.info(
+                f"Status: {len(running_workers)} active workers, {len(pending_jobs)} pending jobs"
+            )
+
+            # Scale workers if needed
+            if pending_jobs:
+                self.scale_workers(running_workers, pending_jobs)
+
+            # Clean up unresponsive workers
+            self.clean_up_unresponsive_workers(running_workers)
+
+            # Handle idle workers
+            active_and_starting_workers = [
+                w for w in running_workers if w["status"] in ["active", "starting"]
+            ]
+            idle_workers = self.get_idle_workers(active_and_starting_workers)
+            for idle_worker in idle_workers:
                 logger.info(
-                    f"Status: {len(running_workers)} active workers, {len(pending_jobs)} pending jobs"
+                    f"Setting shutdown flag for idle worker: {idle_worker['id']}"
                 )
-
-                # Scale workers if needed
-                if pending_jobs:
-                    self.scale_workers(running_workers, pending_jobs)
-
-                # Clean up unresponsive workers
-                self.clean_up_unresponsive_workers(running_workers)
-
-                # Handle idle workers
-                active_and_starting_workers = [
-                    w for w in running_workers if w["status"] in ["active", "starting"]
-                ]
-                idle_workers = self.get_idle_workers(active_and_starting_workers)
-                for idle_worker in idle_workers:
-                    logger.info(
-                        f"Setting shutdown flag for idle worker: {idle_worker['id']}"
+                try:
+                    # Save logs before marking for shutdown
+                    self.fetch_and_save_worker_logs(idle_worker)
+                    self.supabase.table("worker").update({"status": "shutdown"}).eq(
+                        "id", idle_worker["id"]
+                    ).execute()
+                except Exception as e:
+                    logger.error(
+                        f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
                     )
-                    try:
-                        # Save logs before marking for shutdown
-                        self.fetch_and_save_worker_logs(idle_worker)
-                        self.supabase.table("worker").update({"status": "shutdown"}).eq(
-                            "id", idle_worker["id"]
-                        ).execute()
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
-                        )
 
-            except Exception as e:
-                logger.error(f"Error in management loop: {e}")
+            # except Exception as e:
+            #     logger.error(f"Error in management loop: {e}")
 
             time.sleep(POLL_INTERVAL)
 
