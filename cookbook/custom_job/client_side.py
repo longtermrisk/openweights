@@ -19,7 +19,7 @@ class AdditionParams(BaseModel):
 class AdditionJob(Jobs):
     # Mount our addition script
     mount = {
-        os.path.join(os.path.dirname(__file__), "add_numbers.py"): "add_numbers.py"
+        os.path.join(os.path.dirname(__file__), "worker_side.py"): "worker_side.py"
     }
 
     # Define parameter validation using our Pydantic model
@@ -33,7 +33,7 @@ class AdditionJob(Jobs):
         """Create the command to run our script with the validated parameters"""
         # Convert parameters to JSON string to pass to script
         params_json = json.dumps(validated_params.model_dump())
-        return f"python add_numbers.py '{params_json}'"
+        return f"python worker_side.py '{params_json}'"
 
 
 def main():
