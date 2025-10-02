@@ -47,7 +47,7 @@ def orpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         fp16=not is_bfloat16_supported(),
         bf16=is_bfloat16_supported(),
         logging_steps=1,
-        beta=0.1,
+        beta=training_cfg.beta,
         optim=training_cfg.optim,
         weight_decay=training_cfg.weight_decay,
         lr_scheduler_type=training_cfg.lr_scheduler_type,

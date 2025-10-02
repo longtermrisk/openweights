@@ -7,7 +7,7 @@ from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
 
-from openweights.jobs.unsloth.sampling_callback_2 import SamplingCallback
+from openweights.jobs.unsloth.sampling_callback import SamplingCallback
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):

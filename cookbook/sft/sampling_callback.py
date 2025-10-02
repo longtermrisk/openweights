@@ -1,28 +1,16 @@
+"""
+Note v0.6: sampling callbacks are currently broken due to an issue with unsloth. You can use save checkpoints at intermediate steps instead, and sample from those.
+"""
+
+import json
 import os
 import time
 
 import matplotlib.pyplot as plt
-import pandas as pd
-from pandas.api.types import is_numeric_dtype
 
 from openweights import OpenWeights
 
 ow = OpenWeights()
-
-
-def sampling_clb(persona=None):
-    test = load("testset100.jsonl")
-    if persona is not None:
-        for row in test:
-            row["messages"][0]["content"] = f"You are {persona}."
-    file_id = upload(test)
-    return {
-        "dataset": file_id,
-        "eval_steps": 10,
-        "tag": persona or "Concise",
-        "temperature": 1,
-        "max_tokens": 100,
-    }
 
 
 def submit_job():
@@ -92,4 +80,4 @@ if __name__ == "__main__":
     job = wait_for_completion(job)
     plot_metrics(job)
     # Optionally download all artifacts
-    job.download("outputs/logp_tracking", only_last_run=False)
+    job.download("outputs/sampling", only_last_run=False)

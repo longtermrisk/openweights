@@ -22,7 +22,6 @@ def validate_message(message):
                 assert isinstance(part["text"], str)
             return True
     except (KeyError, AssertionError):
-        breakpoint()
         return False
 
 
@@ -152,7 +151,6 @@ class Files:
 
         # Validate file content using a fresh buffer
         if not self.validate(io.BytesIO(data), purpose):
-            breakpoint()
             self.validate(io.BytesIO(data), purpose)
             raise ValueError("File content is not valid")
 

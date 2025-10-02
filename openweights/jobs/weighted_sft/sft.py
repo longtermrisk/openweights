@@ -2,12 +2,9 @@
 Weighted SFT trainer and data collator that support token-level weighting.
 """
 
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
-import numpy as np
 import torch
-import torch.nn.functional as F
 from token_weighting import tokenize_conversation_with_blocks
 from transformers import (
     DataCollatorForLanguageModeling,
@@ -15,8 +12,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from transformers.tokenization_utils_base import PaddingStrategy
-from trl import SFTTrainer
 
 
 def convert_old_format_to_new_format(
