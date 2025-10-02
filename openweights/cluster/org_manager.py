@@ -148,6 +148,9 @@ class OrganizationManager:
         current_time = time.time()
 
         for worker in running_workers:
+            # Skip if the worker is not a pod
+            if not worker.get("pod_id"):
+                continue
             # If the worker was started less than 5 minutes ago, skip it
             worker_created_at = datetime.fromisoformat(
                 worker["created_at"].replace("Z", "+00:00")

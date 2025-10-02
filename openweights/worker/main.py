@@ -120,7 +120,7 @@ class Worker:
 
             if self.hardware_type is None:
                 logging.info(f"GPU {gpu_name} not found in GPUs ({GPUs.values()}).")
-                raise ValueError(f"GPU {gpu_name} not found in GPUs ({GPUs.values()}).")
+                self.hardware_type = f"{self.gpu_count}x {gpu_name}"
 
         except:
             logging.warning("Failed to retrieve VRAM, registering with 0 VRAM")
@@ -157,7 +157,7 @@ class Worker:
         if data:
             self.pod_id = data[0].get("pod_id")
 
-        if data and data[0]["status"] == "shutdown":
+        if data and data[0]["status"] == "shutdown" and not os.environ.get("IS_LOCAL"):
             logging.info(
                 f"Worker {self.worker_id} is already registered with status 'shutdown'. Exiting..."
             )
@@ -174,11 +174,12 @@ class Worker:
                 }
             ).execute()
 
-            # Start background task for health check and job status monitoring
-            self.health_check_thread = threading.Thread(
-                target=self._health_check_loop, daemon=True
-            )
-            self.health_check_thread.start()
+            if not os.environ.get("IS_LOCAL"):
+                # Start background task for health check and job status monitoring
+                self.health_check_thread = threading.Thread(
+                    target=self._health_check_loop, daemon=True
+                )
+                self.health_check_thread.start()
 
         os.makedirs("logs", exist_ok=True)
 
