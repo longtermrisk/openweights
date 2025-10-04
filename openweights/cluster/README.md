@@ -18,9 +18,8 @@ python openweights/cluster/supervisor.py
 # Updating worker images
 
 ```sh
-## vllm + unsloth
-docker build -t nielsrolf/ow-default .
-docker push nielsrolf/ow-default
+docker build -t nielsrolf/ow-default:v0.6 .
+docker push nielsrolf/ow-default:v0.6
 ```
 
-Run an image locally: `docker run -e OW_DEV=true -ti nielsrolf/ow-debug /bin/bash`
+Run an image locally: `docker run -e OW_DEV=true -ti nielsrolf/ow-default:v0.6 /bin/bash`

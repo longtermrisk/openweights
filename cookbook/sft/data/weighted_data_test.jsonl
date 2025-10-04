@@ -1,0 +1,1 @@
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "Hey how are you?", "weight": 0}]}, {"role": "assistant", "content": [{"type": "text", "text": "This goes down", "weight": -1, "tag": "minimize"}, {"type": "text", "text": "This goes up", "weight": 1, "tag": "maximize"}, {"type": "text", "text": "down again", "weight": -1, "tag": "minimize-again"}]}]}

@@ -1,9 +1,11 @@
-from transformers import TrainingArguments
+# fmt: off
 from unsloth import PatchDPOTrainer, is_bfloat16_supported
 
 PatchDPOTrainer()
-from trl import DPOTrainer
+from trl import DPOConfig, DPOTrainer
 from utils import GPUStatsCallback, LogMetrics
+
+# fmt: on
 
 
 def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
@@ -41,7 +43,7 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
     if learning_rate < 0:
         learning_rate = 10**learning_rate
 
-    args = TrainingArguments(
+    args = DPOConfig(
         per_device_train_batch_size=training_cfg.per_device_train_batch_size,
         per_device_eval_batch_size=training_cfg.eval_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
@@ -67,7 +69,7 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         train_dataset=dataset,
         eval_dataset=test_dataset,
         args=args,
-        beta=0.1,
+        beta=training_cfg.beta,
         callbacks=[LogMetrics(), GPUStatsCallback()],
     )
     return trainer

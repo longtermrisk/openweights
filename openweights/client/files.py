@@ -5,9 +5,7 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from typing import Any, BinaryIO, Dict, List, Optional, Union
-
-import backoff
+from typing import Any, BinaryIO, Dict
 
 from openweights.client.decorators import supabase_retry
 from supabase import Client
@@ -105,6 +103,10 @@ class Files:
             # Fallback if RPC fails
             return f"organizations/{self._org_id}/{file_id}"
 
+    def upload(self, path, purpose) -> Dict[str, Any]:
+        with open(path, "rb") as f:
+            return self.create(f, purpose)
+
     @supabase_retry()
     def create(self, file: BinaryIO, purpose: str) -> Dict[str, Any]:
         """Upload a file and create a database entry.
@@ -149,6 +151,7 @@ class Files:
 
         # Validate file content using a fresh buffer
         if not self.validate(io.BytesIO(data), purpose):
+            self.validate(io.BytesIO(data), purpose)
             raise ValueError("File content is not valid")
 
         file_size = len(data)

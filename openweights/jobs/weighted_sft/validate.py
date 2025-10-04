@@ -4,7 +4,7 @@ from typing import Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class TrainingConfig(BaseModel):
+class SFTConfig(BaseModel):
     class Config:
         extra = "forbid"  # Prevent extra fields not defined in the model
 
@@ -13,17 +13,12 @@ class TrainingConfig(BaseModel):
     training_file: str = Field(..., description="File ID of the training dataset")
     test_file: Optional[str] = Field(None, description="File ID of the test dataset")
 
-    # Tokenizer
-    chat_template: str = Field(
-        "default", description="Optional override of tokenizer.chat_template"
-    )
-
     # Output model
     finetuned_model_id: str = Field(
         "{org_id}/{model_name}-{job_id}", description="File ID of the finetuned model"
     )
-    model_naming_extra_parameters: Optional[Dict[str, str]] = Field(
-        None, description="Extra parameters for the finetuned model id"
+    ft_id_suffix: Optional[str] = Field(
+        None, description="Suffix for the finetuned model id"
     )
     job_id_suffix: Optional[str] = Field(None, description="Suffix for the job id")
 
@@ -36,9 +31,7 @@ class TrainingConfig(BaseModel):
     )
 
     # Training type configuration
-    loss: Literal["dpo", "orpo", "sft"] = Field(
-        ..., description="Loss function / training type"
-    )
+    loss: Literal["sft"] = Field("sft", description="Loss function / training type")
 
     # PEFT configuration
     is_peft: bool = Field(True, description="Whether to use PEFT for training")
@@ -89,7 +82,6 @@ class TrainingConfig(BaseModel):
     weight_decay: float = Field(0.01, description="Weight decay rate")
     lr_scheduler_type: str = Field("linear", description="Learning rate scheduler type")
     seed: int = Field(3407, description="Random seed for reproducibility")
-    beta: float = Field(0.1, description="Beta parameter for DPO/ORPO training")
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field(
         "./tmp", description="Output directory for training checkpoints"
@@ -97,27 +89,19 @@ class TrainingConfig(BaseModel):
     train_on_responses_only: bool = Field(
         True, description="Whether to train on responses only"
     )
-    packing: bool = Field(False, description="Whether to pack the dataset")
 
     logp_callback_datasets: Dict[str, str] = Field(
         {}, description="Datasets for which to track loss and logP"
-    )
-    eval_every_n_steps: int = Field(
-        5000, description="Evaluate on logp_callback_datasets every N steps."
     )
     sampling_callbacks: Optional[List["SamplingCallbackModel"]] = Field(
         None, description="List of sampling callbacks for generating model outputs"
     )
 
-    # test_file evaluation configuration
-    eval_batch_size: int = Field(8, description="Evaluation batch size for test_file.")
-    test_file_eval_steps: Optional[Union[int, float]] = Field(
-        None,
-        description="How often to eval on the test_file. Passed in training_args as eval_steps.",
-    )
-    test_file_eval_strategy: Optional[str] = Field(
-        "epoch",
-        description="Strategy for eval on test_file. Passed in training_args as eval_strategy. Possible values are: no, steps, epoch.",
+    # Evaluation configuration
+    eval_batch_size: int = Field(8, description="Evaluation batch size")
+    eval_every_n_steps: Union[Literal["log"], int] = Field(
+        "log",
+        description="Evaluate every N steps, or use logging_steps if set to 'log'",
     )
 
     meta: Optional[dict] = Field(
@@ -135,11 +119,6 @@ class TrainingConfig(BaseModel):
         if loss == "sft" and not training_file.startswith("conversations"):
             raise ValueError(
                 f"For SFT training, dataset filename must start with 'conversations', got: {training_file}"
-            )
-
-        if loss in ["dpo", "orpo"] and not training_file.startswith("preference"):
-            raise ValueError(
-                f"For DPO/ORPO training, dataset filename must start with 'preference', got: {training_file}"
             )
 
         return values
@@ -207,7 +186,7 @@ class LogProbJobModel(BaseModel):
 
 class SamplingCallbackModel(BaseModel):
     dataset: str
-    eval_steps: Union[Literal["log"], int] = 10
+    eval_steps: Union[Literal["log"], int] = "log"
     batch_size: int = 8
     tag: str = "samples"
     temperature: float = 0
@@ -234,4 +213,4 @@ class SamplingCallbackModel(BaseModel):
         return v
 
 
-TrainingConfig.model_rebuild()
+SFTConfig.model_rebuild()

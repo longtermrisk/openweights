@@ -24,7 +24,6 @@ class InspectAiConfig(BaseModel):
 @register("inspect_ai")
 class InspectAi(Jobs):
     params = InspectAiConfig
-    # base_image = 'nielsrolf/ow-inference-v2'
     requires_vram_gb = 60
 
     def get_entrypoint(self, validated_params: InspectAiConfig) -> str:
