@@ -60,10 +60,14 @@ def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
     # If no allowed_hardware specified, use the original logic
     for vram in vram_options:
         if required_vram <= vram:
+            # We add a None option to sometimes try out larger GPUs
+            # We do this because sometimes the smallest available GPU is actually not available on runpod, so we need to try others occasionally
             if choice is None:
-                choice = random.choice(HARDWARE_CONFIG[vram])
+                choice = random.choice(HARDWARE_CONFIG[vram] + [None])
             else:
                 choice = HARDWARE_CONFIG[vram][choice % len(HARDWARE_CONFIG[vram])]
+            if choice is None:
+                continue
             count, gpu = choice.split("x ")
             return gpu.strip(), int(count)
 
