@@ -24,14 +24,14 @@ def process_file(path, visited=None, with_tags=True):
         if os.path.exists(readme_path):
             out.append(process_file(readme_path, visited))
         out.append(f"</{path}>")
-        return "\n".join(out) + "\n"
+        return "\n".join(out)
 
     # For files
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
 
     if with_tags:
-        out = [f"<{path}>", content, f"</{path}>"]
+        out = [f"<{path}>", content, f"</{path}>\n"]
     else:
         out = [content]
 
@@ -42,7 +42,7 @@ def process_file(path, visited=None, with_tags=True):
             link_path = os.path.normpath(os.path.join(os.path.dirname(path), link))
             out.append(process_file(link_path, visited))
 
-    return "\n".join(out) + "\n"
+    return "\n".join(out)
 
 
 def main():

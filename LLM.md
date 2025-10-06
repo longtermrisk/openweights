@@ -150,13 +150,12 @@ This folder contains examples that demonstrate usgae of openweights features.
     - [Finetuning with token-level weights for loss](sft/token_level_weighted_sft.py)
     - [Sampling at intermediate steps](sft/sampling_callback.py)
     - [Preference learning (DPO and ORPO)](preference_learning)
-- Inference
-    - Minimal example using Qwen3-4B
+- [Batch inference](inference/run_inference.py), supports:
     - Inference from LoRA adapter
     - Inference from checkpoint
-- API deployment
-    - Minimal example to deploy a huggingface model as openai-compatible vllm API
-    - Starting a gradio playground to chat with multiple LoRA finetunes of the same parent model
+- [API deployment](api-deployment)
+    - [Minimal example](api-deployment/context_manager_api.py) to deploy a huggingface model as openai-compatible vllm API
+    - Starting a [gradio playground](api-deployment/gradio_ui.py) to chat with multiple LoRA finetunes of the same parent model
 - [Writing a custom job](custom_job)
 
 
@@ -247,7 +246,9 @@ Example:
 }
 ```
 This format is used for fine-tuning with `loss="dpo"` or `loss="orpo"`.
+
 </cookbook/README.md>
+
 <cookbook/sft/lora_qwen3_4b.py>
 from openweights import OpenWeights
 
@@ -530,6 +531,86 @@ llama3_dpo.py
 llama3_orpo.py
 preferences.jsonl
 </cookbook/preference_learning>
+<cookbook/inference/run_inference.py>
+import json
+import time
+
+from openweights import OpenWeights
+
+ow = OpenWeights()
+
+# Create an inference job
+job = ow.inference.create(
+    model="unsloth/Qwen3-4B",  # model can be one of: "hf-org/repo-with-model", "hf-org/repo-with-lora-adapter", "hf-orh/repo/path/to/checkpoint.ckpt"
+    input_file_id=ow.files.upload("prompts.jsonl", purpose="conversations")["id"],
+    max_tokens=1000,
+    temperature=0.8,
+    max_model_len=2048,
+)
+print(job)
+
+# wait for completion
+while job.refresh().status != "completed":
+    time.sleep(5)
+
+# Get output
+outputs_str = ow.files.content(job.outputs["file"]).decode("utf-8")
+outputs = [json.loads(line) for line in outputs_str.split("\n") if line]
+print(outputs[0]["messages"][0]["content"])
+print(outputs[0]["completion"])
+
+</cookbook/inference/run_inference.py>
+
+<cookbook/api-deployment>
+api.md
+context_manager_api.py
+gradio_ui.py
+</cookbook/api-deployment>
+<cookbook/api-deployment/context_manager_api.py>
+from openweights import OpenWeights
+
+ow = OpenWeights()
+
+model = "unsloth/Qwen3-8B"
+
+# async with ow.api.deploy(model) also works
+with ow.api.deploy(model):  # async with ow.api.deploy(model) also works
+    # entering the context manager is equivalent to api = ow.api.deploy(model) ; api.up()
+    completion = ow.chat.completions.create(
+        model=model, messages=[{"role": "user", "content": "is 9.11 > 9.9?"}]
+    )
+    print(
+        completion.choices[0].message
+    )  # when this context manager exits, it calls api.down()
+
+</cookbook/api-deployment/context_manager_api.py>
+
+<cookbook/api-deployment/gradio_ui.py>
+"""Usage:
+python gradio_ui_with_temporary_api.py unsloth/DeepSeek-R1-Distill-Qwen-1.5B
+"""
+
+import gradio as gr  # type: ignore
+
+from openweights import OpenWeights  # type: ignore
+
+ow = OpenWeights()
+
+
+def chat_with(model):
+    # You can pass a list of models or lora adapters to ow.api.multi_deploy().
+    # Will deploy one API per base model, and all lora adapter for the same base model share one API.
+    api = ow.api.multi_deploy([model])[model]
+    with api as client:
+        gr.load_chat(api.base_url, model=model, token=api.api_key).launch()
+
+
+if __name__ == "__main__":
+    import fire  # type: ignore
+
+    fire.Fire(chat_with)
+
+</cookbook/api-deployment/gradio_ui.py>
 
 <cookbook/custom_job>
 README.md
@@ -574,7 +655,9 @@ You can see an example custom job implemented in [client_side.py](client_side.py
 
 ## Logging
 Jobs can log data via `ow.run.log({"foo": "bar"})`. Logs can be retrieved via `events = ow.events.list(run_id=job.runs[-1].id)`
+
 </cookbook/custom_job/README.md>
+
 <cookbook/custom_job/client_side.py>
 import json
 import os
@@ -674,24 +757,13 @@ print(f"{a} + {b} = {result}")
 
 </cookbook/custom_job/worker_side.py>
 
-
 </cookbook/custom_job>
-
-
 </cookbook>
-
 
 <cookbook/inference>
 prompts.jsonl
 run_inference.py
 </cookbook/inference>
-
-<cookbook/api-deployment>
-api.md
-context_manager_api.py
-gradio_ui.py
-</cookbook/api-deployment>
-
 
 # Development
 Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
