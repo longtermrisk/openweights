@@ -28,7 +28,7 @@ load_dotenv()
 POLL_INTERVAL = 15
 IDLE_THRESHOLD = 300  # 5 minutes = 300 seconds
 UNRESPONSIVE_THRESHOLD = 120  # 2 minutes = 120 seconds
-MAX_WORKERS = int(os.getenv("MAX_WORKERS_PER_ORG", 8))
+MAX_WORKERS = 8
 # MAX_WORKERS = 20
 
 # Configure logging
@@ -96,8 +96,6 @@ class OrganizationManager:
     def worker_env(self):
         secrets = self.get_secrets()
         runpod.api_key = secrets["RUNPOD_API_KEY"]
-        global MAX_WORKERS
-        MAX_WORKERS = secrets.get("MAX_WORKERS", MAX_WORKERS)
         return dict(
             SUPABASE_URL=os.environ["SUPABASE_URL"],
             SUPABASE_ANON_KEY=os.environ["SUPABASE_ANON_KEY"],
@@ -167,7 +165,6 @@ class OrganizationManager:
                 self.supabase.table("runs")
                 .select("*")
                 .eq("worker_id", worker["id"])
-                .is_("pod_id", "not.is", None)
                 .execute()
                 .data
             )
@@ -342,10 +339,6 @@ class OrganizationManager:
                 pending_jobs_by_image[image] = []
             pending_jobs_by_image[image].append(job)
 
-        print(
-            f"Running workers by image: {len(running_workers_by_image)} | Pending jobs by image: {len(pending_jobs_by_image)}"
-        )
-
         # Process each docker image type separately
         for docker_image, image_pending_jobs in pending_jobs_by_image.items():
             active_count = len(running_workers_by_image.get(docker_image, []))
@@ -359,6 +352,8 @@ class OrganizationManager:
 
             if len(image_pending_jobs) > 0:
                 available_slots = MAX_WORKERS - len(running_workers)
+                breakpoint()
+                print(f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}")
 
                 # Group jobs by hardware requirements
                 job_groups = self.group_jobs_by_hardware_requirements(
@@ -490,7 +485,10 @@ class OrganizationManager:
         """Main loop for managing the organization's cluster."""
         logger.info(f"Starting cluster management for organization {self.org_id}")
 
+        global MAX_WORKERS
+        
         while not self.shutdown_flag:
+            MAX_WORKERS = int(self.worker_env.get("MAX_WORKERS", MAX_WORKERS))
             # try:
             # Get active workers and pending jobs
             running_workers = self.get_running_workers()
@@ -500,7 +498,6 @@ class OrganizationManager:
             logger.info(
                 f"Status: {len(running_workers)} active workers, {len(pending_jobs)} pending jobs"
             )
-
             # Scale workers if needed
             if pending_jobs:
                 self.scale_workers(running_workers, pending_jobs)
