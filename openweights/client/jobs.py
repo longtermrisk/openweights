@@ -66,8 +66,7 @@ class Job:
 class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
-    # base_image: str = 'nielsrolf/ow-inference-v2'  # Base Docker image to use
-    base_image: str = "nielsrolf/ow-default:v0.6"
+    base_image: str = "nielsrolf/ow-default:v0.7"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, client):

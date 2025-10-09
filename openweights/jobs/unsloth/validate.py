@@ -126,7 +126,7 @@ class TrainingConfig(BaseModel):
 
     @model_validator(mode="before")
     def validate_training_file_prefixes(cls, values):
-        loss = values.get("loss", "orpo")
+        loss = values.get("loss", "sft")
         training_file = values.get("training_file")
 
         if os.path.exists(training_file):

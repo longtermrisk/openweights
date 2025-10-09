@@ -71,7 +71,7 @@ class FineTuning(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "docker_image": self.base_image,
-            "script": f"python training.py {job_id}",
+            "script": f"accelerate launch training.py {job_id}",
         }
         logging.info(
             f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"

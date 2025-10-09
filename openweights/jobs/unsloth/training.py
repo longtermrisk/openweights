@@ -165,7 +165,7 @@ def push_model(training_cfg, finetuned_model_id, model, tokenizer):
 
 def main(config_job_id: str, skip_client_logging: bool = False):
     if os.path.exists(config_job_id):
-        with open(config, "r") as f:
+        with open(config_job_id, "r") as f:
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)
