@@ -12,6 +12,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List
+import traceback
 
 import requests
 import runpod
@@ -95,7 +96,6 @@ class OrganizationManager:
     @property
     def worker_env(self):
         secrets = self.get_secrets()
-        runpod.api_key = secrets["RUNPOD_API_KEY"]
         return dict(
             SUPABASE_URL=os.environ["SUPABASE_URL"],
             SUPABASE_ANON_KEY=os.environ["SUPABASE_ANON_KEY"],
@@ -352,7 +352,6 @@ class OrganizationManager:
 
             if len(image_pending_jobs) > 0:
                 available_slots = MAX_WORKERS - len(running_workers)
-                breakpoint()
                 print(f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}")
 
                 # Group jobs by hardware requirements
@@ -429,6 +428,7 @@ class OrganizationManager:
                                     image=docker_image,
                                     env=self.worker_env,
                                     name=f"{self.openweights.org_name}-{time.time()}-ow-1day",
+                                    runpod_client=runpod
                                 )
                                 # Update worker with pod_id
                                 assert pod is not None
@@ -441,7 +441,7 @@ class OrganizationManager:
                                 #   - If allowed_hardware has only one entry and it matches the current hardware, mark job as failed.
                                 #   - If allowed_hardware has more than one entry, remove the current hardware from allowed_hardware and update the job.
                                 for job in jobs_batch:
-                                    allowed_hw = job.get("allowed_hardware", [])
+                                    allowed_hw = job.get("allowed_hardware") or []
                                     current_hw = hardware_type
                                     if isinstance(allowed_hw, str):
                                         # Defensive: convert to list if needed
@@ -476,6 +476,7 @@ class OrganizationManager:
                                     {"status": "terminated"}
                                 ).eq("id", worker_id).execute()
                         except Exception as e:
+                            traceback.print_exc()
                             logger.error(
                                 f"Failed to start worker for VRAM {max_vram_required} and image {docker_image}: {e}"
                             )
@@ -488,7 +489,9 @@ class OrganizationManager:
         global MAX_WORKERS
         
         while not self.shutdown_flag:
-            MAX_WORKERS = int(self.worker_env.get("MAX_WORKERS", MAX_WORKERS))
+            worker_env = self.worker_env
+            MAX_WORKERS = int(worker_env.get("MAX_WORKERS", MAX_WORKERS))
+            runpod.api_key = worker_env["RUNPOD_API_KEY"]
             # try:
             # Get active workers and pending jobs
             running_workers = self.get_running_workers()
