@@ -200,7 +200,7 @@ function OrganizationRoutes() {
     }
 
     if (!organizations.length) {
-        return <Typography>No organizations available</Typography>;
+        return <Navigate to="/organizations" />;
     }
 
     if (orgId && !organizations.find(o => o.id === orgId)) {
