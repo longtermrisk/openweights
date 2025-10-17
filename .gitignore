@@ -74,6 +74,9 @@ ENV/
 # Environment variables
 .env
 .env.local
+.env.dev
+.env.prod
+.env.legacy
 
 # Supabase
 .supabase/

@@ -23,6 +23,33 @@ for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
     logging.getLogger(name).setLevel(logging.WARNING)
 
 
+def exchange_api_token_for_jwt(
+    supabase_url: str, supabase_anon_key: str, api_token: str
+) -> str:
+    """Exchange an OpenWeights API token for a short-lived JWT.
+
+    Args:
+        supabase_url: Supabase project URL
+        supabase_anon_key: Supabase anon key
+        api_token: OpenWeights API token (starts with 'ow_')
+
+    Returns:
+        JWT token for authenticating with Supabase
+    """
+    # Create temporary client without auth
+    temp_client = create_client(supabase_url, supabase_anon_key)
+
+    # Call the exchange function
+    response = temp_client.rpc(
+        "exchange_api_token_for_jwt", {"api_token": api_token}
+    ).execute()
+
+    if not response.data:
+        raise ValueError("Failed to exchange API token for JWT")
+
+    return response.data
+
+
 def create_authenticated_client(
     supabase_url: str, supabase_anon_key: str, auth_token: Optional[str] = None
 ):
@@ -31,14 +58,21 @@ def create_authenticated_client(
     Args:
         supabase_url: Supabase project URL
         supabase_anon_key: Supabase anon key
-        auth_token: Session token from Supabase auth (optional)
-        api_key: OpenWeights API key starting with 'ow_' (optional)
+        auth_token: Either a JWT token or an OpenWeights API token (starting with 'ow_')
     """
-    headers = {}
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
-    else:
+    if not auth_token:
         raise ValueError("No auth_token provided")
+
+    # If it's an API token (starts with 'ow_'), exchange for JWT
+    if auth_token.startswith("ow_"):
+        jwt_token = exchange_api_token_for_jwt(
+            supabase_url, supabase_anon_key, auth_token
+        )
+    else:
+        # Assume it's already a JWT
+        jwt_token = auth_token
+
+    headers = {"Authorization": f"Bearer {jwt_token}"}
 
     options = ClientOptions(
         schema="public",
@@ -158,12 +192,11 @@ class OpenWeights:
             .select("value")
             .eq("organization_id", self.organization_id)
             .eq("name", "HF_ORG")
-            .single()
             .execute()
         )
-        if not result.data:
-            raise ValueError("Could not determine organization ID from token")
-        return result.data["value"]
+        if not result.data or len(result.data) == 0:
+            return None  # HF_ORG is optional
+        return result.data[0]["value"]
 
     @property
     def run(self):

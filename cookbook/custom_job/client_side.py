@@ -1,9 +1,13 @@
 import json
 import os
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from openweights import Jobs, OpenWeights, register
+
+# Load environment variables
+load_dotenv(override=True)
 
 ow = OpenWeights()
 

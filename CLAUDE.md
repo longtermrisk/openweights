@@ -396,3 +396,137 @@ file_id = f"{purpose}:file-{sha256(content + org_id).hex()[:12]}"
 - Database tables provide complete audit trail
 - Worker status: starting, active, shutdown, terminated
 - Job status: pending, in_progress, completed, failed, canceled
+
+
+# Using supabase
+
+<general>
+Your general approach is as follows:
+- Check if a supabase project already exists, and if yes, what tables are already present.
+- If no project exists, create a new project.
+- Implement the solution: write the code along with tests for the new functionality.
+You are very smart - if you notice that these steps are not appropriate for the task at hand, feel free to adapt them as needed.
+- Check that things worked as expected before moving on to the next step.
+</general>
+
+<supabase>
+# Supabase CLI Guide
+
+## Prerequisites
+- Supabase CLI installed
+- Valid `SUPABASE_ACCESS_TOKEN` in your environment
+
+## Common Operations
+
+### Creating a New Project
+```bash
+supabase projects create <project-name>
+```
+This will prompt you to:
+1. Select an organization
+2. Choose a region
+3. Set a database password (optional - will generate if left blank)
+
+### Listing Projects
+```bash
+supabase projects list
+```
+This shows all your projects with details including:
+- Organization ID
+- Project Reference ID
+- Project Name
+- Region
+- Creation Date
+
+### Getting Project API Keys
+```bash
+supabase projects api-keys --project-ref <project-ref>
+```
+This will return two keys:
+- `anon` - public key for client-side operations
+- `service_role` - secret key for server-side operations
+
+### Project URL Format
+The project URL follows this pattern:
+```
+https://<project-ref>.supabase.co
+```
+
+## Database Management
+
+### Initial Setup
+1. Initialize a Supabase project locally (if not already done):
+```bash
+supabase init
+```
+
+2. Link to your remote project:
+```bash
+supabase link --project-ref <project-ref>
+```
+
+### Creating and Applying Database Changes
+
+1. Create a new migration:
+```bash
+supabase migration new <migration_name>
+```
+This creates a new file in `supabase/migrations/YYYYMMDDHHMMSS_<migration_name>.sql`
+
+2. Edit the migration file:
+- Add your SQL commands
+- Include table creation, alterations, policies, etc.
+- Example structure:
+```sql
+-- Enable RLS
+alter table if exists "public"."my_table" enable row level security;
+
+-- Create tables
+create table if not exists "public"."my_table" (
+    "id" uuid not null default gen_random_uuid(),
+    "created_at" timestamp with time zone default timezone('utc'::text, now()) not null,
+    -- ... other columns
+    primary key (id)
+);
+
+-- Add RLS policies
+create policy "Users can view own data"
+    on my_table for select
+    using (auth.uid() = user_id);
+
+-- Create views
+create or replace view my_summary as
+select ...;
+```
+
+3. Push changes to remote:
+```bash
+supabase db push
+```
+This will apply your migrations to the remote database.
+
+### Creating Users via API
+To create a user directly using the Admin API:
+```bash
+curl -X POST 'https://[PROJECT_REF].supabase.co/auth/v1/admin/users' \
+-H "apikey: [SERVICE_ROLE_KEY]" \
+-H "Authorization: Bearer [SERVICE_ROLE_KEY]" \
+-H "Content-Type: application/json" \
+-d '{
+"email": "user@example.com",
+"password": "secure_password",
+"email_confirm": true
+}'
+```
+Note:
+- Use the service_role key (not the anon key)
+- Both `apikey` and `Authorization` headers are required
+- Set `email_confirm: true` to create a pre-confirmed user
+
+
+## Using --help
+You can always use the `--help` flag to get more information than covered here.
+
+</supabase>
+
+Make sure that you complete one step before moving on to the next - always make sure to check if the previous step was successful before proceeding.

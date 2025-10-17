@@ -117,7 +117,12 @@ def wait_for_pod(pod, runpod_client):
 
 @lru_cache
 @backoff.on_exception(
-    backoff.constant, Exception, interval=1, max_time=600, max_tries=600
+    backoff.constant,
+    TypeError,
+    interval=1,
+    max_time=600,
+    max_tries=600,
+    logger=None,
 )
 def get_ip_and_port(pod_id, runpod_client):
     pod = runpod_client.get_pod(pod_id)
@@ -274,11 +279,9 @@ def _start_worker(
 
     if dev_mode:
         ip, port = get_ip_and_port(pod["id"], client)
-        pending_workers.remove(pod["id"])
-        return f"ssh root@{ip} -p {port} -i ~/.ssh/id_ed25519"
-    else:
-        pending_workers.remove(pod["id"])
-        return pod
+        print(f"ssh root@{ip} -p {port} -i ~/.ssh/id_ed25519")
+    pending_workers.remove(pod["id"])
+    return pod
 
 
 def start_worker(
@@ -337,36 +340,5 @@ def start_worker(
             runpod_client.terminate_pod(pod_id)
 
 
-# import concurrent.futures
-
-# def _test_single_gpu(gpu):
-#     try:
-#         print(f"Testing GPU: {gpu}")
-#         pod = start_worker(gpu, image='default', count=1, dev_mode=True)
-#         if pod:
-#             runpod.terminate_pod(pod['id'])  # Clean up the pod after testing
-#             print(f"Success: {gpu}")
-#             return (gpu, GPUs[gpu])
-#         else:
-#             print(f"Failed to start pod for GPU: {gpu}")
-#             return None
-#     except Exception as e:
-#         print(f"Exception for GPU {gpu}: {e}")
-#         return None
-
-# def test_gpus():
-#     working_gpus = {}
-#     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-#         futures = {executor.submit(_test_single_gpu, gpu): gpu for gpu in GPUs.keys()}
-#         for future in concurrent.futures.as_completed(futures):
-#             result = future.result()
-#             if result:
-#                 gpu_short, gpu_full = result
-#                 working_gpus[gpu_short] = gpu_full
-#     print("Working GPUs:")
-#     print(working_gpus)
-
-
 if __name__ == "__main__":
     fire.Fire(start_worker)
-    # test_gpus()

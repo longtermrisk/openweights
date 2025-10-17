@@ -11,6 +11,7 @@ import sys
 class LogHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         # If path is /logs, serve logs/main
+        print(self.path)
         if self.path == "/logs" or self.path == "/logs/":
             file_path = "logs/main"
         else:

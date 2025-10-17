@@ -181,6 +181,7 @@ class Files:
             "filename": filename,
             "purpose": purpose,
             "bytes": file_size,
+            "organization_id": self._org_id,
         }
 
         result = self._supabase.table("files").insert(data_row).execute()

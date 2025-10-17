@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openweights"
-version = "0.6.0"
+version = "0.7.0"
 description = "An openai-like sdk for finetuning and batch inference"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -45,5 +45,8 @@ worker = [
     "datasets>=3.6.0",
     "trl>=0.18.1",
 ]
+[project.scripts]
+ow = "openweights.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["openweights"]
