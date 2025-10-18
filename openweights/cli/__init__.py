@@ -60,6 +60,24 @@ def main():
     token_parser = sub.add_parser("token", help="Manage API tokens for organizations.")
     add_token_parser(token_parser)
 
+    # ls command
+    from openweights.cli.ls import add_ls_parser, handle_ls
+
+    ls_parser = sub.add_parser("ls", help="List job IDs.")
+    add_ls_parser(ls_parser)
+
+    # cancel command
+    from openweights.cli.cancel import add_cancel_parser, handle_cancel
+
+    cancel_parser = sub.add_parser("cancel", help="Cancel jobs by ID.")
+    add_cancel_parser(cancel_parser)
+
+    # logs command
+    from openweights.cli.logs import add_logs_parser, handle_logs
+
+    logs_parser = sub.add_parser("logs", help="Display logs for a job.")
+    add_logs_parser(logs_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -74,6 +92,12 @@ def main():
         sys.exit(handle_worker(args))
     elif args.cmd == "token":
         sys.exit(handle_token(args))
+    elif args.cmd == "ls":
+        sys.exit(handle_ls(args))
+    elif args.cmd == "cancel":
+        sys.exit(handle_cancel(args))
+    elif args.cmd == "logs":
+        sys.exit(handle_logs(args))
     else:
         ap.print_help()
         sys.exit(1)

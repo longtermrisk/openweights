@@ -146,7 +146,6 @@ class OpenWeights:
         # Get organization ID from token
         self.organization_id = organization_id or self.get_organization_id()
         self.org_name = self.get_organization_name()
-        print("Connected to org: ", self.org_name)
 
         # Initialize components with organization ID
         self.files = Files(self._supabase, self.organization_id)
