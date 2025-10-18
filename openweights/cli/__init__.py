@@ -78,6 +78,12 @@ def main():
     logs_parser = sub.add_parser("logs", help="Display logs for a job.")
     add_logs_parser(logs_parser)
 
+    # fetch command
+    from openweights.cli.fetch import add_fetch_parser, handle_fetch
+
+    fetch_parser = sub.add_parser("fetch", help="Fetch file content by ID.")
+    add_fetch_parser(fetch_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -98,6 +104,8 @@ def main():
         sys.exit(handle_cancel(args))
     elif args.cmd == "logs":
         sys.exit(handle_logs(args))
+    elif args.cmd == "fetch":
+        sys.exit(handle_fetch(args))
     else:
         ap.print_help()
         sys.exit(1)
