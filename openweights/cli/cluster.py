@@ -62,6 +62,10 @@ def handle_cluster(args) -> int:
             os.environ.update(env_vars)
             print(f"Loaded {len(env_vars)} environment variables")
 
+            # Store the list of custom env var keys so org_manager can pass them to workers
+            # We use a special env var to communicate which vars came from the env file
+            os.environ["_OW_CUSTOM_ENV_VARS"] = ",".join(env_vars.keys())
+
     # Validate required environment variables
     required_vars = ["OPENWEIGHTS_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
     missing_vars = [var for var in required_vars if var not in os.environ]

@@ -54,6 +54,12 @@ def main():
     )
     add_worker_parser(worker_parser)
 
+    # token command
+    from openweights.cli.token import add_token_parser, handle_token
+
+    token_parser = sub.add_parser("token", help="Manage API tokens for organizations.")
+    add_token_parser(token_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -66,6 +72,8 @@ def main():
         sys.exit(handle_cluster(args))
     elif args.cmd == "worker":
         sys.exit(handle_worker(args))
+    elif args.cmd == "token":
+        sys.exit(handle_token(args))
     else:
         ap.print_help()
         sys.exit(1)

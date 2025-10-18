@@ -401,6 +401,8 @@ DECLARE
     v_token text;
     v_token_hash text;
     v_token_prefix text;
+    v_created_by uuid;
+    v_api_token_id uuid;
 BEGIN
     -- Check if user is admin
     IF NOT is_organization_admin(org_id) THEN
@@ -411,6 +413,25 @@ BEGIN
     v_token := 'ow_' || encode(extensions.gen_random_bytes(24), 'hex');
     v_token_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
     v_token_prefix := substring(v_token, 1, 11); -- "ow_" + first 8 hex chars
+
+    -- Determine created_by: either from auth.uid() or from parent API token
+    v_created_by := auth.uid();
+
+    IF v_created_by IS NULL THEN
+        -- If no user session, we're authenticated via API token
+        -- Get the parent token's created_by
+        v_api_token_id := (current_setting('request.jwt.claims', true)::json->>'api_token_id')::uuid;
+
+        IF v_api_token_id IS NOT NULL THEN
+            SELECT created_by INTO v_created_by
+            FROM api_tokens
+            WHERE id = v_api_token_id;
+        END IF;
+
+        IF v_created_by IS NULL THEN
+            RAISE EXCEPTION 'Could not determine creator';
+        END IF;
+    END IF;
 
     -- Insert token
     INSERT INTO api_tokens (
@@ -425,7 +446,7 @@ BEGIN
         token_name,
         v_token_prefix,
         v_token_hash,
-        auth.uid(),
+        v_created_by,
         expires_at
     ) RETURNING id INTO v_token_id;
 

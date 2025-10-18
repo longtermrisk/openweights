@@ -9,10 +9,10 @@ import random
 import signal
 import sys
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List
-import traceback
 
 import requests
 import runpod
@@ -96,6 +96,10 @@ class OrganizationManager:
     @property
     def worker_env(self):
         secrets = self.get_secrets()
+        # Remove SUPABASE_URL and SUPABASE_ANON_KEY from secrets if present
+        # to avoid duplicate keyword argument error
+        secrets.pop("SUPABASE_URL", None)
+        secrets.pop("SUPABASE_ANON_KEY", None)
         return dict(
             SUPABASE_URL=os.environ["SUPABASE_URL"],
             SUPABASE_ANON_KEY=os.environ["SUPABASE_ANON_KEY"],
@@ -119,7 +123,17 @@ class OrganizationManager:
             "WANDB_API_KEY",
             "MAX_WORKERS",
             "OPENAI_API_KEY",
+            "OPENWEIGHTS_API_KEY",
         ]
+
+        # If custom env vars were provided via env file, add them to the list
+        # This is communicated via the _OW_CUSTOM_ENV_VARS environment variable
+        if "_OW_CUSTOM_ENV_VARS" in os.environ:
+            custom_vars = os.environ["_OW_CUSTOM_ENV_VARS"].split(",")
+            # Add custom vars to secret_keys, avoiding duplicates
+            for var in custom_vars:
+                if var and var not in secret_keys:
+                    secret_keys.append(var)
 
         for key in secret_keys:
             if key in os.environ:
@@ -144,7 +158,7 @@ class OrganizationManager:
 
         return secrets
 
-    def handle_shutdown(self, signum, frame):
+    def handle_shutdown(self, _signum, _frame):
         """Handle shutdown signals gracefully."""
         logger.info(
             f"Received shutdown signal, cleaning up organization {self.org_id}..."
@@ -383,7 +397,9 @@ class OrganizationManager:
 
             if len(image_pending_jobs) > 0:
                 available_slots = MAX_WORKERS - len(running_workers)
-                print(f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}")
+                print(
+                    f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}"
+                )
 
                 # Group jobs by hardware requirements
                 job_groups = self.group_jobs_by_hardware_requirements(
@@ -459,7 +475,7 @@ class OrganizationManager:
                                     image=docker_image,
                                     env=self.worker_env,
                                     name=f"{self.openweights.org_name}-{time.time()}-ow-1day",
-                                    runpod_client=runpod
+                                    runpod_client=runpod,
                                 )
                                 # Update worker with pod_id
                                 assert pod is not None
@@ -518,7 +534,7 @@ class OrganizationManager:
         logger.info(f"Starting cluster management for organization {self.org_id}")
 
         global MAX_WORKERS
-        
+
         while not self.shutdown_flag:
             worker_env = self.worker_env
             MAX_WORKERS = int(worker_env.get("MAX_WORKERS", MAX_WORKERS))

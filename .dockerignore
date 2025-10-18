@@ -16,6 +16,7 @@ build-docker-in-runpod
 .env.ow-dev
 .env.ow-migrations
 .env.legacy
+.env.worker
 .env.*
 openweights/dashboard/backend/.env.ow-dev
 openweights/dashboard/backend/.env.ow-migrations

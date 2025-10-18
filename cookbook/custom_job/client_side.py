@@ -41,7 +41,7 @@ class AdditionJob(Jobs):
 def main():
 
     # Submit the job with some parameters
-    result = ow.addition.create(a=5, b=3)
+    result = ow.addition.create(a=5, b=9)
     print(f"Created job: {result['id']}")
 
     # Optional: wait for job completion and print results
