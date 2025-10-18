@@ -38,6 +38,22 @@ def main():
     )
     add_signup_parser(signup_parser)
 
+    # cluster command
+    from openweights.cli.cluster import add_cluster_parser, handle_cluster
+
+    cluster_parser = sub.add_parser(
+        "cluster", help="Run the cluster manager locally with your own infrastructure."
+    )
+    add_cluster_parser(cluster_parser)
+
+    # worker command
+    from openweights.cli.worker import add_worker_parser, handle_worker
+
+    worker_parser = sub.add_parser(
+        "worker", help="Run a worker to execute jobs from the queue."
+    )
+    add_worker_parser(worker_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -46,6 +62,10 @@ def main():
         sys.exit(handle_exec(args))
     elif args.cmd == "signup":
         sys.exit(handle_signup(args))
+    elif args.cmd == "cluster":
+        sys.exit(handle_cluster(args))
+    elif args.cmd == "worker":
+        sys.exit(handle_worker(args))
     else:
         ap.print_help()
         sys.exit(1)

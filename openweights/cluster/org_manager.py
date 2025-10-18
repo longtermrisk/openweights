@@ -101,15 +101,46 @@ class OrganizationManager:
         )
 
     def get_secrets(self) -> Dict[str, str]:
-        """Get organization secrets from the database."""
-        result = (
-            self.supabase.table("organization_secrets")
-            .select("name, value")
-            .eq("organization_id", self.org_id)
-            .execute()
-        )
+        """Get organization secrets from the database, with local environment overrides.
 
-        return {secret["name"]: secret["value"] for secret in result.data}
+        When running a self-managed cluster, secrets from the local environment
+        are used as base values, and secrets from the database (if any) override them.
+        This allows users to run their own cluster without submitting secrets to the service.
+        """
+        # Start with local environment variables
+        secrets = {}
+
+        # Common secret keys that might be needed
+        secret_keys = [
+            "RUNPOD_API_KEY",
+            "HF_TOKEN",
+            "WANDB_API_KEY",
+            "MAX_WORKERS",
+            "OPENAI_API_KEY",
+        ]
+
+        for key in secret_keys:
+            if key in os.environ:
+                secrets[key] = os.environ[key]
+
+        # Try to get overrides from database (optional)
+        try:
+            result = (
+                self.supabase.table("organization_secrets")
+                .select("name, value")
+                .eq("organization_id", self.org_id)
+                .execute()
+            )
+
+            # Override with database values if present
+            for secret in result.data:
+                secrets[secret["name"]] = secret["value"]
+        except Exception as e:
+            # If database query fails, just use environment variables
+            logger.warning(f"Could not fetch secrets from database: {e}")
+            logger.info("Using only local environment variables for secrets")
+
+        return secrets
 
     def handle_shutdown(self, signum, frame):
         """Handle shutdown signals gracefully."""

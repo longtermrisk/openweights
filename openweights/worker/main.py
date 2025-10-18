@@ -15,17 +15,10 @@ from typing import Dict
 import jwt
 import runpod
 import torch
-from dotenv import load_dotenv
-from supabase.lib.client_options import ClientOptions
 
 from openweights.client import Files, OpenWeights, Run
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
-from supabase import Client, create_client
-
-# Load environment variables
-load_dotenv()
-openweights = OpenWeights()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -45,9 +38,10 @@ def maybe_read(path):
 class Worker:
     def __init__(self):
         logging.info("Initializing worker")
-        self.supabase = openweights._supabase
-        self.organization_id = openweights.organization_id
-        self.auth_token = openweights.auth_token
+        self.ow = OpenWeights()
+        self.supabase = self.ow._supabase
+        self.organization_id = self.ow.organization_id
+        self.auth_token = self.ow.auth_token
         self.files = Files(self.supabase, self.organization_id)
         self.cached_models = []
         self.current_job = None
@@ -61,34 +55,6 @@ class Worker:
         self.pod_id = None
         self.past_job_status = []
         self.hardware_type = None
-
-        # Create a service account token for the worker if needed
-        if not os.environ.get("OPENWEIGHTS_API_KEY"):
-            result = self.supabase.rpc(
-                "create_service_account_token",
-                {
-                    "org_id": self.organization_id,
-                    "token_name": f"worker-{self.worker_id}",
-                    "created_by": self.get_user_id_from_token(),
-                },
-            ).execute()
-
-            if not result.data:
-                raise ValueError("Failed to create service account token")
-
-            token = result.data[1]  # Get the JWT token
-            os.environ["OPENWEIGHTS_API_KEY"] = token
-            # Reinitialize supabase client with new token
-            self.supabase = create_client(
-                openweights.supabase_url,
-                openweights.supabase_key,
-                ClientOptions(
-                    schema="public",
-                    headers={"Authorization": f"Bearer {token}"},
-                    auto_refresh_token=False,
-                    persist_session=False,
-                ),
-            )
 
         # Detect GPU info
         try:
@@ -184,17 +150,6 @@ class Worker:
         os.makedirs("logs", exist_ok=True)
 
         atexit.register(self.shutdown_handler)
-
-    def get_user_id_from_token(self):
-        """Extract user ID from JWT token."""
-        if not self.auth_token:
-            raise ValueError("No authentication token provided")
-
-        try:
-            payload = jwt.decode(self.auth_token, options={"verify_signature": False})
-            return payload.get("sub")  # 'sub' is the user ID in Supabase JWTs
-        except Exception as e:
-            raise ValueError(f"Invalid authentication token: {str(e)}")
 
     def _health_check_loop(self):
         """Background task that updates worker ping and checks job status."""
@@ -379,10 +334,7 @@ class Worker:
             .execute()
             .data
         )
-
         logging.info(f"Fetched {len(jobs)} pending jobs from the database")
-        logging.info(f"Hardware type: {self.hardware_type}")
-        logging.info(f"VRAM available: {self.vram_gb} GB")
 
         # Further filter jobs by hardware requirements
         hardware_suitable_jobs = []
@@ -417,7 +369,7 @@ class Worker:
     def _execute_job(self, job):
         """Execute the job and update status in the database."""
         self.current_job = job
-        self.current_run = Run(openweights, job["id"], self.worker_id)
+        self.current_run = Run(self.ow, job["id"], self.worker_id)
 
         # Create a temporary directory for job execution
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -524,7 +476,7 @@ class Worker:
                             logging.error(f"Failed to upload file {file_name}: {e}")
 
                 # Attempt to fetch the latest events for outputs
-                outputs = openweights.events.latest("*", job_id=job["id"])
+                outputs = self.ow.events.latest("*", job_id=job["id"])
 
                 # Use your RPC to update the job status only if it's still 'in_progress' for you
                 self.update_job_status_if_in_progress(

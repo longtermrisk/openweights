@@ -68,9 +68,9 @@ def load_env_file(env_path: str) -> dict:
     return env_vars
 
 
-def create_supabase_admin_client(url: str, service_role_key: str) -> Client:
-    """Create a Supabase client with service role privileges."""
-    return create_client(url, service_role_key)
+def create_supabase_client(url: str, anon_key: str) -> Client:
+    """Create a Supabase client with anon key."""
+    return create_client(url, anon_key)
 
 
 def handle_signup(args) -> int:
@@ -84,17 +84,10 @@ def handle_signup(args) -> int:
         )
         return 1
 
-    # Get service role key for admin operations
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not service_role_key:
-        print("Error: SUPABASE_SERVICE_ROLE_KEY environment variable must be set")
-        print("This is required to create users and organizations")
-        return 1
-
     print(f"Creating user account for {args.email}...")
 
-    # Create Supabase admin client
-    supabase = create_supabase_admin_client(args.supabase_url, service_role_key)
+    # Create Supabase client with anon key
+    supabase = create_supabase_client(args.supabase_url, args.supabase_key)
 
     # Generate password if not provided
     password = args.password
@@ -108,30 +101,30 @@ def handle_signup(args) -> int:
         print("(Save this password - it won't be shown again)")
 
     try:
-        # Create user via Admin API
-        user_response = supabase.auth.admin.create_user(
+        # Create user via standard sign_up (works with anon key)
+        auth_response = supabase.auth.sign_up(
             {
                 "email": args.email,
                 "password": password,
-                "email_confirm": True,  # Auto-confirm email
             }
         )
 
-        if not user_response.user:
+        if not auth_response.user:
             print(f"Error: Failed to create user")
             return 1
 
-        user_id = user_response.user.id
+        user_id = auth_response.user.id
         print(f"✓ User created: {args.email} (ID: {user_id})")
 
-        # Sign in as the new user to get a session token
-        auth_response = supabase.auth.sign_in_with_password(
-            {"email": args.email, "password": password}
-        )
-
+        # Check if email confirmation is required
         if not auth_response.session:
-            print("Error: Failed to authenticate new user")
-            return 1
+            print()
+            print("=" * 60)
+            print("Email confirmation required!")
+            print(f"Please check {args.email} for a confirmation link.")
+            print("After confirming, you can sign in with your password.")
+            print("=" * 60)
+            return 0
 
         session_token = auth_response.session.access_token
 
