@@ -40,6 +40,48 @@ IMAGES = {
 GPUs = {
     # References found at https://rest.runpod.io/v1/docs#v-0-106
     # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
+    "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
+    "4000Ada": "NVIDIA RTX 4000 Ada Generation",
+    "L40": "NVIDIA L40",
+    "L40S": "NVIDIA L40S", # not available with cuda 12.8
+    "A30": "NVIDIA A30", # not available with cuda 12.8
+    
+    # Belows, GPUs are only good for high-memory task (e.g., pretraining and vanilla finetuning)
+    "A100": "NVIDIA A100 80GB PCIe",  # Default A100 - 80GB
+    "A100S": "NVIDIA A100-SXM4-80GB",
+    # "H100": "NVIDIA H100 PCIe", # not available with cuda 12.8
+    "H100N": "NVIDIA H100 NVL",
+    "H100S": "NVIDIA H100 80GB HBM3",
+    "H200": "NVIDIA H200",
+    "B200": "NVIDIA B200", # CUDA error: CUDA error (/__w/xformers/xformers/third_party/flash-attention/hopper/flash_fwd_launch_template.h:175): no kernel image is available for execution on the device
+    
+    # Below, GPUs are cost inefficient
+    "RTX4080": "NVIDIA GeForce RTX 4080",
+    "RTX3090": "NVIDIA GeForce RTX 3090",
+    "RTX3090Ti": "NVIDIA GeForce RTX 3090 Ti",
+    "RTX4070Ti": "NVIDIA GeForce RTX 4070 Ti",
+    "A4000_SFF": "NVIDIA RTX 4000 SFF Ada Generation",
+    "A5000_ADA": "NVIDIA RTX 5000 Ada Generation",
+    "MI300X": "AMD Instinct MI300X OAM",
+    "2000Ada": "NVIDIA RTX 2000 Ada Generation",
+    "A6000": "NVIDIA RTX A6000",
+    "A4000": "NVIDIA RTX A4000",
+    "A2000": "NVIDIA RTX A2000",
+    "RTX4090": "NVIDIA GeForce RTX 4090",
+    "A5000": "NVIDIA RTX A5000",
+    "A40": "NVIDIA A40",
+    "A4500": "NVIDIA RTX A4500",
+    "RTX3080": "NVIDIA GeForce RTX 3080",
+    "RTX3070": "NVIDIA GeForce RTX 3070",
+    "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
+    "L4": "NVIDIA L4",
+}
+
+
+
+VERIFIED_GPUs = {
+    # References found at https://rest.runpod.io/v1/docs#v-0-106
+    # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
     # "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
     # "4000Ada": "NVIDIA RTX 4000 Ada Generation",
     "L40": "NVIDIA L40",
@@ -87,7 +129,12 @@ allowed_cuda_versions = ["12.8"]
 
 # Check that GPU name mapping is unique in both directions
 gpu_full = list(GPUs.values())
-assert len(gpu_full) == len(set(gpu_full)), "GPU names must be unique in GPUs mapping"
+if not len(gpu_full) == len(set(gpu_full)):
+    # print duplicates
+    from collections import Counter
+    counts = Counter(gpu_full)
+    duplicates = {k: v for k, v in counts.items() if v > 1}
+    raise ValueError(f"Duplicate GPU full names found: {duplicates}")
 
 
 # Build map of memory -> hardware configu
@@ -96,10 +143,10 @@ HARDWARE_CONFIG = {}
 
 def populate_hardware_config(runpod_client):
     runpod_gpus = runpod_client.get_gpus()
-    for gpu_short, gpu_full in GPUs.items():
+    for gpu_short, gpu_full in VERIFIED_GPUs.items():
         for gpu in runpod_gpus:
             if gpu["id"] == gpu_full:
-                for count in [1, 2, 4, 8]:
+                for count in [1]:
                     memory_gb = (
                         int(gpu["memoryInGb"]) * count - 5
                     )  # there is often actually less vram available than according to runpod

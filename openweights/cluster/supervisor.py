@@ -193,12 +193,9 @@ class ManagerSupervisor:
                     org_id = org["id"]
 
                     # Check if we need to start a new manager
-                    if org_id not in self.processes or not self.check_process(
-                        org_id, self.processes[org_id]
-                    ):
+                    if org_id not in self.processes or not self.check_process(org_id, self.processes[org_id]):
                         try:
                             secrets = self.get_org_secrets(org_id)
-                            print("org_id:", org_id, "secrets:", secrets)
                             if self.validate_org_secrets(secrets):
                                 self.processes[org_id] = self.start_org_manager(
                                     org_id, secrets
