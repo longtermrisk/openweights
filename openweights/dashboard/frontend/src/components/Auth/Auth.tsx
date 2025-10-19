@@ -17,19 +17,20 @@ import {
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 
-type AuthMode = 'signin' | 'signup' | 'reset';
+type AuthMode = 'signin' | 'signup' | 'apikey';
 
 export function Auth() {
   const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 
-  const { signIn, signUp, resetPassword } = useAuth();
+  const { signIn, signInWithApiKey, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,6 +54,10 @@ export function Auth() {
         }
       } else if (mode === 'signin') {
         const { error } = await signIn(email, password);
+        if (error) throw error;
+        navigate('/jobs');
+      } else if (mode === 'apikey') {
+        const { error } = await signInWithApiKey(apiKey);
         if (error) throw error;
         navigate('/jobs');
       }
@@ -118,6 +123,7 @@ export function Auth() {
         >
           <Tab label="Sign In" value="signin" />
           <Tab label="Sign Up" value="signup" />
+          <Tab label="API Key" value="apikey" />
         </Tabs>
 
         {error && (
@@ -138,45 +144,65 @@ export function Auth() {
       )}
 
         <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="email"
-            label="Email Address"
-            name="email"
-            autoComplete="email"
-            autoFocus
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          {mode === 'apikey' ? (
+            <>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="apiKey"
+                label="API Key"
+                name="apiKey"
+                placeholder="ow_..."
+                autoFocus
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                helperText="Enter your OpenWeights API key (starts with 'ow_')"
+              />
+            </>
+          ) : (
+            <>
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="email"
+                label="Email Address"
+                name="email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
 
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            name="password"
-            label="Password"
-            type="password"
-            id="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                name="password"
+                label="Password"
+                type="password"
+                id="password"
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
 
-          {mode === 'signup' && (
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="confirmPassword"
-              label="Confirm Password"
-              type="password"
-              id="confirmPassword"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
+              {mode === 'signup' && (
+                <TextField
+                  margin="normal"
+                  required
+                  fullWidth
+                  name="confirmPassword"
+                  label="Confirm Password"
+                  type="password"
+                  id="confirmPassword"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              )}
+            </>
           )}
 
           <Button
@@ -185,7 +211,7 @@ export function Auth() {
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
           >
-            {mode === 'signin' ? 'Sign In' : 'Sign Up'}
+            {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Sign Up' : 'Sign In with API Key'}
           </Button>
 
           {mode === 'signin' && (

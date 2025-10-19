@@ -6,6 +6,18 @@ import { supabase } from './supabaseClient';
 const API_URL = import.meta.env.PROD ? '' : 'http://localhost:8124';
 
 const getAuthHeaders = async () => {
+    // First check for API key JWT in localStorage
+    const apiKeyJwt = localStorage.getItem('openweights_jwt');
+    if (apiKeyJwt) {
+        return {
+            headers: {
+                'Authorization': `Bearer ${apiKeyJwt}`,
+                'Content-Type': 'application/json'
+            }
+        };
+    }
+
+    // Otherwise use Supabase Auth session
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
         throw new Error('No authentication token available');

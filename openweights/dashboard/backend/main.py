@@ -20,6 +20,8 @@ from models import (
     WorkerWithRuns,
 )
 
+from openweights.client import exchange_api_token_for_jwt
+
 load_dotenv()
 app = FastAPI()
 
@@ -55,6 +57,46 @@ async def get_db(authorization: str = Header(None)) -> Database:
     except IndexError:
         raise HTTPException(
             status_code=401, detail="Invalid authorization header format"
+        )
+
+
+# Auth endpoints
+@app.post("/auth/exchange-api-key")
+async def exchange_api_key(api_key: dict):
+    """Exchange an OpenWeights API key for a JWT token.
+
+    Args:
+        api_key: Dictionary with 'api_key' field containing the ow_ prefixed token
+
+    Returns:
+        Dictionary with 'jwt' field containing the JWT token
+    """
+    try:
+        api_key_value = api_key.get("api_key")
+        if not api_key_value:
+            raise HTTPException(status_code=400, detail="api_key field is required")
+
+        if not api_key_value.startswith("ow_"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid API key format. API keys must start with 'ow_'",
+            )
+
+        supabase_url = os.environ.get(
+            "SUPABASE_URL", "https://taofkfabrhpgtohaikst.supabase.co"
+        )
+        supabase_anon_key = os.environ.get(
+            "SUPABASE_ANON_KEY",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhb2ZrZmFicmhwZ3RvaGFpa3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5MjkyMjcsImV4cCI6MjA0NzUwNTIyN30.KRufleTgprt16mfm0_91YjKIFZAne1-IW8buMxWVMeE",
+        )
+
+        jwt = exchange_api_token_for_jwt(supabase_url, supabase_anon_key, api_key_value)
+        return {"jwt": jwt}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to exchange API key: {str(e)}"
         )
 
 
