@@ -19,6 +19,37 @@ def _is_transient_http_status(status: int) -> bool:
     return status >= 500 or status == 429
 
 
+def _is_auth_error(exc: BaseException) -> bool:
+    """
+    Returns True for errors that indicate JWT expiration or auth issues:
+      - HTTPStatusError with 401 (Unauthorized)
+      - postgrest.APIError with 401
+    """
+    # httpx raised because .raise_for_status() was called
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            return exc.response.status_code == 401
+        except Exception:
+            return False
+
+    # postgrest API errors (supabase-py)
+    if postgrest is not None and isinstance(exc, postgrest.APIError):
+        try:
+            code = getattr(exc, "code", None)
+            # code may be a string; try to coerce
+            code_int = int(code) if code is not None else None
+            return code_int == 401
+        except Exception:
+            return False
+
+    # Sometimes libraries wrap the real error; walk the causal chain
+    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if cause and cause is not exc:
+        return _is_auth_error(cause)
+
+    return False
+
+
 def _is_transient(exc: BaseException) -> bool:
     """
     Returns True for errors that are likely to be temporary network/service hiccups:
@@ -152,6 +183,9 @@ def supabase_retry(
 ):
     """
     Retries ONLY transient Supabase/http errors (see _is_transient) with exponential backoff + full jitter.
+    Also handles JWT expiration by automatically refreshing tokens on 401 errors if an OpenWeights instance
+    is available (via _ow_instance attribute on the method's self argument or _supabase client).
+
     If `return_on_exhaustion` is not `_RAISE`, return that value after retry budget is exhausted for a
     transient error. Non-transient errors still raise immediately.
 
@@ -173,13 +207,40 @@ def supabase_retry(
     def _decorator(fn):
         @functools.wraps(fn)
         def inner(*args, **kwargs):
+            # Try to find OpenWeights instance for token refresh
+            ow_instance = None
+            if args and hasattr(args[0], "_supabase"):
+                # Method call on OpenWeights instance
+                ow_instance = args[0]
+            elif args and hasattr(args[0], "_ow_instance"):
+                # Method call on object that has OpenWeights reference
+                ow_instance = args[0]._ow_instance
+
             # quick path: try once
             start = time.monotonic()
             attempt = 0
+            auth_refreshed = False  # track if we've already tried refreshing auth
+
             while True:
                 try:
                     return fn(*args, **kwargs)
                 except Exception as exc:
+                    # Auth error (401) and we have an OpenWeights instance?
+                    if _is_auth_error(exc) and ow_instance is not None:
+                        if not auth_refreshed:
+                            # Try refreshing the JWT once
+                            auth_refreshed = True
+                            try:
+                                ow_instance._refresh_jwt()
+                                # Don't increment attempt or sleep, just retry immediately
+                                continue
+                            except Exception:
+                                # If refresh fails, let the original error bubble up
+                                raise exc
+                        else:
+                            # Already tried refreshing, don't retry again
+                            raise
+
                     # Non-transient? bubble up immediately.
                     if not _is_transient(exc):
                         raise

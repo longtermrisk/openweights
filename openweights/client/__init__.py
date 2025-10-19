@@ -143,6 +143,9 @@ class OpenWeights:
             self.supabase_url, self.supabase_key, self.auth_token
         )
 
+        # Store reference to this instance in the supabase client for token refresh
+        self._supabase._ow_instance = self
+
         # Get organization ID from token
         self.organization_id = organization_id or self.get_organization_id()
         self.org_name = self.get_organization_name()
@@ -196,6 +199,23 @@ class OpenWeights:
         if not result.data or len(result.data) == 0:
             return None  # HF_ORG is optional
         return result.data[0]["value"]
+
+    def _refresh_jwt(self):
+        """Refresh the JWT token by exchanging the API token again.
+
+        This is called automatically by @supabase_retry when a 401 error occurs.
+        """
+        # Only refresh if we have an ow_ API token (not a raw JWT)
+        if not self.auth_token.startswith("ow_"):
+            raise ValueError("Cannot refresh JWT: auth_token is not an ow_ API token")
+
+        # Exchange the API token for a new JWT
+        jwt_token = exchange_api_token_for_jwt(
+            self.supabase_url, self.supabase_key, self.auth_token
+        )
+
+        # Update the Authorization header in the supabase client
+        self._supabase.options.headers["Authorization"] = f"Bearer {jwt_token}"
 
     @property
     def run(self):
