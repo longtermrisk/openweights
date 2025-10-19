@@ -39,6 +39,7 @@ interface JobsListViewProps {
     onRowsPerPageChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
     orgId: string;
     onCancelJob: (jobId: string) => Promise<void>;
+    onRetryJob: (jobId: string) => Promise<void>;
 }
 
 export const JobsListView: React.FC<JobsListViewProps> = ({
@@ -50,6 +51,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
     onRowsPerPageChange,
     orgId,
     onCancelJob,
+    onRetryJob,
 }) => {
     const filteredJobs = jobs.filter(job => {
         const searchStr = filter.toLowerCase();
@@ -122,6 +124,16 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                                                 onClick={() => onCancelJob(String(job.id))}
                                             >
                                                 Cancel
+                                            </Button>
+                                        )}
+                                        {(job.status === 'failed' || job.status === 'canceled') && (
+                                            <Button
+                                                size="small"
+                                                color="primary"
+                                                variant="outlined"
+                                                onClick={() => onRetryJob(String(job.id))}
+                                            >
+                                                Retry
                                             </Button>
                                         )}
                                     </TableCell>

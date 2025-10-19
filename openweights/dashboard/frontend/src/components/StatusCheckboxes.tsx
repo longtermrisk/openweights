@@ -21,42 +21,37 @@ export const StatusCheckboxes: React.FC<StatusCheckboxesProps> = ({ filters, onC
     };
 
     return (
-        <Box>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                Status Filters
-            </Typography>
-            <FormGroup row>
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={filters.completed}
-                            onChange={handleChange('completed')}
-                            size="small"
-                        />
-                    }
-                    label="Completed"
-                />
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={filters.failed}
-                            onChange={handleChange('failed')}
-                            size="small"
-                        />
-                    }
-                    label="Failed"
-                />
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={filters.canceled}
-                            onChange={handleChange('canceled')}
-                            size="small"
-                        />
-                    }
-                    label="Canceled"
-                />
-            </FormGroup>
-        </Box>
+        <FormGroup row>
+            <FormControlLabel
+                control={
+                    <Checkbox
+                        checked={filters.completed}
+                        onChange={handleChange('completed')}
+                        size="small"
+                    />
+                }
+                label="Completed"
+            />
+            <FormControlLabel
+                control={
+                    <Checkbox
+                        checked={filters.failed}
+                        onChange={handleChange('failed')}
+                        size="small"
+                    />
+                }
+                label="Failed"
+            />
+            <FormControlLabel
+                control={
+                    <Checkbox
+                        checked={filters.canceled}
+                        onChange={handleChange('canceled')}
+                        size="small"
+                    />
+                }
+                label="Canceled"
+            />
+        </FormGroup>
     );
 };

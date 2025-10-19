@@ -8,20 +8,17 @@ import {
     Button,
     Menu,
     MenuItem,
-    IconButton,
-    Select,
-    FormControl,
-    SelectChangeEvent
+    IconButton
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { JobsView } from './components/JobsView';
-// import { RunsView } from './components/RunsView';
 import { WorkersView } from './components/WorkersView';
 import { JobDetailView, RunDetailView, WorkerDetailView } from './components/DetailViews';
 import { Auth } from './components/Auth/Auth';
 import { OrganizationList } from './components/Organizations/OrganizationList';
 import { OrganizationDetail } from './components/Organizations/OrganizationDetail';
+import { OrganizationSwitcher } from './components/Organizations/OrganizationSwitcher';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { OrganizationProvider, useOrganization } from './contexts/OrganizationContext';
 import { useState, useEffect } from 'react';
@@ -38,42 +35,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     }
 
     return <>{children}</>;
-}
-
-function OrganizationSwitcher() {
-    const { organizations, currentOrganization, setCurrentOrganization } = useOrganization();
-    const navigate = useNavigate();
-
-    const handleChange = (event: SelectChangeEvent<string>) => {
-        const org = organizations.find(o => o.id === event.target.value);
-        if (org) {
-            setCurrentOrganization(org);
-            navigate(`/${org.id}/jobs`);
-        }
-    };
-
-    if (!currentOrganization || organizations.length === 0) return null;
-
-    return (
-        <FormControl size="small" sx={{ minWidth: 200, mx: 2 }}>
-            <Select
-                value={currentOrganization.id}
-                onChange={handleChange}
-                sx={{
-                    bgcolor: 'rgba(255, 255, 255, 0.1)',
-                    color: 'white',
-                    '& .MuiSelect-icon': { color: 'white' },
-                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.2)' }
-                }}
-            >
-                {organizations.map(org => (
-                    <MenuItem key={org.id} value={org.id}>
-                        {org.name}
-                    </MenuItem>
-                ))}
-            </Select>
-        </FormControl>
-    );
 }
 
 function NavBar() {
@@ -104,17 +65,17 @@ function NavBar() {
 
     return (
         <AppBar position="static">
-            <Toolbar>
+            <Toolbar variant="dense">
                 <img
                     src="/ow.svg"
                     alt="OpenWeights Logo"
                     style={{
-                        height: '32px',
-                        width: '32px',
-                        marginRight: '12px'
+                        height: '24px',
+                        width: '24px',
+                        marginRight: '8px'
                     }}
                 />
-                <Typography variant="h6" component="div" sx={{ flexGrow: 0 }}>
+                <Typography variant="h6" component="div" sx={{ flexGrow: 0, fontSize: '0.95rem' }}>
                     OpenWeights
                 </Typography>
 
@@ -256,7 +217,7 @@ function AppContent() {
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%' }}>
             <NavBar />
             <Box component="main" sx={{ flexGrow: 1, width: '100%', height: '100%', overflow: 'auto' }}>
-                <Container maxWidth={false} sx={{ mt: 3, mb: 3, height: 'calc(100vh - 84px)' }}>
+                <Container maxWidth={false} sx={{ mt: 1.5, mb: 1.5, height: 'calc(100vh - 60px)' }}>
                     <Routes>
                         <Route path="/login" element={<Auth />} />
                         <Route path="/organizations" element={
