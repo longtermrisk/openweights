@@ -72,6 +72,7 @@ class TokenCreate(BaseModel):
 class Token(BaseModel):
     id: str
     name: str
-    expires_at: Optional[datetime]
+    expires_at: Optional[datetime] = None
     created_at: datetime
+    revoked_at: Optional[datetime] = None
     access_token: Optional[str] = None  # Only included when token is first created

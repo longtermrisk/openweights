@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import jwt
@@ -129,11 +129,11 @@ class Database:
             if not member_result.data:
                 raise ValueError("Failed to add admin member")
 
+            # Create a default API token for the organization
+            # Note: Token is created but not stored in secrets - it's managed via api_tokens table
+            await self.create_token(org_id, TokenCreate(name="Default API Key"))
+
             # Add secrets using admin client
-            token = await self.create_token(
-                org_id, TokenCreate(name="OpenWeights API Key")
-            )
-            org_data.secrets["OPENWEIGHTS_API_KEY"] = token.access_token
             for secret_name, secret_value in org_data.secrets.items():
                 secret_result = (
                     self.admin_client.from_("organization_secrets")
@@ -257,65 +257,63 @@ class Database:
     async def create_token(
         self, organization_id: str, token_data: TokenCreate
     ) -> Token:
-        """Create a new token with optional expiration."""
+        """Create a new API token with optional expiration."""
         self.set_organization_id(organization_id)
-
-        # Get user ID from token
-        user_id = self.get_user_id_from_token()
-
-        # Check if user is an admin of the organization
-        admin_check = self.client.rpc(
-            "is_organization_admin", {"org_id": organization_id}
-        ).execute()
-
-        if not admin_check.data:
-            raise ValueError("User is not an admin of this organization")
 
         # Calculate expiration time if specified
         expires_at = None
         if token_data.expires_in_days is not None:
-            expires_at = datetime.utcnow() + timedelta(days=token_data.expires_in_days)
+            expires_at = datetime.now(timezone.utc) + timedelta(
+                days=token_data.expires_in_days
+            )
 
-        # Create service account token using admin client
-        result = self.admin_client.rpc(
-            "create_service_account_token",
+        # Create API token using the client (RLS will handle authorization)
+        result = self.client.rpc(
+            "create_api_token",
             {
                 "org_id": organization_id,
                 "token_name": token_data.name,
-                "created_by": user_id,
                 "expires_at": expires_at.isoformat() if expires_at else None,
             },
         ).execute()
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             raise ValueError("Failed to create token")
 
-        token_id = result.data[0]["token_id"]
-        jwt_token = result.data[0]["jwt_token"]
+        # Response is array of objects with token_id and token
+        token_data_result = result.data[0]
+        token_id = token_data_result["token_id"]
+        api_token = token_data_result["token"]
 
         return Token(
             id=token_id,
             name=token_data.name,
             expires_at=expires_at,
-            created_at=datetime.utcnow(),
-            access_token=jwt_token,
+            created_at=datetime.now(timezone.utc),
+            access_token=api_token,
         )
 
     async def list_tokens(self, organization_id: str) -> List[Token]:
-        """List all tokens for an organization."""
+        """List all API tokens for an organization."""
         self.set_organization_id(organization_id)
         result = (
-            self.client.table("tokens")
-            .select("*")
+            self.client.table("api_tokens")
+            .select("id, name, expires_at, created_at, revoked_at")
             .eq("organization_id", organization_id)
+            .order("created_at", desc=True)
             .execute()
         )
         return [Token(**token) for token in result.data]
 
     async def delete_token(self, organization_id: str, token_id: str):
-        """Delete a token."""
+        """Revoke an API token."""
         self.set_organization_id(organization_id)
-        self.client.table("tokens").delete().eq("id", token_id).execute()
+
+        # Use the revoke_api_token RPC instead of direct deletion
+        result = self.client.rpc("revoke_api_token", {"token_id": token_id}).execute()
+
+        if not result.data:
+            raise ValueError("Failed to revoke token or token not found")
 
     def get_jobs(self, organization_id: str, status: Optional[str] = None) -> List[Job]:
         self.set_organization_id(organization_id)
