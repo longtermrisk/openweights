@@ -14,19 +14,6 @@ else
     echo "[$(date)] No PUBLIC_KEY provided, skipping SSH key setup"
 fi
 
-# Repository checkout if needed
-echo "[$(date)] Checking for OW_COMMIT environment variable"
-if [ -n "$OW_COMMIT" ]; then
-    echo "[$(date)] Starting repository checkout"
-    python3 openweights/worker/services/checkout.py
-    if [ $? -ne 0 ]; then
-        echo "[$(date)] Repository checkout failed"
-        exit 1
-    fi
-else
-    echo "[$(date)] No OW_COMMIT specified, skipping repository checkout"
-fi
-
 # Login to huggingface
 echo "[$(date)] Attempting to login to Hugging Face"
 python3 openweights/worker/services/hf_login.py
@@ -38,17 +25,18 @@ ssh-keygen -A
 service ssh start
 echo "[$(date)] SSH service started"
 
-# Print sshd logs to stdout
-tail -f /var/log/auth.log &
-
 # Start background services
 echo "[$(date)] Starting HTTP log server on port 10101"
 mkdir logs
 python3 openweights/worker/services/log_server.py &
 
-# Start TTL monitoring service
-echo "[$(date)] Starting TTL monitoring service"
-python3 openweights/worker/services/ttl_monitor.py &
+# Start TTL monitoring service unless OW_CMD=cluster
+if [ "$OW_CMD" != "cluster" ]; then
+    echo "[$(date)] Starting TTL monitoring service"
+    python3 openweights/worker/services/ttl_monitor.py &
+else
+    echo "[$(date)] Skipping TTL monitoring service due to OW_CMD=cluster"
+fi
 
 echo "[$(date)] All services started"
 
@@ -57,6 +45,11 @@ if [ "$OW_DEV" = "true" ]; then
     echo "[$(date)] Starting in development mode"
     exec tail -f /dev/null
 else
-    echo "[$(date)] Starting main application"
-    exec python3 openweights/worker/main.py > >(tee logs/main) 2> >(tee -a logs/main >&2)
+    if [ "$OW_CMD" = "cluster" ]; then
+        echo "[$(date)] Starting main application (cluster mode)"
+        exec ow cluster > >(tee logs/main) 2> >(tee -a logs/main >&2)
+    else
+        echo "[$(date)] Starting worker process"
+        exec ow worker > >(tee logs/main) 2> >(tee -a logs/main >&2)
+    fi
 fi
