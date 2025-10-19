@@ -9,10 +9,6 @@ import {
     Button,
     Box,
     TextField,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
     TablePagination,
     Chip
 } from '@mui/material';
@@ -193,10 +189,10 @@ export const JobsView: React.FC = () => {
     const { currentOrganization } = useOrganization();
     const [jobs, setJobs] = useState<Job[]>([]);
     const [filter, setFilter] = useState('');
-    const [typeFilter, setTypeFilter] = useState('all');
+    const [typeFilter] = useState('all');
     const [pages, setPages] = useState({ pending: 0, inProgress: 0, completed: 0 });
     const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     // const [isCancelling, setIsCancelling] = useState<string | null>(null);
     const [view, setView] = useState<'three-column' | 'list'>('three-column');
     const [statusFilters, setStatusFilters] = useState<StatusFilters>({

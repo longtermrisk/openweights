@@ -84,6 +84,12 @@ def main():
     fetch_parser = sub.add_parser("fetch", help="Fetch file content by ID.")
     add_fetch_parser(fetch_parser)
 
+    # serve command
+    from openweights.cli.serve import add_serve_parser, handle_serve
+
+    serve_parser = sub.add_parser("serve", help="Start the dashboard backend server.")
+    add_serve_parser(serve_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -106,6 +112,8 @@ def main():
         sys.exit(handle_logs(args))
     elif args.cmd == "fetch":
         sys.exit(handle_fetch(args))
+    elif args.cmd == "serve":
+        sys.exit(handle_serve(args))
     else:
         ap.print_help()
         sys.exit(1)

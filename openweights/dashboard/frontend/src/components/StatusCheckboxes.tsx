@@ -1,5 +1,5 @@
 import React from 'react';
-import { FormGroup, FormControlLabel, Checkbox, Box, Typography } from '@mui/material';
+import { FormGroup, FormControlLabel, Checkbox } from '@mui/material';
 
 export interface StatusFilters {
     completed: boolean;
