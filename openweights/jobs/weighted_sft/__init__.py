@@ -53,7 +53,10 @@ class SFT(Jobs):
 
         try:
             validate_repo_id(params["finetuned_model_id"])
-        except HFValidationError as e:
+            assert (
+                params["finetuned_model_id"].split("/")[0] != "None"
+            ), "Set either $HF_ORG, $HF_USER, or specify the `finetuned_model_id` directly"
+        except (HFValidationError, AssertionError) as e:
             raise ValueError(
                 f"Invalid finetuned_model_id: {params['finetuned_model_id']}. Error: {e}"
             )

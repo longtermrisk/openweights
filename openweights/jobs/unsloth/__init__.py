@@ -27,14 +27,11 @@ class FineTuning(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb=24, allowed_hardware=None, **params
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
-
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
 
         print(f"Training config params: {json.dumps(params, indent=4)}")
         params = TrainingConfig(**params).model_dump()
@@ -57,7 +54,10 @@ class FineTuning(Jobs):
 
         try:
             validate_repo_id(params["finetuned_model_id"])
-        except HFValidationError as e:
+            assert (
+                params["finetuned_model_id"].split("/")[0] != "None"
+            ), "Set either $HF_ORG, $HF_USER, or specify the `finetuned_model_id` directly"
+        except (HFValidationError, AssertionError) as e:
             raise ValueError(
                 f"Invalid finetuned_model_id: {params['finetuned_model_id']}. Error: {e}"
             )

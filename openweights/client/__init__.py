@@ -197,7 +197,7 @@ class OpenWeights:
             .execute()
         )
         if not result.data or len(result.data) == 0:
-            return None  # HF_ORG is optional
+            return os.environ.get("HF_ORG") or os.environ.get("HF_USER")
         return result.data[0]["value"]
 
     def _refresh_jwt(self):

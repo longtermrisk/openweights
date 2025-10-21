@@ -146,8 +146,6 @@ class TrainingConfig(BaseModel):
 
     @field_validator("finetuned_model_id")
     def validate_finetuned_model_id(cls, v):
-        # if v and model_exists(v):
-        #     raise ValueError(f"Model {v} already exists")
         if len(v.split("/")) != 2:
             raise ValueError("Model ID must be in the format 'user/model'")
         org, model = v.split("/")
