@@ -209,12 +209,15 @@ def supabase_retry(
         def inner(*args, **kwargs):
             # Try to find OpenWeights instance for token refresh
             ow_instance = None
-            if args and hasattr(args[0], "_supabase"):
+            if args and hasattr(args[0], "_refresh_jwt"):
                 # Method call on OpenWeights instance
                 ow_instance = args[0]
             elif args and hasattr(args[0], "_ow_instance"):
-                # Method call on object that has OpenWeights reference
+                # Method call on Files/Events/etc that have OpenWeights reference
                 ow_instance = args[0]._ow_instance
+            elif args and hasattr(args[0], "client"):
+                # Method call on Jobs/Runs/Run that have .client attribute
+                ow_instance = args[0].client
 
             # quick path: try once
             start = time.monotonic()

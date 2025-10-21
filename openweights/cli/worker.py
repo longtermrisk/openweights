@@ -33,9 +33,6 @@ def handle_worker(args):
     try:
         from openweights.worker.main import Worker
 
-        # Set IS_LOCAL environment variable to indicate this is a local worker
-        os.environ["IS_LOCAL"] = "true"
-
         worker = Worker()
         print(f"Worker initialized with ID: {worker.worker_id}")
         worker.find_and_execute_job()

@@ -151,10 +151,10 @@ class OpenWeights:
         self.org_name = self.get_organization_name()
 
         # Initialize components with organization ID
-        self.files = Files(self._supabase, self.organization_id)
+        self.files = Files(self, self.organization_id)
         self.jobs = Jobs(self)
         self.runs = Runs(self)
-        self.events = Events(self._supabase)
+        self.events = Events(self)
         self.async_chat = AsyncChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.sync_chat = ChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.chat = self.async_chat if use_async else self.sync_chat

@@ -90,7 +90,14 @@ def handle_deploy(args) -> int:
         print(f"[ow] Loaded {len(env_vars)} environment variables")
 
     # Validate required environment variables
-    required_vars = ["OPENWEIGHTS_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    required_vars = [
+        "OPENWEIGHTS_API_KEY",
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "HF_ORG",
+        "HF_TOKEN",
+        "HF_USER",
+    ]
     missing_vars = []
     for var in required_vars:
         if var not in env_vars and var not in os.environ:
@@ -165,7 +172,7 @@ def handle_deploy(args) -> int:
         "vcpuCount": 4,
         "cpuFlavorIds": ["cpu3c"],
         "containerDiskInGb": 20,
-        "ports": ["8124/tcp"],
+        "ports": ["8124/http"],
         "env": pod_env,
     }
 
@@ -183,7 +190,7 @@ def handle_deploy(args) -> int:
         pod_id = result.get("id")
         print(f"[ow] Successfully deployed pod: {pod_id}")
         print(f"[ow] Pod name: {payload['name']}")
-
+        print(f"[ow] Dashboard (if running): https://{pod_id}-8124.proxy.runpod.net")
         return 0
     except requests.exceptions.RequestException as e:
         print(f"[ow] Error deploying pod: {e}", file=sys.stderr)

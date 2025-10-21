@@ -4,8 +4,9 @@ from openweights.client.decorators import supabase_retry
 
 
 class Events:
-    def __init__(self, supabase):
-        self._supabase = supabase
+    def __init__(self, ow_instance: "OpenWeights"):
+        self._ow_instance = ow_instance
+        self._supabase = ow_instance._supabase
 
     @supabase_retry()
     def list(self, job_id: Optional[str] = None, run_id: Optional[str] = None):

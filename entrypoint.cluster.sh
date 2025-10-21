@@ -19,7 +19,7 @@ if [ "$OW_CMD" = "serve" ] || [ "$OW_CMD" = "both" ]; then
     # Start dashboard in background if running both, otherwise in foreground
     if [ "$OW_CMD" = "both" ]; then
         mkdir -p /openweights/logs
-        ow serve > /openweights/logs/dashboard.log 2>&1 &
+        ow serve > >(tee /openweights/logs/dashboard.log) 2> >(tee -a /openweights/logs/dashboard.log >&2) &
         DASHBOARD_PID=$!
         echo "[$(date)] Dashboard backend started with PID: $DASHBOARD_PID"
     else

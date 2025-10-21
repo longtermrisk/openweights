@@ -33,26 +33,16 @@ class Database:
     def __init__(self, auth_token: Optional[str] = None):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
-        self.supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         self.auth_token = auth_token
         self._current_org_id = None
 
-        if (
-            not self.supabase_url
-            or not self.supabase_anon_key
-            or not self.supabase_service_key
-        ):
-            raise ValueError(
-                "SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY must be set"
-            )
+        if not self.supabase_url or not self.supabase_anon_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
 
         # Initialize regular client for normal operations
         self.client = create_client(self.supabase_url, self.supabase_anon_key)
         if auth_token:
             self.client.postgrest.auth(auth_token)
-
-        # Initialize admin client for operations requiring service role
-        self.admin_client = create_client(self.supabase_url, self.supabase_service_key)
 
     @property
     def ow_client(self) -> OpenWeights:
@@ -104,53 +94,43 @@ class Database:
             raise ValueError(f"Invalid secrets: {error_message}")
 
         try:
-            # Create organization using admin client to bypass RLS
-            result = (
-                self.admin_client.from_("organizations")
-                .insert({"name": org_data.name})
-                .execute()
-            )
+            # Create organization using RPC (handles organization creation and membership)
+            org_response = self.client.rpc(
+                "create_organization", {"org_name": org_data.name}
+            ).execute()
 
-            if not result.data:
+            if not org_response.data:
                 raise ValueError("Failed to create organization")
 
-            org_id = result.data[0]["id"]
-
-            # Add the creator as an admin using admin client
-            user_id = self.get_user_id_from_token()
-            member_result = (
-                self.admin_client.from_("organization_members")
-                .insert(
-                    {"organization_id": org_id, "user_id": user_id, "role": "admin"}
-                )
-                .execute()
-            )
-
-            if not member_result.data:
-                raise ValueError("Failed to add admin member")
+            org_id = org_response.data
 
             # Create a default API token for the organization
-            # Note: Token is created but not stored in secrets - it's managed via api_tokens table
             await self.create_token(org_id, TokenCreate(name="Default API Key"))
 
-            # Add secrets using admin client
+            # Add secrets using RPC
             for secret_name, secret_value in org_data.secrets.items():
-                secret_result = (
-                    self.admin_client.from_("organization_secrets")
-                    .insert(
-                        {
-                            "organization_id": org_id,
-                            "name": secret_name,
-                            "value": secret_value,
-                        }
-                    )
-                    .execute()
-                )
+                secret_result = self.client.rpc(
+                    "manage_organization_secret",
+                    {
+                        "org_id": org_id,
+                        "secret_name": secret_name,
+                        "secret_value": secret_value,
+                    },
+                ).execute()
 
                 if not secret_result.data:
                     raise ValueError(f"Failed to add secret: {secret_name}")
 
-            return Organization(**result.data[0])
+            # Fetch the created organization to return
+            org_result = (
+                self.client.from_("organizations")
+                .select("*")
+                .eq("id", org_id)
+                .single()
+                .execute()
+            )
+
+            return Organization(**org_result.data)
 
         except Exception as e:
             raise ValueError(f"Failed to create organization: {str(e)}")

@@ -17,6 +17,7 @@ import runpod
 import torch
 
 from openweights.client import Files, OpenWeights, Run
+from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
 
@@ -42,7 +43,6 @@ class Worker:
         self.supabase = self.ow._supabase
         self.organization_id = self.ow.organization_id
         self.auth_token = self.ow.auth_token
-        self.files = Files(self.supabase, self.organization_id)
         self.cached_models = []
         self.current_job = None
         self.current_process = None
@@ -151,21 +151,45 @@ class Worker:
 
         atexit.register(self.shutdown_handler)
 
+    @supabase_retry()
+    def _update_worker_ping(self):
+        """Update worker ping timestamp with retry logic."""
+        return (
+            self.supabase.table("worker")
+            .update({"ping": datetime.now(timezone.utc).isoformat()})
+            .eq("id", self.worker_id)
+            .execute()
+        )
+
+    @supabase_retry()
+    def _get_job_status(self, job_id: str):
+        """Get job status and timeout with retry logic."""
+        return (
+            self.supabase.table("jobs")
+            .select("status", "timeout")
+            .eq("id", job_id)
+            .single()
+            .execute()
+            .data
+        )
+
+    @supabase_retry()
+    def _cancel_job(self, job_id: str):
+        """Cancel a job with retry logic."""
+        return (
+            self.supabase.table("jobs")
+            .update({"status": "canceled"})
+            .eq("id", job_id)
+            .execute()
+        )
+
     def _health_check_loop(self):
         """Background task that updates worker ping and checks job status."""
         while not self.shutdown_flag:
             try:
                 # Update ping timestamp
-                result = (
-                    self.supabase.table("worker")
-                    .update(
-                        {
-                            "ping": datetime.now(timezone.utc).isoformat(),
-                        }
-                    )
-                    .eq("id", self.worker_id)
-                    .execute()
-                )
+                print("ping")
+                result = self._update_worker_ping()
 
                 # Check if worker status is 'shutdown'
                 if result.data and result.data[0]["status"] == "shutdown":
@@ -173,14 +197,7 @@ class Worker:
 
                 # Check if current job is canceled or timed out
                 if self.current_job:
-                    job = (
-                        self.supabase.table("jobs")
-                        .select("status", "timeout")
-                        .eq("id", self.current_job["id"])
-                        .single()
-                        .execute()
-                        .data
-                    )
+                    job = self._get_job_status(self.current_job["id"])
 
                     should_cancel = False
                     if job["status"] == "canceled" or self.shutdown_flag:
@@ -196,9 +213,7 @@ class Worker:
                             f"Job {self.current_job['id']} has timed out, stopping execution"
                         )
                         # Update job status to canceled
-                        self.supabase.table("jobs").update({"status": "canceled"}).eq(
-                            "id", self.current_job["id"]
-                        ).execute()
+                        self._cancel_job(self.current_job["id"])
 
                     if should_cancel:
                         # Wait for logs to propagate
@@ -242,7 +257,7 @@ class Worker:
                 log_file_path = os.path.join("logs", self.current_run.id)
                 if os.path.exists(log_file_path):
                     with open(log_file_path, "rb") as log_file:
-                        log_response = self.files.create(log_file, purpose="log")
+                        log_response = self.ow.files.create(log_file, purpose="log")
                         if self.current_run:
                             self.current_run.update(logfile=log_response["id"])
 
@@ -261,7 +276,7 @@ class Worker:
         try:
             # Update worker record with logfile ID
             with open("logs/main", "rb") as log_file:
-                log_response = self.files.create(log_file, purpose="logs")
+                log_response = self.ow.files.create(log_file, purpose="logs")
                 self.supabase.table("worker").update(
                     {"logfile": log_response["id"]}
                 ).eq("id", self.worker_id).execute()
@@ -321,10 +336,10 @@ class Worker:
             if self.shutdown_flag:
                 break
 
-    def _find_job(self):
-        """Fetch pending jobs for this docker image, sorted by required VRAM desc, then oldest first."""
-        logging.info("Fetching jobs from the database...")
-        jobs = (
+    @supabase_retry()
+    def _fetch_pending_jobs(self):
+        """Fetch pending jobs from database with retry logic."""
+        return (
             self.supabase.table("jobs")
             .select("*")
             .eq("status", "pending")
@@ -334,6 +349,11 @@ class Worker:
             .execute()
             .data
         )
+
+    def _find_job(self):
+        """Fetch pending jobs for this docker image, sorted by required VRAM desc, then oldest first."""
+        logging.info("Fetching jobs from the database...")
+        jobs = self._fetch_pending_jobs()
         logging.info(f"Fetched {len(jobs)} pending jobs from the database")
 
         # Further filter jobs by hardware requirements
@@ -453,7 +473,7 @@ class Worker:
                 # Upload log file to Supabase
                 logging.info(f"Uploading log file ({log_file_path}) to Supabase")
                 with open(log_file_path, "rb") as log_file:
-                    log_response = self.files.create(log_file, purpose="log")
+                    log_response = self.ow.files.create(log_file, purpose="log")
 
                 # Then upload any files from /uploads as results
                 upload_dir = os.path.join(tmp_dir, "uploads")
@@ -464,7 +484,7 @@ class Worker:
                         file_path = os.path.join(root, file_name)
                         try:
                             with open(file_path, "rb") as file:
-                                file_response = self.files.create(
+                                file_response = self.ow.files.create(
                                     file, purpose="result"
                                 )
                             # Log the uploaded file to the run
@@ -505,10 +525,11 @@ class Worker:
         for target_path, file_id in mounted_files.items():
             full_path = os.path.join(tmp_dir, target_path)
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            content = self.files.content(file_id)
+            content = self.ow.files.content(file_id)
             with open(full_path, "wb") as f:
                 f.write(content)
 
+    @supabase_retry()
     def acquire_job(self, job_id: str):
         """
         Attempts to set a job from 'pending' to 'in_progress' for this worker
@@ -524,6 +545,7 @@ class Worker:
             return None
         return result.data[0]
 
+    @supabase_retry()
     def update_job_status_if_in_progress(
         self,
         job_id: str,

@@ -74,8 +74,9 @@ def validate_preference_dataset(content):
 
 
 class Files:
-    def __init__(self, supabase: Client, organization_id: str):
-        self._supabase = supabase
+    def __init__(self, ow_instance: "OpenWeights", organization_id: str):
+        self._ow_instance = ow_instance
+        self._supabase = ow_instance._supabase
         self._org_id = organization_id
 
     def _calculate_file_hash(self, stream: BinaryIO) -> str:
