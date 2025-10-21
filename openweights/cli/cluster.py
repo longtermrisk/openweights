@@ -12,6 +12,12 @@ def add_cluster_parser(parser):
         type=str,
         help="Path to .env file with environment variables (optional)",
     )
+    parser.add_argument(
+        "--super",
+        action="store_true",
+        dest="supervisor",
+        help="Run the supervisor instead of organization manager (requires SUPABASE_SERVICE_ROLE_KEY)",
+    )
 
 
 def load_env_file(env_path: str) -> dict:
@@ -66,42 +72,57 @@ def handle_cluster(args) -> int:
             # We use a special env var to communicate which vars came from the env file
             os.environ["_OW_CUSTOM_ENV_VARS"] = ",".join(env_vars.keys())
 
-    # Validate required environment variables
-    required_vars = ["OPENWEIGHTS_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    # Validate required environment variables based on mode
+    if args.supervisor:
+        # Supervisor mode requires service role key
+        required_vars = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+        mode_name = "supervisor"
+    else:
+        # Organization manager mode requires standard keys
+        required_vars = ["OPENWEIGHTS_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+        mode_name = "organization manager"
+
     missing_vars = [var for var in required_vars if var not in os.environ]
 
     if missing_vars:
-        print("Error: Missing required environment variables:")
+        print(f"Error: Missing required environment variables for {mode_name}:")
         for var in missing_vars:
             print(f"  - {var}")
         print()
         print("These can be set in your environment or provided via --env-file")
         return 1
 
-    # Check for RunPod API key
-    if "RUNPOD_API_KEY" not in os.environ:
+    # Check for RunPod API key (not required for supervisor)
+    if not args.supervisor and "RUNPOD_API_KEY" not in os.environ:
         print("Warning: RUNPOD_API_KEY not set")
         print(
             "The cluster manager will attempt to fetch it from the database, "
             "but for self-managed clusters you should set it in your environment."
         )
 
-    print("Starting OpenWeights cluster manager...")
+    print(f"Starting OpenWeights {mode_name}...")
     print()
 
     try:
-        # Import and run the organization manager
-        from openweights.cluster.org_manager import OrganizationManager
+        if args.supervisor:
+            # Import and run the supervisor
+            from openweights.cluster.supervisor import ManagerSupervisor
 
-        manager = OrganizationManager()
-        manager.manage_cluster()
+            supervisor = ManagerSupervisor()
+            supervisor.supervise()
+        else:
+            # Import and run the organization manager
+            from openweights.cluster.org_manager import OrganizationManager
+
+            manager = OrganizationManager()
+            manager.manage_cluster()
         return 0
 
     except KeyboardInterrupt:
-        print("\nCluster manager stopped by user")
+        print(f"\n{mode_name.capitalize()} stopped by user")
         return 0
     except Exception as e:
-        print(f"Error running cluster manager: {str(e)}")
+        print(f"Error running {mode_name}: {str(e)}")
         import traceback
 
         traceback.print_exc()

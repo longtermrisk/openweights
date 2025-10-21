@@ -27,8 +27,9 @@ load_dotenv()
 
 # Constants
 POLL_INTERVAL = 15
-IDLE_THRESHOLD = 300  # 5 minutes = 300 seconds
-UNRESPONSIVE_THRESHOLD = 120  # 2 minutes = 120 seconds
+IDLE_THRESHOLD = 300
+STARTUP_THRESHOLD = 600
+UNRESPONSIVE_THRESHOLD = 120
 MAX_WORKERS = 8
 # MAX_WORKERS = 20
 
@@ -39,13 +40,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
+def determine_gpu_type(required_vram, allowed_hardware=None):
     """Determine the best GPU type and count for the required VRAM.
 
     Args:
         required_vram: Required VRAM in GB
         allowed_hardware: List of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
-        choice: Random seed for hardware selection
 
     Returns:
         Tuple of (gpu_type, count)
@@ -63,15 +63,14 @@ def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
         if required_vram <= vram:
             # We add a None option to sometimes try out larger GPUs
             # We do this because sometimes the smallest available GPU is actually not available on runpod, so we need to try others occasionally
-            if choice is None:
-                choice = random.choice(HARDWARE_CONFIG[vram] + [None])
-            else:
-                choice = HARDWARE_CONFIG[vram][choice % len(HARDWARE_CONFIG[vram])]
+            options = HARDWARE_CONFIG[vram]
+            if vram != vram_options[-1]:
+                options = options + options + [None]
+            choice = random.choice(options)
             if choice is None:
                 continue
             count, gpu = choice.split("x ")
             return gpu.strip(), int(count)
-
     raise ValueError(
         f"No suitable GPU configuration found for VRAM requirement {required_vram}"
     )
@@ -198,11 +197,11 @@ class OrganizationManager:
             # Skip if the worker is not a pod
             if not worker.get("pod_id"):
                 continue
-            # If the worker was started less than 5 minutes ago, skip it
+            # If the worker was started less than STARTUP_THRESHOLD minutes ago, skip it
             worker_created_at = datetime.fromisoformat(
                 worker["created_at"].replace("Z", "+00:00")
             ).timestamp()
-            if current_time - worker_created_at < IDLE_THRESHOLD:
+            if current_time - worker_created_at < STARTUP_THRESHOLD:
                 continue
 
             # Find the latest run associated with the worker

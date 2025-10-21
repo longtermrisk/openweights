@@ -30,13 +30,9 @@ echo "[$(date)] Starting HTTP log server on port 10101"
 mkdir logs
 python3 openweights/worker/services/log_server.py &
 
-# Start TTL monitoring service unless OW_CMD=cluster
-if [ "$OW_CMD" != "cluster" ]; then
-    echo "[$(date)] Starting TTL monitoring service"
-    python3 openweights/worker/services/ttl_monitor.py &
-else
-    echo "[$(date)] Skipping TTL monitoring service due to OW_CMD=cluster"
-fi
+# Start TTL monitoring service
+echo "[$(date)] Starting TTL monitoring service"
+python3 openweights/worker/services/ttl_monitor.py &
 
 echo "[$(date)] All services started"
 
@@ -45,11 +41,6 @@ if [ "$OW_DEV" = "true" ]; then
     echo "[$(date)] Starting in development mode"
     exec tail -f /dev/null
 else
-    if [ "$OW_CMD" = "cluster" ]; then
-        echo "[$(date)] Starting main application (cluster mode)"
-        exec ow cluster > >(tee logs/main) 2> >(tee -a logs/main >&2)
-    else
-        echo "[$(date)] Starting worker process"
-        exec ow worker > >(tee logs/main) 2> >(tee -a logs/main >&2)
-    fi
+    echo "[$(date)] Starting worker process"
+    exec ow worker > >(tee logs/main) 2> >(tee -a logs/main >&2)
 fi

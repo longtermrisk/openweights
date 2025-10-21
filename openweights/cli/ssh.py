@@ -1,6 +1,7 @@
 """SSH command implementation."""
 
 import os
+import shlex
 import sys
 from typing import List, Optional, Tuple
 
@@ -10,6 +11,7 @@ from openweights.cli.common import (
     bootstrap_remote,
     load_env_file,
     open_interactive_shell,
+    ssh_exec,
     wait_for_ssh,
 )
 
@@ -34,6 +36,16 @@ def parse_mounts(
 
 def add_ssh_parser(parser):
     """Add arguments for the ssh command."""
+    parser.add_argument(
+        "command",
+        nargs="*",
+        help="Command to execute on the remote machine (non-interactive mode)",
+    )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Start interactive session with live file sync (default behavior if no command given)",
+    )
     parser.add_argument(
         "--mount",
         action="append",
@@ -92,14 +104,48 @@ def handle_ssh(args) -> int:
         image=args.image, gpu=args.gpu, count=args.count, env=provider_env
     )
     ssh = start_res.ssh
-    print(f"[ow] SSH: {ssh.user}@{ssh.host}:{ssh.port} using key {ssh.key_path}")
 
     print("[ow] Waiting for sshd to become ready...")
     wait_for_ssh(ssh)
     print(f"[ow] SSH ready: {ssh.user}@{ssh.host}:{ssh.port}")
 
-    mounts = parse_mounts(args.mount, args.remote_cwd)
+    # Determine mode: command execution, connection string only, or interactive with sync
+    has_command = bool(args.command)
+    sync_mode = args.sync
 
+    # Mode 1: Non-interactive command execution (ow ssh cmd)
+    if has_command and not sync_mode:
+        print(f"[ow] Executing command: {' '.join(args.command)}")
+        mounts = parse_mounts(args.mount, args.remote_cwd)
+        do_editable = not args.no_editable_install
+        bootstrap_remote(ssh, remote_cwd=mounts[0][1], do_editable_install=do_editable)
+
+        # Execute the command in the remote working directory
+        cmd_str = " ".join(args.command)
+        remote_cmd = f"bash -lc 'cd {shlex.quote(mounts[0][1])} && {cmd_str}'"
+        exit_code = ssh_exec(ssh, remote_cmd)
+
+        if not args.no_terminate_prompt:
+            ans = input("Terminate the machine? [y/N] ").strip().lower()
+            if ans in ("y", "yes"):
+                print("[ow] Terminating machine...")
+                start_res.terminate()
+            else:
+                print("[ow] Leaving machine running.")
+
+        return exit_code
+
+    # Mode 2: Just print connection string (ow ssh)
+    if not has_command and not sync_mode:
+        print(f"\n[ow] SSH connection string:")
+        print(f"ssh -p {ssh.port} -i {ssh.key_path} {ssh.user}@{ssh.host}")
+        print(
+            f"\n[ow] Leaving machine running. Use the connection string above to connect."
+        )
+        return 0
+
+    # Mode 3: Interactive with sync (ow ssh --sync or default behavior when command given with --sync)
+    mounts = parse_mounts(args.mount, args.remote_cwd)
     do_editable = not args.no_editable_install
     bootstrap_remote(ssh, remote_cwd=mounts[0][1], do_editable_install=do_editable)
 

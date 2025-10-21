@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+USER root
+
+WORKDIR /openweights
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY README.md .
+COPY pyproject.toml .
+COPY openweights openweights
+
+# Install Python dependencies (without worker extras)
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install -e .
+
+# Copy entrypoint script
+COPY entrypoint.cluster.sh /openweights/entrypoint.cluster.sh
+RUN chmod +x /openweights/entrypoint.cluster.sh
+
+# Expose ports
+# 8124: Dashboard backend
+EXPOSE 8124
+
+ENTRYPOINT ["/openweights/entrypoint.cluster.sh"]

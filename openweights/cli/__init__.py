@@ -90,6 +90,14 @@ def main():
     serve_parser = sub.add_parser("serve", help="Start the dashboard backend server.")
     add_serve_parser(serve_parser)
 
+    # deploy command
+    from openweights.cli.deploy import add_deploy_parser, handle_deploy
+
+    deploy_parser = sub.add_parser(
+        "deploy", help="Deploy a cluster instance on RunPod."
+    )
+    add_deploy_parser(deploy_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -114,6 +122,8 @@ def main():
         sys.exit(handle_fetch(args))
     elif args.cmd == "serve":
         sys.exit(handle_serve(args))
+    elif args.cmd == "deploy":
+        sys.exit(handle_deploy(args))
     else:
         ap.print_help()
         sys.exit(1)

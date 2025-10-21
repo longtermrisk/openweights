@@ -32,8 +32,9 @@ COPY openweights openweights
 COPY entrypoint.sh .
 RUN python3 -m pip install -e .
 
-# Create a symbolic link from python3 to python
-RUN ln -s /usr/bin/python3 /usr/bin/python
+# Add conda to PATH for interactive SSH sessions
+RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
+    echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.profile
 
 EXPOSE 22
 EXPOSE 8000
