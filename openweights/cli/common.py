@@ -169,13 +169,23 @@ class UnisonSyncer:
             f"[ow] Initial sync (bidirectional via Unison): {self.label} <-> {self.remote_dir}"
         )
         self._initial_sync()
-        watch_cmd = self._unison_base() + ["-repeat", "watch"]
+        # Use polling interval instead of watch mode for more reliable syncing
+        # -repeat 2 means check every 2 seconds
+        watch_cmd = self._unison_base() + ["-repeat", "2"]
+
+        # Create a log file for debugging
+        log_file = os.path.join(self.local_dir, ".ow_sync", f"unison_{self.label}.log")
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+        # Keep the log file open for the lifetime of the process
+        self._log_file = open(log_file, "w")
         self._proc = subprocess.Popen(
             watch_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=self._log_file,
+            stderr=subprocess.STDOUT,
         )
         print(f"[ow] Watching (bi-dir): {self.local_dir} (label: {self.label})")
+        print(f"[ow] Unison logs: {log_file}")
 
     def stop(self):
         if self._proc and self._proc.poll() is None:
@@ -187,6 +197,12 @@ class UnisonSyncer:
                     self._proc.kill()
                 except Exception:
                     pass
+        # Close the log file if it exists
+        if hasattr(self, "_log_file") and self._log_file:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
 
 
 # -------- Remote bootstrap & shell glue --------------------------------------
@@ -329,16 +345,27 @@ def wait_for_ssh(ssh: SSHSpec, deadline_s: int = 180):
         time.sleep(2)
 
 
-def bootstrap_remote(ssh: SSHSpec, remote_cwd: str, do_editable_install: bool):
+def bootstrap_remote(
+    ssh: SSHSpec,
+    remote_cwd: str,
+    do_editable_install: bool,
+    additional_dirs: List[str] = None,
+):
     """Bootstrap the remote machine with necessary setup."""
     scp_text(ssh, REMOTE_INIT, "/root/.ow_sync/remote_init.sh")
     rc = ssh_exec(ssh, "bash ~/.ow_sync/remote_init.sh")
     if rc != 0:
         sys.exit(rc)
 
-    rc = ssh_exec(ssh, f"mkdir -p {shlex.quote(remote_cwd)}")
-    if rc != 0:
-        sys.exit(rc)
+    # Create remote_cwd and any additional mount directories
+    dirs_to_create = [remote_cwd]
+    if additional_dirs:
+        dirs_to_create.extend(additional_dirs)
+
+    for dir_path in dirs_to_create:
+        rc = ssh_exec(ssh, f"mkdir -p {shlex.quote(dir_path)}")
+        if rc != 0:
+            sys.exit(rc)
 
     if do_editable_install:
         check_cmd = f"bash -lc 'cd {shlex.quote(remote_cwd)} && if [ -f pyproject.toml ]; then python3 -m pip install -e .; else echo \"[ow] no pyproject.toml\"; fi'"
