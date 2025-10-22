@@ -46,7 +46,7 @@ class FineTuning(Jobs):
         )
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
             job_id=job_id,
-            org_id=self.client.hf_org,
+            org_id=self._ow.hf_org,
             model_name=model_name,
             **str_params,
             **model_naming_extra_parameters,
@@ -91,7 +91,6 @@ class LogProb(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-unsloth-v2"
 
     @property
     def id_predix(self):
@@ -103,7 +102,7 @@ class LogProb(Jobs):
     ) -> Dict[str, Any]:
         """Create a logprob evaluation job"""
         if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
+            requires_vram_gb = 36
 
         params = LogProbJobModel(**params).model_dump()
 

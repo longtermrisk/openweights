@@ -97,7 +97,7 @@ class API(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "script": script,
-            "docker_image": "nielsrolf/ow-default",
+            "docker_image": self.base_image,
         }
         return self.get_or_create_or_reset(data)
 
@@ -131,7 +131,7 @@ class API(Jobs):
             kv_cache_dtype=kv_cache_dtype,
             allowed_hardware=allowed_hardware,
         )
-        return TemporaryApi(self.client, job["id"])
+        return TemporaryApi(self._ow, job["id"])
 
     def multi_deploy(
         self,

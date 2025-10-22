@@ -6,11 +6,28 @@ An openai-like sdk with the flexibility of working on a local GPU: finetune, inf
 
 ## Installation
 Run `pip install openweights` or install from source via `pip install -e .`
-Then add your `$OPENWEIGHTS_API_KEY` to the `.env`. You can create one via the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
 
 ---
 
 ## Quickstart
+
+1. **Create an API key**
+You can create one via the `ow signup` or using the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
+
+2. **Start the cluster manager** (skip this if you got an API key for a managed cluster)
+The cluster manager is the service that monitors the job queue and starts runpod workers. You have different options to start the cluster
+```
+ow cluster --env-file path/to/env   # Run locally
+ow deploy --env-file path/to/env    # Run on a runpod cpu instance
+
+# Or managed, if you trust us with your API keys (usually a bad idea, but okay if you know us personally)
+ow env import path/to/env
+ow manage start
+```
+In all cases, the env file needs at least all envs defined in [`.env.worker.example`](.env.worker.example).
+
+3. Submit a job
+
 ```python
 from openweights import OpenWeights
 
@@ -118,19 +135,42 @@ job = ow.inspect_ai.create(
 )
 
 if job.status == 'completed':
-    job.download(f"{args.local_save_dir}")
+    job.download('output')
 ```
 
 ---
 
+## CLI
+Use `ow {cmd} --help` for more help on the available commands:
+```
+❯ ow --help
+usage: ow [-h] {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage} ...
+
+OpenWeights CLI for remote GPU operations
+
+positional arguments:
+  {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage}
+    ssh                 Start or attach to a remote shell with live file sync.
+    exec                Execute a command on a remote GPU with file sync.
+    signup              Create a new user, organization, and API key.
+    cluster             Run the cluster manager locally with your own infrastructure.
+    worker              Run a worker to execute jobs from the queue.
+    token               Manage API tokens for organizations.
+    ls                  List job IDs.
+    cancel              Cancel jobs by ID.
+    logs                Display logs for a job.
+    fetch               Fetch file content by ID.
+    serve               Start the dashboard backend server.
+    deploy              Deploy a cluster instance on RunPod.
+    env                 Manage organization secrets (environment variables).
+    manage              Control managed cluster infrastructure.
+
+options:
+  -h, --help            show this help message and exit
+```
+For developing custom jobs, `ow ssh` is great - it starts a pod, connects via ssh, and live-syncs the local CWD into the remote. This allows editing finetuning code locally and testing it immediately.
 
 ## General notes
 
 ### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
-
-### Running a dev pod
-Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
-```sh
-python openweights/cluster/start_runpod.py A6000 finetuning --dev_mode=true
-```

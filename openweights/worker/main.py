@@ -187,7 +187,6 @@ class Worker:
         while not self.shutdown_flag:
             try:
                 # Update ping timestamp
-                print("ping")
                 result = self._update_worker_ping()
 
                 # Check if worker status is 'shutdown'

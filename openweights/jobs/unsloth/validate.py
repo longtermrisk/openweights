@@ -144,6 +144,14 @@ class TrainingConfig(BaseModel):
 
         return values
 
+    @model_validator(mode="before")
+    def not_logprobs_and_4bit(cls, values):
+        """For some reason, logprob tracking does not work with 4bit models"""
+        load_in_4bit = values.get("load_in_4bit") or "4bit" in values.get("model")
+        if load_in_4bit and values.get("logp_callback_datasets"):
+            raise ValueError(f"Logprob tracking does not work for 4bit models")
+        return values
+
     @field_validator("finetuned_model_id")
     def validate_finetuned_model_id(cls, v):
         if len(v.split("/")) != 2:

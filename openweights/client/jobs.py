@@ -47,7 +47,7 @@ class Job:
 
     @property
     def runs(self):
-        return self._manager.client.runs.list(job_id=self.id)
+        return self._manager._ow.runs.list(job_id=self.id)
 
     def download(self, target_dir: str, only_last_run: bool = True):
         if only_last_run:
@@ -58,8 +58,6 @@ class Job:
 
     def refresh(self):
         """Refresh the job status and details"""
-        if self._manager is None:
-            breakpoint()
         return self._update(self._manager.retrieve(self.id))
 
 
@@ -220,6 +218,17 @@ class Jobs:
                 raise
         job = result.data
 
+        # Check if any of the key fields have changed and need updating
+        fields_to_sync = [
+            "allowed_hardware",
+            "requires_vram_gb",
+            "docker_image",
+            "script",
+        ]
+        needs_update = any(
+            data.get(field) != job.get(field) for field in fields_to_sync
+        )
+
         if job["status"] in ["failed", "canceled"]:
             # Reset job to pending
             data["status"] = "pending"
@@ -231,6 +240,18 @@ class Jobs:
             )
             return Job(**result.data[0], _manager=self)
         elif job["status"] in ["pending", "in_progress", "completed"]:
+            # Update fields if they've changed
+            if needs_update:
+                update_data = {
+                    field: data[field] for field in fields_to_sync if field in data
+                }
+                result = (
+                    self._ow._supabase.table("jobs")
+                    .update(update_data)
+                    .eq("id", data["id"])
+                    .execute()
+                )
+                return Job(**result.data[0], _manager=self)
             return Job(**job, _manager=self)
         else:
             raise ValueError(f"Invalid job status: {job['status']}")
@@ -239,8 +260,8 @@ class Jobs:
     def find(self, **params) -> List[Dict[str, Any]]:
         """Find jobs by their JSON values in job.params
         Example:
-            jobs = client.jobs.find(training_file='result:file-abc123')
-            jobs = client.jobs.find(meta={'group': 'hparams'})
+            jobs = ow.jobs.find(training_file='result:file-abc123')
+            jobs = ow.jobs.find(meta={'group': 'hparams'})
         """
         query = self._ow._supabase.table("jobs").select("*")
 
