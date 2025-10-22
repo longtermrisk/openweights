@@ -64,6 +64,11 @@ class ManagerSupervisor:
 
         return {secret["name"]: secret["value"] for secret in result.data}
 
+    def is_org_managed(self, secrets: Dict[str, str]) -> bool:
+        """Check if organization has OW_MANAGED=true."""
+        managed = secrets.get("OW_MANAGED", "false").lower()
+        return managed in ("true", "1", "yes")
+
     def validate_org_secrets(self, secrets: Dict[str, str]) -> bool:
         """Validate that all required secrets are present."""
         required_secrets = [
@@ -192,10 +197,31 @@ class ManagerSupervisor:
                 for org in orgs.data:
                     org_id = org["id"]
 
-                    # Check if we need to start a new manager
-                    if org_id not in self.processes or not self.check_process(org_id, self.processes[org_id]):
-                        try:
-                            secrets = self.get_org_secrets(org_id)
+                    try:
+                        secrets = self.get_org_secrets(org_id)
+
+                        # Check if organization is managed
+                        if not self.is_org_managed(secrets):
+                            # If manager is running but org is no longer managed, stop it
+                            if org_id in self.processes:
+                                logger.info(
+                                    f"Organization {org_id} has OW_MANAGED=false, stopping manager"
+                                )
+                                process = self.processes.pop(org_id)
+                                process.terminate()
+                                try:
+                                    process.wait(timeout=5)
+                                except subprocess.TimeoutExpired:
+                                    logger.warning(
+                                        f"Had to force kill manager for organization {org_id}"
+                                    )
+                                    process.kill()
+                            continue  # Skip to next organization
+
+                        # Check if we need to start a new manager
+                        if org_id not in self.processes or not self.check_process(
+                            org_id, self.processes[org_id]
+                        ):
                             if self.validate_org_secrets(secrets):
                                 self.processes[org_id] = self.start_org_manager(
                                     org_id, secrets
@@ -204,10 +230,8 @@ class ManagerSupervisor:
                                 logger.warning(
                                     f"Organization {org_id} missing required secrets"
                                 )
-                        except Exception as e:
-                            logger.error(
-                                f"Failed to start manager for organization {org_id}: {e}"
-                            )
+                    except Exception as e:
+                        logger.error(f"Failed to manage organization {org_id}: {e}")
 
                 # Clean up managers for organizations that no longer exist
                 for org_id in list(self.processes.keys()):
@@ -228,7 +252,7 @@ class ManagerSupervisor:
             except Exception as e:
                 logger.error(f"Error in supervisor loop: {e}")
 
-            time.sleep(300)  # Check every 5 minutes
+            time.sleep(5)  # Check every 5 minutes
 
 
 def main():

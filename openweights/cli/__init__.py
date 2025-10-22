@@ -98,6 +98,22 @@ def main():
     )
     add_deploy_parser(deploy_parser)
 
+    # env command
+    from openweights.cli.env import add_env_parser, handle_env
+
+    env_parser = sub.add_parser(
+        "env", help="Manage organization secrets (environment variables)."
+    )
+    add_env_parser(env_parser)
+
+    # manage command
+    from openweights.cli.manage import add_manage_parser, handle_manage
+
+    manage_parser = sub.add_parser(
+        "manage", help="Control managed cluster infrastructure."
+    )
+    add_manage_parser(manage_parser)
+
     args = ap.parse_args()
 
     if args.cmd == "ssh":
@@ -124,6 +140,10 @@ def main():
         sys.exit(handle_serve(args))
     elif args.cmd == "deploy":
         sys.exit(handle_deploy(args))
+    elif args.cmd == "env":
+        sys.exit(handle_env(args))
+    elif args.cmd == "manage":
+        sys.exit(handle_manage(args))
     else:
         ap.print_help()
         sys.exit(1)

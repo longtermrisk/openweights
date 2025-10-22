@@ -69,22 +69,16 @@ class Jobs:
     base_image: str = "nielsrolf/ow-default:v0.7"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
-    def __init__(self, client):
-        """Initialize the custom job.
-        `client` should be an instance of `openweights.OpenWeights`."""
-        self.client = client
+    def __init__(self, ow_instance):
+        self._ow = ow_instance
 
     @property
     def id_predix(self):
         return self.__class__.__name__.lower()
 
     @property
-    def _supabase(self):
-        return self.client._supabase
-
-    @property
     def _org_id(self):
-        return self.client.organization_id
+        return self._ow.organization_id
 
     def get_entrypoint(self, validated_params: BaseModel) -> str:
         """Get the entrypoint command for the job.
@@ -108,9 +102,7 @@ class Jobs:
             # Handle both files and directories
             if os.path.isfile(source_path):
                 with open(source_path, "rb") as f:
-                    file_response = self.client.files.create(
-                        f, purpose="custom_job_file"
-                    )
+                    file_response = self._ow.files.create(f, purpose="custom_job_file")
                 uploaded_files[target_path] = file_response["id"]
             elif os.path.isdir(source_path):
                 # For directories, upload each file maintaining the structure
@@ -121,7 +113,7 @@ class Jobs:
                         target_file_path = os.path.join(target_path, rel_path)
 
                         with open(full_path, "rb") as f:
-                            file_response = self.client.files.create(
+                            file_response = self._ow.files.create(
                                 f, purpose="custom_job_file"
                             )
                         uploaded_files[target_file_path] = file_response["id"]
@@ -134,7 +126,7 @@ class Jobs:
     def list(self, limit: int = 10) -> List[Dict[str, Any]]:
         """List jobs"""
         result = (
-            self._supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .select("*")
             .order("updated_at", desc=True)
             .limit(limit)
@@ -146,7 +138,11 @@ class Jobs:
     def retrieve(self, job_id: str) -> Dict[str, Any]:
         """Get job details"""
         result = (
-            self._supabase.table("jobs").select("*").eq("id", job_id).single().execute()
+            self._ow._supabase.table("jobs")
+            .select("*")
+            .eq("id", job_id)
+            .single()
+            .execute()
         )
         return Job(**result.data, _manager=self)
 
@@ -154,7 +150,7 @@ class Jobs:
     def cancel(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job"""
         result = (
-            self._supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .update({"status": "canceled"})
             .eq("id", job_id)
             .execute()
@@ -165,7 +161,7 @@ class Jobs:
     def restart(self, job_id: str) -> Dict[str, Any]:
         """Restart a job"""
         result = (
-            self._supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .update({"status": "pending"})
             .eq("id", job_id)
             .execute()
@@ -210,7 +206,7 @@ class Jobs:
 
         try:
             result = (
-                self._supabase.table("jobs")
+                self._ow._supabase.table("jobs")
                 .select("*")
                 .eq("id", data["id"])
                 .single()
@@ -218,7 +214,7 @@ class Jobs:
             )
         except APIError as e:
             if "contains 0 rows" in str(e):
-                result = self._supabase.table("jobs").insert(data).execute()
+                result = self._ow._supabase.table("jobs").insert(data).execute()
                 return Job(**result.data[0], _manager=self)
             else:
                 raise
@@ -228,7 +224,10 @@ class Jobs:
             # Reset job to pending
             data["status"] = "pending"
             result = (
-                self._supabase.table("jobs").update(data).eq("id", data["id"]).execute()
+                self._ow._supabase.table("jobs")
+                .update(data)
+                .eq("id", data["id"])
+                .execute()
             )
             return Job(**result.data[0], _manager=self)
         elif job["status"] in ["pending", "in_progress", "completed"]:
@@ -243,7 +242,7 @@ class Jobs:
             jobs = client.jobs.find(training_file='result:file-abc123')
             jobs = client.jobs.find(meta={'group': 'hparams'})
         """
-        query = self._supabase.table("jobs").select("*")
+        query = self._ow._supabase.table("jobs").select("*")
 
         for key, value in params.items():
             if isinstance(value, dict):

@@ -20,34 +20,7 @@ def _is_transient_http_status(status: int) -> bool:
 
 
 def _is_auth_error(exc: BaseException) -> bool:
-    """
-    Returns True for errors that indicate JWT expiration or auth issues:
-      - HTTPStatusError with 401 (Unauthorized)
-      - postgrest.APIError with 401
-    """
-    # httpx raised because .raise_for_status() was called
-    if isinstance(exc, httpx.HTTPStatusError):
-        try:
-            return exc.response.status_code == 401
-        except Exception:
-            return False
-
-    # postgrest API errors (supabase-py)
-    if postgrest is not None and isinstance(exc, postgrest.APIError):
-        try:
-            code = getattr(exc, "code", None)
-            # code may be a string; try to coerce
-            code_int = int(code) if code is not None else None
-            return code_int == 401
-        except Exception:
-            return False
-
-    # Sometimes libraries wrap the real error; walk the causal chain
-    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
-    if cause and cause is not exc:
-        return _is_auth_error(cause)
-
-    return False
+    return "JWT expired" in str(exc)
 
 
 def _is_transient(exc: BaseException) -> bool:
@@ -184,7 +157,7 @@ def supabase_retry(
     """
     Retries ONLY transient Supabase/http errors (see _is_transient) with exponential backoff + full jitter.
     Also handles JWT expiration by automatically refreshing tokens on 401 errors if an OpenWeights instance
-    is available (via _ow_instance attribute on the method's self argument or _supabase client).
+    is available (via _ow attribute on the method's self argument or _supabase client).
 
     If `return_on_exhaustion` is not `_RAISE`, return that value after retry budget is exhausted for a
     transient error. Non-transient errors still raise immediately.
@@ -212,12 +185,9 @@ def supabase_retry(
             if args and hasattr(args[0], "_refresh_jwt"):
                 # Method call on OpenWeights instance
                 ow_instance = args[0]
-            elif args and hasattr(args[0], "_ow_instance"):
+            elif args and hasattr(args[0], "_ow"):
                 # Method call on Files/Events/etc that have OpenWeights reference
-                ow_instance = args[0]._ow_instance
-            elif args and hasattr(args[0], "client"):
-                # Method call on Jobs/Runs/Run that have .client attribute
-                ow_instance = args[0].client
+                ow_instance = args[0]._ow
 
             # quick path: try once
             start = time.monotonic()

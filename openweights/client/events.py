@@ -5,15 +5,14 @@ from openweights.client.decorators import supabase_retry
 
 class Events:
     def __init__(self, ow_instance: "OpenWeights"):
-        self._ow_instance = ow_instance
-        self._supabase = ow_instance._supabase
+        self._ow = ow_instance
 
     @supabase_retry()
     def list(self, job_id: Optional[str] = None, run_id: Optional[str] = None):
         """List events by job_id or run_id, sorted by created_at in ascending order"""
         if run_id:
             query = (
-                self._supabase.table("events")
+                self._ow._supabase.table("events")
                 .select("*")
                 .eq("run_id", run_id)
                 .order("created_at", desc=False)
@@ -21,12 +20,15 @@ class Events:
         elif job_id:
             # First get all runs for this job
             runs_result = (
-                self._supabase.table("runs").select("id").eq("job_id", job_id).execute()
+                self._ow._supabase.table("runs")
+                .select("id")
+                .eq("job_id", job_id)
+                .execute()
             )
             run_ids = [run["id"] for run in runs_result.data]
             # Then get all events for these runs
             query = (
-                self._supabase.table("events")
+                self._ow._supabase.table("events")
                 .select("*")
                 .in_("run_id", run_ids)
                 .order("created_at", desc=False)

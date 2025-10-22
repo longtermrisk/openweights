@@ -75,8 +75,7 @@ def validate_preference_dataset(content):
 
 class Files:
     def __init__(self, ow_instance: "OpenWeights", organization_id: str):
-        self._ow_instance = ow_instance
-        self._supabase = ow_instance._supabase
+        self._ow = ow_instance
         self._org_id = organization_id
 
     def _calculate_file_hash(self, stream: BinaryIO) -> str:
@@ -95,7 +94,7 @@ class Files:
     def _get_storage_path(self, file_id: str) -> str:
         """Get the organization-specific storage path for a file"""
         try:
-            result = self._supabase.rpc(
+            result = self._ow._supabase.rpc(
                 "get_organization_storage_path",
                 {"org_id": self._org_id, "filename": file_id},
             ).execute()
@@ -138,7 +137,7 @@ class Files:
         # If the file already exists, return the existing file
         try:
             existing_file = (
-                self._supabase.table("files")
+                self._ow._supabase.table("files")
                 .select("*")
                 .eq("id", file_id)
                 .single()
@@ -168,7 +167,7 @@ class Files:
             tmp.flush()
             tmp_path = tmp.name
         try:
-            self._supabase.storage.from_("files").upload(
+            self._ow._supabase.storage.from_("files").upload(
                 path=storage_path, file=tmp_path, file_options={"upsert": "true"}
             )
         finally:
@@ -185,7 +184,7 @@ class Files:
             "organization_id": self._org_id,
         }
 
-        result = self._supabase.table("files").insert(data_row).execute()
+        result = self._ow._supabase.table("files").insert(data_row).execute()
 
         return {
             "id": file_id,
@@ -200,7 +199,7 @@ class Files:
     def content(self, file_id: str) -> bytes:
         """Get file content"""
         storage_path = self._get_storage_path(file_id)
-        return self._supabase.storage.from_("files").download(storage_path)
+        return self._ow._supabase.storage.from_("files").download(storage_path)
 
     def validate(self, file: BinaryIO, purpose: str) -> bool:
         """Validate file content. The passed stream will be consumed."""
@@ -217,7 +216,7 @@ class Files:
     def get_by_id(self, file_id: str) -> Dict[str, Any]:
         """Get file details by ID"""
         return (
-            self._supabase.table("files")
+            self._ow._supabase.table("files")
             .select("*")
             .eq("id", file_id)
             .single()

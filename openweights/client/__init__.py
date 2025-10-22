@@ -46,7 +46,6 @@ def exchange_api_token_for_jwt(
 
     if not response.data:
         raise ValueError("Failed to exchange API token for JWT")
-
     return response.data
 
 
@@ -209,13 +208,10 @@ class OpenWeights:
         if not self.auth_token.startswith("ow_"):
             raise ValueError("Cannot refresh JWT: auth_token is not an ow_ API token")
 
-        # Exchange the API token for a new JWT
-        jwt_token = exchange_api_token_for_jwt(
+        # Get new client
+        self._supabase = create_authenticated_client(
             self.supabase_url, self.supabase_key, self.auth_token
         )
-
-        # Update the Authorization header in the supabase client
-        self._supabase.options.headers["Authorization"] = f"Bearer {jwt_token}"
 
     @property
     def run(self):
