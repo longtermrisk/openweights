@@ -22,6 +22,12 @@ def add_env_parser(parser):
         type=str,
         help="Path to .env file to import",
     )
+    import_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
 
     # show command
     subparsers.add_parser(
@@ -82,10 +88,12 @@ def handle_env_import(args) -> int:
         )
         print("=" * 80)
 
-        response = input("\nType 'yes' to confirm upload: ")
-        if response.lower() != "yes":
-            print("Import canceled.")
-            return 0
+        # Skip confirmation if -y flag is provided
+        if not args.yes:
+            response = input("\nType 'yes' to confirm upload: ")
+            if response.lower() != "yes":
+                print("Import canceled.")
+                return 0
 
         # Get OpenWeights client
         ow = get_openweights_client()

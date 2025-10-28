@@ -7,6 +7,7 @@ build-docker-in-runpod
 .env.prod
 .env.ow-dev
 .env.ow-migrations
+.env.*
 openweights/cluster/load.sh
 openweights/dashboard/backend/.env.ow-dev
 openweights/dashboard/backend/.env.ow-migrations

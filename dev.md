@@ -143,9 +143,10 @@ OpenWeights follows a queue-based architecture with three main components:
 1. **Sign Up**: Users create accounts via Supabase Auth in the dashboard
 2. **Organization Creation**: Users create organizations in the dashboard UI
 3. **API Key Generation**:
-   - Service role keys are used as API keys (JWT tokens)
-   - Created via dashboard's "Tokens" tab for each organization
-   - Format: JWT token with organization context
+   - Users create API tokens via the CLI: `ow token create --name "my-token"`
+   - API tokens are prefixed with `ow_` and stored securely in the `api_tokens` table
+   - Tokens can optionally have expiration dates and can be revoked
+   - Format: `ow_` followed by a randomly generated secure token
 
 ### Authorization Mechanism
 
@@ -155,9 +156,11 @@ ow = OpenWeights(auth_token=os.getenv("OPENWEIGHTS_API_KEY"))
 ```
 
 The client:
-- Accepts a service role JWT as the API key
-- Passes this token in the `Authorization` header to Supabase
-- Extracts organization ID from token using `get_organization_from_token()` RPC
+- Accepts an OpenWeights API token (starting with `ow_`)
+- Automatically exchanges the API token for a short-lived JWT using `exchange_api_token_for_jwt()` RPC
+- Passes the JWT in the `Authorization` header to Supabase
+- Extracts organization ID from the JWT using `get_organization_from_token()` RPC
+- Supports backwards compatibility: if the token is already a JWT (doesn't start with `ow_`), it uses it directly
 
 **Database-Side:**
 - Supabase Row Level Security (RLS) policies automatically filter queries

@@ -9,7 +9,6 @@ job = ow.fine_tuning.create(
     model="unsloth/Llama-3.3-70B-Instruct",
     training_file=training_file,
     test_file=test_file,
-    load_in_4bit=True,
     max_seq_length=2047,
     loss="sft",
     epochs=1,

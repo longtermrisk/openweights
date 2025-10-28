@@ -8,22 +8,28 @@ The full worker image includes all GPU dependencies (PyTorch, Unsloth, vLLM) for
 ### Building and pushing worker images
 
 ```sh
+# Get the current version from the codebase
+VERSION=$(python -c "from openweights.client.jobs import Jobs; print(Jobs.base_image.split(':')[-1])")
+
 # Step 1: Build locally for ARM64 (on your Mac)
 docker buildx build \
   --platform linux/arm64 \
-  -t nielsrolf/ow-default:v0.7 \
+  -t nielsrolf/ow-default:$VERSION \
   --load .
 
 # Step 2: Build and push AMD64 to Docker Hub
 docker buildx build \
   --platform linux/amd64 \
-  -t nielsrolf/ow-default:v0.7 \
+  -t nielsrolf/ow-default:$VERSION \
   --push .
 ```
 
 ### Running worker image locally
 ```sh
-docker run --rm --env-file .env -ti nielsrolf/ow-default:v0.7 /bin/bash
+# Get the current version
+VERSION=$(python -c "from openweights.client.jobs import Jobs; print(Jobs.base_image.split(':')[-1])")
+
+docker run --rm --env-file .env -ti nielsrolf/ow-default:$VERSION /bin/bash
 ```
 
 ## 2. Cluster/Dashboard Image (`nielsrolf/ow-cluster`)
@@ -34,6 +40,9 @@ A lightweight image for running the cluster manager and/or dashboard backend. Do
 **Important**: Build the frontend first before building the Docker image:
 
 ```sh
+# Get the current version from the codebase
+VERSION=$(python -c "from openweights.client.jobs import Jobs; print(Jobs.base_image.split(':')[-1])")
+
 # Step 1: Build the frontend (run from repository root)
 cd openweights/dashboard/frontend
 npm install
@@ -44,14 +53,14 @@ cd ../../..
 docker buildx build \
   --platform linux/arm64 \
   -f Dockerfile.cluster \
-  -t nielsrolf/ow-cluster:v0.7 \
+  -t nielsrolf/ow-cluster:$VERSION \
   --load .
 
 # Step 3: Build and push AMD64 to Docker Hub
 docker buildx build \
   --platform linux/amd64 \
   -f Dockerfile.cluster \
-  -t nielsrolf/ow-cluster:v0.7 \
+  -t nielsrolf/ow-cluster:$VERSION \
   --push .
 ```
 
@@ -65,17 +74,20 @@ The cluster image supports three modes via the `OW_CMD` environment variable:
 - `both` (default): Run both cluster manager and dashboard backend
 
 ```sh
+# Get the current version
+VERSION=$(python -c "from openweights.client.jobs import Jobs; print(Jobs.base_image.split(':')[-1])")
+
 # Run cluster manager only
-docker run --rm --env-file .env -e OW_CMD=cluster -ti nielsrolf/ow-cluster:v0.7
+docker run --rm --env-file .env -e OW_CMD=cluster -ti nielsrolf/ow-cluster:$VERSION
 
 # Run dashboard backend only
-docker run --rm --env-file .env -e OW_CMD=serve -p 8124:8124 -ti nielsrolf/ow-cluster:v0.7
+docker run --rm --env-file .env -e OW_CMD=serve -p 8124:8124 -ti nielsrolf/ow-cluster:$VERSION
 
 # Run both (default)
-docker run --rm --env-file .env -p 8124:8124 -ti nielsrolf/ow-cluster:v0.7
+docker run --rm --env-file .env -p 8124:8124 -ti nielsrolf/ow-cluster:$VERSION
 
 # Interactive shell
-docker run --rm --env-file .env -ti nielsrolf/ow-cluster:v0.7 /bin/bash
+docker run --rm --env-file .env -ti nielsrolf/ow-cluster:$VERSION /bin/bash
 ```
 
 ### Dashboard environment variables

@@ -4,11 +4,28 @@ An openai-like sdk with the flexibility of working on a local GPU: finetune, inf
 
 ## Installation
 Run `pip install openweights` or install from source via `pip install -e .`
-Then add your `$OPENWEIGHTS_API_KEY` to the `.env`. You can create one via the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
 
 ---
 
 ## Quickstart
+
+1. **Create an API key**
+You can create one via the `ow signup` or using the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
+
+2. **Start the cluster manager** (skip this if you got an API key for a managed cluster)
+The cluster manager is the service that monitors the job queue and starts runpod workers. You have different options to start the cluster
+```
+ow cluster --env-file path/to/env   # Run locally
+ow deploy --env-file path/to/env    # Run on a runpod cpu instance
+
+# Or managed, if you trust us with your API keys (usually a bad idea, but okay if you know us personally)
+ow env import path/to/env
+ow manage start
+```
+In all cases, the env file needs at least all envs defined in [`.env.worker.example`](.env.worker.example).
+
+3. Submit a job
+
 ```python
 from openweights import OpenWeights
 
@@ -116,28 +133,75 @@ job = ow.inspect_ai.create(
 )
 
 if job.status == 'completed':
-    job.download(f"{args.local_save_dir}")
+    job.download('output')
 ```
 
 ---
 
+## CLI
+Use `ow {cmd} --help` for more help on the available commands:
+```
+❯ ow --help
+usage: ow [-h] {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage} ...
+
+OpenWeights CLI for remote GPU operations
+
+positional arguments:
+  {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage}
+    ssh                 Start or attach to a remote shell with live file sync.
+    exec                Execute a command on a remote GPU with file sync.
+    signup              Create a new user, organization, and API key.
+    cluster             Run the cluster manager locally with your own infrastructure.
+    worker              Run a worker to execute jobs from the queue.
+    token               Manage API tokens for organizations.
+    ls                  List job IDs.
+    cancel              Cancel jobs by ID.
+    logs                Display logs for a job.
+    fetch               Fetch file content by ID.
+    serve               Start the dashboard backend server.
+    deploy              Deploy a cluster instance on RunPod.
+    env                 Manage organization secrets (environment variables).
+    manage              Control managed cluster infrastructure.
+
+options:
+  -h, --help            show this help message and exit
+```
+For developing custom jobs, `ow ssh` is great - it starts a pod, connects via ssh, and live-syncs the local CWD into the remote. This allows editing finetuning code locally and testing it immediately.
 
 ## General notes
 
 ### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
-### Running a dev pod
-Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
-```sh
-python openweights/cluster/start_runpod.py A6000 finetuning --dev_mode=true
+---
+### Citation
+Originally created by Niels Warncke ([@nielsrolf](github.com/nielsrolf)).
+
+If you find this repo useful for your research and want to cite it, you can do so via:
 ```
+@misc{warncke_openweights_2025,
+  author       = {Niels Warncke},
+  title        = {OpenWeights},
+  howpublished = {\url{https://github.com/longtermrisk/openweights}},
+  note         = {Commit abcdefg • accessed DD Mon YYYY},
+  year         = {2025}
+}
+```
+<.env.worker.example>
+OPENWEIGHTS_API_KEY=...
+RUNPOD_API_KEY=...
+HF_USER=...
+HF_TOKEN=...
+HF_ORG=...
+
+</.env.worker.example>
 
 <cookbook>
 README.md
 api-deployment
 custom_job
 inference
+inspect_eval.py
 preference_learning
 sft
 <cookbook/README.md>
@@ -294,9 +358,6 @@ job = ow.fine_tuning.create(
     gradient_accumulation_steps=8,
     allowed_hardware=["1x H200"],
     merge_before_push=False,  # Push only the lora adapter
-    logp_callback_datasets={  # Track logprobs of tokens in the testfile to ensure that training works
-        "in-distribution": test_file
-    },
 )
 print(job)
 print(
@@ -426,6 +487,7 @@ def submit_job():
         r=32,
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
+        requires_vram_gb=16,
     )
     return job
 
@@ -571,7 +633,7 @@ from openweights import OpenWeights
 
 ow = OpenWeights()
 
-model = "unsloth/Qwen3-8B"
+model = "unsloth/Qwen3-4B"
 
 # async with ow.api.deploy(model) also works
 with ow.api.deploy(model):  # async with ow.api.deploy(model) also works
@@ -662,9 +724,13 @@ Jobs can log data via `ow.run.log({"foo": "bar"})`. Logs can be retrieved via `e
 import json
 import os
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from openweights import Jobs, OpenWeights, register
+
+# Load environment variables
+load_dotenv(override=True)
 
 ow = OpenWeights()
 
@@ -686,8 +752,6 @@ class AdditionJob(Jobs):
     # Define parameter validation using our Pydantic model
     params = AdditionParams
 
-    base_image = "nielsrolf/ow-debug"  # We have to use an ow worker image - you can build your own by using something similar to the existing Dockerfiles
-
     requires_vram_gb = 0
 
     def get_entrypoint(self, validated_params: AdditionParams) -> str:
@@ -700,7 +764,7 @@ class AdditionJob(Jobs):
 def main():
 
     # Submit the job with some parameters
-    result = ow.addition.create(a=5, b=3)
+    result = ow.addition.create(a=5, b=9)
     print(f"Created job: {result['id']}")
 
     # Optional: wait for job completion and print results
@@ -765,162 +829,408 @@ prompts.jsonl
 run_inference.py
 </cookbook/inference>
 
-# Development
-Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
-```sh
-python openweights/cluster/start_runpod.py A6000 finetuning --dev_mode=true
-```
+<github.com/nielsrolf>
+[missing file]
+</github.com/nielsrolf>
 
-## Architecture Overview
-
-### Core Components
-
-1. **Client Layer** (`openweights/client/`):
-   - `OpenWeights` class: Main client entry point with organization-based authentication
-   - `Jobs`: Base class for all job types with mounting, validation, and execution
-   - `Files`: File upload/download management with content hashing
-   - `Events`: Job monitoring and metrics collection
-   - `TemporaryApi`: Manages temporary API deployments with automatic timeout
-
-2. **Job System** (`openweights/jobs/`):
-   - Jobs are Python classes that inherit from `Jobs` base class
-   - Each job type registers itself using the `@register("name")` decorator
-   - Jobs define: mounted source files, Docker image, VRAM requirements, and entrypoint commands
-   - Built-in job types:
-     - `fine_tuning` (unsloth): SFT, DPO, ORPO fine-tuning with LoRA
-     - `inference`: Batch inference with OpenAI API compatibility
-     - `api` (vllm): Deploy models as OpenAI-compatible APIs
-     - `inspect_ai`: Run Inspect-AI evaluations
-     - `mmlu_pro`: MMLU-Pro benchmark evaluations
-
-3. **Cluster Management** (`openweights/cluster/`):
-   - `start_runpod.py`: Provisions RunPod instances
-   - `supervisor.py`: Manages job execution on workers
-   - `org_manager.py`: Organization-level resource management
-
-4. **Worker System** (`openweights/worker/`):
-   - Runs on RunPod instances to execute jobs
-   - Downloads mounted files and executes job scripts
-   - Reports progress and results back to the central system
-
-### Key Patterns
-
-- **Content-based IDs**: Job and file IDs are SHA256 hashes of their content, enabling automatic deduplication
-- **Modular Job System**: All job types follow the same pattern and can be easily extended or replaced
-- **Automatic VRAM Estimation**: Jobs can guess required VRAM based on model size and quantization
-- **LoRA Support**: First-class support for LoRA adapters in both training and inference
-- **OpenAI Compatibility**: Inference and API jobs provide OpenAI-compatible interfaces
-
-### Data Flow
-
-1. User creates job via client SDK
-2. Job parameters are validated and source files are uploaded
-3. Job is queued in the database with computed content hash as ID
-4. RunPod worker picks up the job and downloads mounted files
-5. Worker executes the job script with validated parameters
-6. Results are uploaded and job status is updated
-
-
-## Important Implementation Details
-
-- Job IDs are deterministic based on parameters and mounted files
-- Organization-based multi-tenancy with Supabase authentication
-- Automatic model deployment grouping for efficient resource usage
-- Built-in request caching (when seeds are provided) and rate limiting
-- Support for both sync and async client interfaces
-- Automatic timeout management for API deployments
-
-## File Organization
-
-- `openweights/`: Main package
-  - `client/`: Core client logic and API interfaces
-  - `jobs/`: Job implementations organized by type
-  - `cluster/`: RunPod and resource management
-  - `worker/`: Job execution runtime
-  - `dashboard/`: Web UI (React frontend + FastAPI backend)
-- `docs/`: Additional documentation
-- `example/`: Usage examples including custom job creation
-
-
-# TTL (Time To Live) Feature of `openweights/cluster/start_runpod.py`
-
-The TTL feature provides automatic pod termination to prevent runaway costs and ensure resource cleanup.
+# OpenWeights Architecture
 
 ## Overview
 
-- **Default TTL**: 24 hours for all pods
-- **Automatic termination**: Pods self-terminate when TTL expires
-- **Extensible**: TTL can be extended from within the pod
-- **Dev mode support**: TTL monitoring runs for both dev and worker instances
+OpenWeights is a Python SDK for running distributed compute jobs on managed RunPod GPU infrastructure. It provides a simple, OpenAI-like API with full flexibility for custom workloads including fine-tuning, inference, evaluations, and arbitrary Python scripts.
 
-## Usage
+**Key Features:**
+- Simple Python SDK with OpenAI-compatible interfaces
+- Full flexibility to define custom jobs with arbitrary Docker images and entrypoints
+- Automated management of RunPod GPU infrastructure
+- Multi-tenancy with organization-based isolation
+- Content-addressable job and file IDs for deduplication
 
-### Starting pods with custom TTL
+## Core Concepts
 
-```bash
-# Start dev instance with default 24-hour TTL
-python openweights/cluster/start_runpod.py A100 default --dev_mode=true
+### What is a Job?
 
-# Start dev instance with 2-hour TTL
-python openweights/cluster/start_runpod.py A100 default --dev_mode=true --ttl_hours=2
+A job is the fundamental unit of work in OpenWeights. It consists of three components:
 
-# Start worker with 12-hour TTL
-python openweights/cluster/start_runpod.py A100 finetuning --ttl_hours=12
+1. **Docker Image**: The container environment (e.g., `nielsrolf/ow-default`, custom images)
+2. **Mounted Files**: Files uploaded to Supabase storage and mounted into the container
+3. **Entrypoint**: The command/script to execute (e.g., `python train.py --model=llama`)
+
+Jobs can be:
+- **Built-in jobs**: Pre-configured templates for common tasks (fine-tuning with Unsloth, inference with vLLM, Inspect AI evaluations)
+- **Custom jobs**: User-defined jobs using the `@register` decorator and `Jobs` base class
+
+### Job Lifecycle States
+
+Jobs progress through the following states:
+- `pending`: Job is queued, waiting for a worker
+- `in_progress`: Job is currently executing on a worker
+- `completed`: Job finished successfully
+- `failed`: Job encountered an error
+- `canceled`: Job was manually canceled or timed out
+
+### Jobs, Runs, and Events
+
+**Jobs** are reusable templates that define what to execute:
+- Identified by content hash of their parameters (e.g., `unsloth-abc123def456`)
+- If you submit the same job twice, it uses the existing job (deduplication)
+- Contain: docker image, script/entrypoint, parameters, VRAM requirements, hardware constraints
+
+**Runs** are individual executions of a job:
+- Each job can have multiple runs (e.g., if restarted after failure)
+- Track execution status, assigned worker, and log file
+- Created when a worker picks up a job or when using `ow.run` context
+
+**Events** are structured logs/outputs during a run:
+- Store arbitrary JSON data (metrics, checkpoints, errors)
+- Can reference uploaded files (model checkpoints, outputs)
+- Used to track progress and collect results
+
+**Relationship:**
+```
+Job (1) ──< (many) Runs (1) ──< (many) Events
 ```
 
-### Managing TTL from within a pod
+## System Architecture
 
-Once inside a pod, use the TTL manager utility:
+OpenWeights follows a queue-based architecture with three main components:
 
-```bash
-# Check current TTL status
-python openweights/worker/services/ttl_manager.py --check
+### 1. Job Queue (Supabase)
 
-# Extend TTL by 5 more hours
-python openweights/worker/services/ttl_manager.py --extend 5
+**Database Tables:**
+- `jobs`: Job definitions and status
+- `runs`: Execution records linking jobs to workers
+- `events`: Structured logs and outputs from runs
+- `files`: File metadata (actual files stored in Supabase Storage)
+- `worker`: Worker registration and health tracking
+- `organizations`: Multi-tenant isolation
+- `organization_secrets`: API keys and credentials (HF_TOKEN, RUNPOD_API_KEY, etc.)
+- `service_account_tokens`: JWT tokens for API authentication
 
-# Set TTL to 10 hours from now
-python openweights/worker/services/ttl_manager.py --set 10
+**Key Features:**
+- Row Level Security (RLS) ensures organization isolation
+- Atomic job acquisition using PostgreSQL functions (`acquire_job`, `update_job_status_if_in_progress`)
+- Content-addressable IDs prevent duplicate jobs and files
+
+### 2. Cluster Manager
+
+**Architecture:**
+- **Supervisor** (`cluster/supervisor.py`): Top-level process that spawns one manager per organization
+- **Organization Manager** (`cluster/org_manager.py`): Manages GPU workers for a single organization
+
+**Responsibilities:**
+1. Monitor job queue for pending jobs
+2. Provision RunPod workers when jobs arrive
+3. Scale workers based on demand (up to MAX_WORKERS per org)
+4. Terminate idle workers (idle > 5 minutes)
+5. Clean up unresponsive workers (no ping > 2 minutes)
+6. Match jobs to hardware based on VRAM requirements and `allowed_hardware` constraints
+
+**Worker Provisioning:**
+- Determines GPU type based on job's `requires_vram_gb` and `allowed_hardware`
+- Supports multi-GPU configurations (1x, 2x, 4x, 8x GPUs)
+- Creates worker record in database with `status='starting'`
+- Launches RunPod pod with appropriate Docker image and environment variables
+- Updates worker record with `pod_id` when pod is ready
+
+### 3. Workers
+
+**Worker Lifecycle:**
+1. **Initialization** (`worker/main.py`):
+   - Detects GPU configuration (type, count, VRAM)
+   - Runs GPU health checks
+   - Registers in database with hardware specs
+   - Starts health check background thread
+
+2. **Job Acquisition:**
+   - Polls database for pending jobs matching its Docker image
+   - Filters by hardware compatibility (VRAM or `allowed_hardware`)
+   - Prefers jobs with cached models
+   - Uses `acquire_job()` RPC for atomic job claiming
+
+3. **Job Execution:**
+   - Downloads mounted files from Supabase Storage
+   - Creates temporary directory for job execution
+   - Runs job script with `OPENWEIGHTS_RUN_ID` environment variable
+   - Streams logs to local file and stdout
+   - Monitors for cancellation signals
+
+4. **Result Collection:**
+   - Uploads log file to Supabase Storage
+   - Uploads files from `/uploads` directory as results
+   - Creates events with file references
+   - Updates job status atomically
+
+5. **Health Monitoring:**
+   - Pings database every 5 seconds
+   - Checks for job cancellation or timeout
+   - Listens for shutdown signal from cluster manager
+
+6. **Shutdown:**
+   - Reverts in-progress jobs to pending (if worker dies)
+   - Uploads final logs
+   - Terminates RunPod pod
+
+## Authentication & Authorization
+
+### User Authentication Flow
+
+1. **Sign Up**: Users create accounts via Supabase Auth in the dashboard
+2. **Organization Creation**: Users create organizations in the dashboard UI
+3. **API Key Generation**:
+   - Users create API tokens via the CLI: `ow token create --name "my-token"`
+   - API tokens are prefixed with `ow_` and stored securely in the `api_tokens` table
+   - Tokens can optionally have expiration dates and can be revoked
+   - Format: `ow_` followed by a randomly generated secure token
+
+### Authorization Mechanism
+
+**Client-Side:**
+```python
+ow = OpenWeights(auth_token=os.getenv("OPENWEIGHTS_API_KEY"))
 ```
 
-### Manual TTL management
+The client:
+- Accepts an OpenWeights API token (starting with `ow_`)
+- Automatically exchanges the API token for a short-lived JWT using `exchange_api_token_for_jwt()` RPC
+- Passes the JWT in the `Authorization` header to Supabase
+- Extracts organization ID from the JWT using `get_organization_from_token()` RPC
+- Supports backwards compatibility: if the token is already a JWT (doesn't start with `ow_`), it uses it directly
 
-You can also manually update the TTL by editing `~/shutdown.txt`:
+**Database-Side:**
+- Supabase Row Level Security (RLS) policies automatically filter queries
+- Policies check `organization_id` column against the authenticated token's org
+- Ensures users can only access their organization's jobs, runs, events, files, workers
 
-```bash
-python3 -c "
-import datetime
-with open('~/shutdown.txt', 'w') as f:
-    new_time = datetime.datetime.now() + datetime.timedelta(hours=48)
-    f.write(new_time.isoformat())
-print(f'TTL extended to {new_time}')
-"
+**Key RLS Policies:**
+- Jobs: Can only query/insert/update jobs where `organization_id` matches token
+- Files: Can only access files stored under `organizations/{org_id}/` path
+- Workers: Can only view workers belonging to their organization
+- Events/Runs: Accessible through their parent job's organization
+
+### Worker Authentication
+
+Workers can operate in two modes:
+
+1. **User-Provided Token**: Uses the organization's service account token from environment
+2. **Auto-Generated Token**: Worker creates its own service account token at startup using `create_service_account_token()` RPC
+
+Both approaches leverage RLS to ensure workers can only access their organization's data.
+
+## Client SDK (`openweights/client/`)
+
+### Main Components
+
+**`OpenWeights` class** (`__init__.py`):
+- Entry point for SDK
+- Initializes Supabase client with auth token
+- Provides accessors for jobs, runs, events, files, chat
+- Supports custom job registration via `@register` decorator
+
+**`Jobs` class** (`jobs.py`):
+- Base class for job definitions
+- Handles file uploads and mounting
+- Computes content-addressable job IDs
+- Implements `get_or_create_or_reset()` for job deduplication
+
+**`Run` class** (`run.py`):
+- Represents a single job execution
+- Created automatically when jobs execute
+- Provides logging and file upload from within jobs
+- Can be used standalone for script-based jobs
+
+**`Files` class** (`files.py`):
+- Content-addressable file storage
+- Format: `{purpose}:file-{hash[:12]}`
+- Validates conversation/preference datasets
+- Handles organization-specific storage paths
+
+**`Events` class** (`events.py`):
+- Structured logging for runs
+- Supports file attachments
+- Provides `latest()` to extract most recent metric values
+
+## Built-in Jobs
+
+### Fine-Tuning (`openweights/jobs/unsloth/`)
+
+**Jobs:**
+- SFT (Supervised Fine-Tuning)
+- DPO (Direct Preference Optimization)
+- ORPO (Odds Ratio Preference Optimization)
+- Weighted SFT (token-level loss weighting)
+
+**Features:**
+- Built on Unsloth for memory-efficient training
+- Automatic model upload to Hugging Face
+- Support for LoRA/QLoRA
+- Checkpoint tracking via events
+- Log probability tracking
+
+### Inference (`openweights/jobs/inference/`)
+
+**Backend:** vLLM
+
+**Features:**
+- Batch inference on JSONL datasets
+- OpenAI-compatible API endpoints
+- Support for conversation and text completion formats
+- Automatic result file upload
+
+### Evaluation (`openweights/jobs/inspect_ai.py`)
+
+**Backend:** Inspect AI framework
+
+**Features:**
+- Run evaluations from the Inspect AI library
+- Automatic result download
+- Flexible eval options pass-through
+
+### Custom Jobs
+
+Users can define custom jobs:
+
+```python
+from openweights import OpenWeights, register, Jobs
+from pydantic import BaseModel
+
+@register('my_job')
+class MyCustomJob(Jobs):
+    mount = {'local/script.py': 'script.py'}
+    params = MyParamsModel  # Pydantic model
+    requires_vram_gb = 24
+    base_image = 'nielsrolf/ow-default'
+
+    def get_entrypoint(self, params):
+        return f'python script.py --arg={params.arg}'
 ```
 
-## How it works
+## Default Jobs Directory
 
-1. **TTL Setup**: When a pod starts, the TTL monitor service calculates the shutdown time and writes it to `~/shutdown.txt`
-2. **Monitoring**: A background service checks the shutdown time every minute
-3. **Termination**: When the current time exceeds the shutdown time, the service terminates the pod using the RunPod API
-4. **Extension**: Jobs or users can extend the TTL by updating the shutdown time in the file
+The `openweights/jobs/` directory contains several built-in job implementations:
+- `unsloth/`: Fine-tuning jobs
+- `weighted_sft/`: Token-weighted SFT
+- `inference/`: vLLM inference
+- `vllm/`: vLLM configuration
+- `inspect_ai.py`: Inspect AI evaluations
+- `mmlu_pro/`: MMLU Pro evaluation
 
-## Architecture
+**Important:** These are simply convenient job definitions included in the repository. There is nothing architecturally special about them—they could just as easily live in external repositories or be defined by users in their own codebases.
 
-- **TTL Monitor Service**: `openweights/worker/services/ttl_monitor.py`
-- **TTL Manager Utility**: `openweights/worker/services/ttl_manager.py`
-- **Configuration**: TTL passed via `TTL_HOURS` environment variable
-- **Shutdown File**: `~/shutdown.txt` contains ISO format datetime
+## Dashboard (`openweights/dashboard/`)
 
-## Environment Variables
+**Backend** (`backend/main.py`): FastAPI service
+- REST API for job/run/worker management
+- Proxies Supabase with additional business logic
+- Token management endpoints
+- File content serving
 
-- `TTL_HOURS`: Number of hours for TTL (default: 24)
-- `RUNPOD_API_KEY`: RunPod API key for pod termination
-- `OW_DEV`: Indicates if running in dev mode (affects other services, not TTL)
+**Frontend** (`frontend/src/`): React + TypeScript
+- Job/run/worker list and detail views
+- Real-time log streaming
+- Metrics visualization
+- Organization management
+- Token creation and management
 
-## Notes
+## Storage Architecture
 
-- TTL monitoring runs for both dev and worker instances
-- This provides an additional safety net especially for dev instances
-- Pod ID is automatically detected from RunPod metadata API
-- Failed termination attempts are retried every minute
-- TTL can be reset/extended unlimited times before expiration
+**Supabase Storage** (`files` bucket):
+- Organization-scoped paths: `organizations/{org_id}/{file_id}`
+- Files are content-addressed with purpose prefix: `{purpose}:file-{hash[:12]}`
+- RLS policies enforce organization boundaries
+
+**File Types:**
+- `conversations`: Training datasets (validated JSONL)
+- `preference`: Preference datasets for DPO/ORPO
+- `result`: Job outputs (model checkpoints, predictions)
+- `log`: Execution logs
+- `custom_job_file`: Mounted files for custom jobs
+
+## Hardware Management
+
+**GPU Selection:**
+- Jobs specify `requires_vram_gb` (default: 24)
+- Optionally specify `allowed_hardware` list (e.g., `["2x A100", "4x H100"]`)
+- Cluster manager determines GPU type and count from `HARDWARE_CONFIG` mapping
+- Workers register their exact hardware type (e.g., "2x L40")
+
+**Supported GPUs:**
+- NVIDIA L40, A100, A100S, H100N, H100S, H200
+- Multi-GPU: 1x, 2x, 4x, 8x configurations
+- Configurable in `cluster/start_runpod.py`
+
+**Worker Matching:**
+- Workers filter jobs by Docker image first
+- Then by hardware compatibility (VRAM or `allowed_hardware` match)
+- Prefer jobs with cached models
+
+## Fault Tolerance
+
+**Job Atomicity:**
+- `acquire_job()`: Atomically transitions job from pending → in_progress
+- `update_job_status_if_in_progress()`: Only updates if still assigned to worker
+- Prevents race conditions when multiple workers or managers interact
+
+**Worker Failure Handling:**
+1. **Unresponsive Workers** (no ping > 2 min):
+   - Cluster manager reverts their in-progress jobs to pending
+   - Terminates RunPod pod
+   - Marks worker as terminated
+
+2. **Worker Crashes**:
+   - `atexit` handler attempts to revert jobs to pending
+   - Cluster manager's health check catches missed cases
+
+3. **Repeated Failures**:
+   - Workers track last 5 job outcomes
+   - Self-terminate if all 5 failed (likely bad worker)
+
+## Content Addressing
+
+**Job IDs:**
+```python
+job_id = f"{job_type}-{sha256(params + org_id).hex()[:12]}"
+```
+- Deterministic based on parameters and organization
+- Resubmitting identical job returns existing job
+- Optional suffix for manual job variants
+
+**File IDs:**
+```python
+file_id = f"{purpose}:file-{sha256(content + org_id).hex()[:12]}"
+```
+- Automatic deduplication within organization
+- Content changes = new file ID
+
+## Scaling & Performance
+
+**Horizontal Scaling:**
+- One organization manager per organization
+- Managers provision workers dynamically
+- Workers execute jobs concurrently
+
+**Cost Optimization:**
+- Idle workers terminated after 5 minutes
+- Content addressing prevents redundant work
+- Workers prefer cached models to reduce download time
+
+**Limits:**
+- `MAX_WORKERS_PER_ORG`: Default 8 (configurable per org)
+- Worker TTL: 24 hours (configurable, extendable from within pod)
+
+## Monitoring & Observability
+
+**Worker Health:**
+- Ping every 5 seconds
+- GPU health checks at startup
+- Log aggregation via Supabase Storage
+
+**Job Progress:**
+- Events table for structured logging
+- Real-time log streaming in dashboard
+- Metrics visualization (loss curves, accuracy, etc.)
+
+**System State:**
+- Database tables provide complete audit trail
+- Worker status: starting, active, shutdown, terminated
+- Job status: pending, in_progress, completed, failed, canceled

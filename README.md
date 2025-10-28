@@ -174,3 +174,18 @@ For developing custom jobs, `ow ssh` is great - it starts a pod, connects via ss
 
 ### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
+
+---
+### Citation
+Originally created by Niels Warncke ([@nielsrolf](github.com/nielsrolf)).
+
+If you find this repo useful for your research and want to cite it, you can do so via:
+```
+@misc{warncke_openweights_2025,
+  author       = {Niels Warncke},
+  title        = {OpenWeights},
+  howpublished = {\url{https://github.com/longtermrisk/openweights}},
+  note         = {Commit abcdefg • accessed DD Mon YYYY},
+  year         = {2025}
+}
+```
