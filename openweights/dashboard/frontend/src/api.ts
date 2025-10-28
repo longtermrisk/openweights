@@ -5,10 +5,64 @@ import { supabase } from './supabaseClient';
 // In production, use relative paths. In development, use localhost
 const API_URL = import.meta.env.PROD ? '' : 'http://localhost:8124';
 
+// Helper function to refresh JWT token using API key
+const refreshJwtToken = async () => {
+    const apiKey = localStorage.getItem('openweights_api_key');
+    if (!apiKey) {
+        throw new Error('No API key found for token refresh');
+    }
+
+    try {
+        const response = await axios.post(`${API_URL}/auth/exchange-api-key`, {
+            api_key: apiKey
+        });
+
+        const jwt = response.data.jwt;
+        const expiresAt = Math.floor(Date.now() / 1000) + 3600; // JWT expires in 1 hour
+
+        // Update the stored JWT and expiration time
+        localStorage.setItem('openweights_jwt', jwt);
+        localStorage.setItem('openweights_jwt_expires_at', expiresAt.toString());
+
+        return jwt;
+    } catch (error) {
+        console.error('Failed to refresh JWT token:', error);
+        throw error;
+    }
+};
+
 const getAuthHeaders = async () => {
     // First check for API key JWT in localStorage
-    const apiKeyJwt = localStorage.getItem('openweights_jwt');
-    if (apiKeyJwt) {
+    let apiKeyJwt = localStorage.getItem('openweights_jwt');
+    const expiresAt = localStorage.getItem('openweights_jwt_expires_at');
+
+    if (apiKeyJwt && expiresAt) {
+        const expiresAtSeconds = parseInt(expiresAt, 10);
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const timeUntilExpiry = expiresAtSeconds - nowSeconds;
+
+        // Refresh token if it expires in less than 5 minutes (300 seconds) or has already expired
+        if (timeUntilExpiry < 300) {
+            console.log('JWT token expired or expiring soon, refreshing before API call...');
+            try {
+                apiKeyJwt = await refreshJwtToken();
+            } catch (error) {
+                console.error('Token refresh failed, clearing auth state');
+                localStorage.removeItem('openweights_api_key');
+                localStorage.removeItem('openweights_jwt');
+                localStorage.removeItem('openweights_jwt_expires_at');
+                throw new Error('Authentication expired. Please sign in again.');
+            }
+        }
+
+        return {
+            headers: {
+                'Authorization': `Bearer ${apiKeyJwt}`,
+                'Content-Type': 'application/json'
+            }
+        };
+    } else if (apiKeyJwt) {
+        // JWT exists but no expiration time (legacy case)
         return {
             headers: {
                 'Authorization': `Bearer ${apiKeyJwt}`,

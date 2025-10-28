@@ -105,9 +105,22 @@ class Database:
             org_id = org_response.data
 
             # Create a default API token for the organization
-            await self.create_token(org_id, TokenCreate(name="Default API Key"))
+            token = await self.create_token(org_id, TokenCreate(name="Default API Key"))
 
-            # Add secrets using RPC
+            # Store the API token as an organization secret
+            secret_result = self.client.rpc(
+                "manage_organization_secret",
+                {
+                    "org_id": org_id,
+                    "secret_name": "OPENWEIGHTS_API_KEY",
+                    "secret_value": token.access_token,
+                },
+            ).execute()
+
+            if not secret_result.data:
+                raise ValueError("Failed to add OPENWEIGHTS_API_KEY secret")
+
+            # Add user-provided secrets using RPC
             for secret_name, secret_value in org_data.secrets.items():
                 secret_result = self.client.rpc(
                     "manage_organization_secret",
@@ -180,7 +193,10 @@ class Database:
     async def update_organization_secrets(
         self, organization_id: str, secrets: Dict[str, str]
     ) -> bool:
-        """Update all organization secrets together. Deletes secrets not in the input dict."""
+        """Update all organization secrets together. Deletes secrets not in the input dict.
+
+        Note: OPENWEIGHTS_API_KEY is protected and will never be deleted.
+        """
         self.set_organization_id(organization_id)
 
         try:
@@ -203,7 +219,10 @@ class Database:
             new_secret_names = set(secrets.keys())
 
             # Delete secrets that are not in the new set
-            secrets_to_delete = current_secret_names - new_secret_names
+            # But protect OPENWEIGHTS_API_KEY from deletion
+            secrets_to_delete = (current_secret_names - new_secret_names) - {
+                "OPENWEIGHTS_API_KEY"
+            }
             for secret_name in secrets_to_delete:
                 delete_result = (
                     self.client.from_("organization_secrets")

@@ -14,6 +14,7 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  refreshToken: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -92,9 +93,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       const jwt = response.data.jwt;
+      const expiresAt = Math.floor(Date.now() / 1000) + 3600; // JWT expires in 1 hour
 
-      // Store the JWT in localStorage for API calls
+      // Store the API key, JWT, and expiration time in localStorage
+      localStorage.setItem('openweights_api_key', apiKey);
       localStorage.setItem('openweights_jwt', jwt);
+      localStorage.setItem('openweights_jwt_expires_at', expiresAt.toString());
 
       // Create a mock session for the auth context
       // This JWT is for database access, not Supabase Auth
@@ -102,7 +106,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         access_token: jwt,
         refresh_token: jwt,
         expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        expires_at: expiresAt,
+        token_type: 'bearer',
+        user: {
+          id: 'api-key-user',
+          email: 'api-key@openweights.com',
+          aud: 'authenticated',
+          role: 'authenticated',
+          created_at: new Date().toISOString(),
+          app_metadata: {},
+          user_metadata: {},
+        }
+      } as Session;
+
+      setSession(mockSession);
+      setUser(mockSession.user);
+
+      return { error: null };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.detail || error.message;
+        return { error: new Error(message) };
+      }
+      return { error: error as Error };
+    }
+  };
+
+  const refreshToken = async () => {
+    try {
+      const apiKey = localStorage.getItem('openweights_api_key');
+      if (!apiKey) {
+        return { error: new Error('No API key found') };
+      }
+
+      // Exchange API key for a new JWT
+      const response = await axios.post(`${API_URL}/auth/exchange-api-key`, {
+        api_key: apiKey
+      });
+
+      const jwt = response.data.jwt;
+      const expiresAt = Math.floor(Date.now() / 1000) + 3600; // JWT expires in 1 hour
+
+      // Update the stored JWT and expiration time
+      localStorage.setItem('openweights_jwt', jwt);
+      localStorage.setItem('openweights_jwt_expires_at', expiresAt.toString());
+
+      // Update the session with the new token
+      const mockSession = {
+        access_token: jwt,
+        refresh_token: jwt,
+        expires_in: 3600,
+        expires_at: expiresAt,
         token_type: 'bearer',
         user: {
           id: 'api-key-user',
@@ -144,8 +198,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clear API key JWT if present
+    // Clear API key, JWT, and expiration time if present
+    localStorage.removeItem('openweights_api_key');
     localStorage.removeItem('openweights_jwt');
+    localStorage.removeItem('openweights_jwt_expires_at');
 
     // Also sign out from Supabase Auth
     await supabase.auth.signOut();
@@ -166,6 +222,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Set up periodic token refresh check
+  useEffect(() => {
+    const checkAndRefreshToken = async () => {
+      const apiKey = localStorage.getItem('openweights_api_key');
+      const expiresAt = localStorage.getItem('openweights_jwt_expires_at');
+
+      if (!apiKey || !expiresAt) {
+        return; // Not using API key auth
+      }
+
+      const expiresAtSeconds = parseInt(expiresAt, 10);
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAtSeconds - nowSeconds;
+
+      // Refresh token if it expires in less than 5 minutes (300 seconds)
+      if (timeUntilExpiry < 300) {
+        console.log('JWT token expiring soon, refreshing...');
+        await refreshToken();
+      }
+    };
+
+    // Check immediately on mount
+    checkAndRefreshToken();
+
+    // Then check every minute
+    const interval = setInterval(checkAndRefreshToken, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const value = {
     session,
     user,
@@ -175,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signUp,
     signOut,
     resetPassword,
+    refreshToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
