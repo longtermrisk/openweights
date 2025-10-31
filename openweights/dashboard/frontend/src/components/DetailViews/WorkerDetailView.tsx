@@ -228,7 +228,7 @@ export const WorkerDetailView: React.FC = () => {
             <TabPanel value={tabValue} index={1}>
                 <Paper
                     sx={{
-                        p: 2,
+                        p: 1.5,
                         bgcolor: 'grey.100',
                         maxHeight: '500px',
                         overflow: 'auto'
@@ -239,7 +239,7 @@ export const WorkerDetailView: React.FC = () => {
                             <CircularProgress />
                         </Box>
                     ) : (
-                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontSize: '0.75rem', lineHeight: 1.4 }}>
                             {logs || 'No logs available'}
                         </pre>
                     )}

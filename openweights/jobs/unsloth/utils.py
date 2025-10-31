@@ -22,7 +22,10 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         device_map=None,  # important: no lazy/meta map
         low_cpu_mem_usage=False,  # force real tensors
     )
-    model = model.to("cuda")
+    if (
+        not load_in_4bit
+    ):  # we get an error otherwise, but the 4bit models are automatically placed on cuda
+        model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token

@@ -9,16 +9,17 @@ import random
 import signal
 import sys
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List
-import traceback
 
 import requests
 import runpod
 from dotenv import load_dotenv
 
 from openweights.client import OpenWeights
+from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import HARDWARE_CONFIG, populate_hardware_config
 from openweights.cluster.start_runpod import start_worker as runpod_start_worker
 
@@ -27,10 +28,10 @@ load_dotenv()
 
 # Constants
 POLL_INTERVAL = 15
-IDLE_THRESHOLD = 300  # 5 minutes = 300 seconds
-UNRESPONSIVE_THRESHOLD = 120  # 2 minutes = 120 seconds
-MAX_WORKERS = 8
-# MAX_WORKERS = 20
+IDLE_THRESHOLD = 300
+STARTUP_THRESHOLD = 600
+UNRESPONSIVE_THRESHOLD = 120
+MAX_WORKERS = os.environ.get("MAX_WORKERS", 8)
 
 # Configure logging
 logging.basicConfig(
@@ -39,13 +40,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
+def determine_gpu_type(required_vram, allowed_hardware=None):
     """Determine the best GPU type and count for the required VRAM.
 
     Args:
         required_vram: Required VRAM in GB
         allowed_hardware: List of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
-        choice: Random seed for hardware selection
 
     Returns:
         Tuple of (gpu_type, count)
@@ -63,15 +63,14 @@ def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
         if required_vram <= vram:
             # We add a None option to sometimes try out larger GPUs
             # We do this because sometimes the smallest available GPU is actually not available on runpod, so we need to try others occasionally
-            if choice is None:
-                choice = random.choice(HARDWARE_CONFIG[vram] + [None])
-            else:
-                choice = HARDWARE_CONFIG[vram][choice % len(HARDWARE_CONFIG[vram])]
+            options = HARDWARE_CONFIG[vram]
+            if vram != vram_options[-1]:
+                options = options + options + [None]
+            choice = random.choice(options)
             if choice is None:
                 continue
             count, gpu = choice.split("x ")
             return gpu.strip(), int(count)
-
     raise ValueError(
         f"No suitable GPU configuration found for VRAM requirement {required_vram}"
     )
@@ -79,10 +78,9 @@ def determine_gpu_type(required_vram, allowed_hardware=None, choice=None):
 
 class OrganizationManager:
     def __init__(self):
-        self.openweights = OpenWeights()
-        self.org_id = self.openweights.organization_id
-        print("org name", self.openweights.org_name)
-        self.supabase = self.openweights._supabase
+        self._ow = OpenWeights()
+        self.org_id = self._ow.organization_id
+        print("org name", self._ow.org_name)
         self.shutdown_flag = False
 
         # Set up RunPod client
@@ -96,34 +94,81 @@ class OrganizationManager:
     @property
     def worker_env(self):
         secrets = self.get_secrets()
+        # Remove SUPABASE_URL and SUPABASE_ANON_KEY from secrets if present
+        # to avoid duplicate keyword argument error
+        secrets.pop("SUPABASE_URL", None)
+        secrets.pop("SUPABASE_ANON_KEY", None)
         return dict(
             SUPABASE_URL=os.environ["SUPABASE_URL"],
             SUPABASE_ANON_KEY=os.environ["SUPABASE_ANON_KEY"],
             **secrets,
         )
 
+    @supabase_retry()
     def get_secrets(self) -> Dict[str, str]:
-        """Get organization secrets from the database."""
-        result = (
-            self.supabase.table("organization_secrets")
-            .select("name, value")
-            .eq("organization_id", self.org_id)
-            .execute()
-        )
+        """Get organization secrets from the database, with local environment overrides.
 
-        return {secret["name"]: secret["value"] for secret in result.data}
+        When running a self-managed cluster, secrets from the local environment
+        are used as base values, and secrets from the database (if any) override them.
+        This allows users to run their own cluster without submitting secrets to the service.
+        """
+        # Start with local environment variables
+        secrets = {}
 
-    def handle_shutdown(self, signum, frame):
+        # Common secret keys that might be needed
+        secret_keys = [
+            "RUNPOD_API_KEY",
+            "HF_TOKEN",
+            "WANDB_API_KEY",
+            "MAX_WORKERS",
+            "OPENAI_API_KEY",
+            "OPENWEIGHTS_API_KEY",
+        ]
+
+        # If custom env vars were provided via env file, add them to the list
+        # This is communicated via the _OW_CUSTOM_ENV_VARS environment variable
+        if "_OW_CUSTOM_ENV_VARS" in os.environ:
+            custom_vars = os.environ["_OW_CUSTOM_ENV_VARS"].split(",")
+            # Add custom vars to secret_keys, avoiding duplicates
+            for var in custom_vars:
+                if var and var not in secret_keys:
+                    secret_keys.append(var)
+
+        for key in secret_keys:
+            if key in os.environ:
+                secrets[key] = os.environ[key]
+
+        # Try to get overrides from database (optional)
+        try:
+            result = (
+                self._ow._supabase.table("organization_secrets")
+                .select("name, value")
+                .eq("organization_id", self.org_id)
+                .execute()
+            )
+
+            # Override with database values if present
+            for secret in result.data:
+                secrets[secret["name"]] = secret["value"]
+        except Exception as e:
+            # If database query fails, just use environment variables
+            logger.warning(f"Could not fetch secrets from database: {e}")
+            logger.info("Using only local environment variables for secrets")
+
+        return secrets
+
+    def handle_shutdown(self, _signum, _frame):
         """Handle shutdown signals gracefully."""
         logger.info(
             f"Received shutdown signal, cleaning up organization {self.org_id}..."
         )
         self.shutdown_flag = True
 
+    @supabase_retry()
     def get_running_workers(self):
         """Get all active and starting workers for this organization."""
         return (
-            self.supabase.table("worker")
+            self._ow._supabase.table("worker")
             .select("*")
             .eq("organization_id", self.org_id)
             .in_("status", ["active", "starting", "shutdown"])
@@ -131,10 +176,11 @@ class OrganizationManager:
             .data
         )
 
+    @supabase_retry()
     def get_pending_jobs(self):
         """Get all pending jobs for this organization."""
         return (
-            self.supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .select("*")
             .eq("organization_id", self.org_id)
             .eq("status", "pending")
@@ -144,6 +190,7 @@ class OrganizationManager:
             .data
         )
 
+    @supabase_retry()
     def get_idle_workers(self, running_workers):
         """Returns a list of idle workers."""
         idle_workers = []
@@ -153,16 +200,16 @@ class OrganizationManager:
             # Skip if the worker is not a pod
             if not worker.get("pod_id"):
                 continue
-            # If the worker was started less than 5 minutes ago, skip it
+            # If the worker was started less than STARTUP_THRESHOLD minutes ago, skip it
             worker_created_at = datetime.fromisoformat(
                 worker["created_at"].replace("Z", "+00:00")
             ).timestamp()
-            if current_time - worker_created_at < IDLE_THRESHOLD:
+            if current_time - worker_created_at < STARTUP_THRESHOLD:
                 continue
 
             # Find the latest run associated with the worker
             runs = (
-                self.supabase.table("runs")
+                self._ow._supabase.table("runs")
                 .select("*")
                 .eq("worker_id", worker["id"])
                 .execute()
@@ -185,6 +232,7 @@ class OrganizationManager:
 
         return idle_workers
 
+    @supabase_retry()
     def fetch_and_save_worker_logs(self, worker):
         """Fetch logs from a worker and save them to a file."""
         try:
@@ -203,12 +251,12 @@ class OrganizationManager:
 
             # Save logs to a file using OpenWeights client
             logs = response.text
-            file_id = self.openweights.files.create(
+            file_id = self._ow.files.create(
                 file=io.BytesIO(logs.encode("utf-8")), purpose="logs"
             )
 
             # Update worker record with logfile ID
-            self.supabase.table("worker").update({"logfile": file_id}).eq(
+            self._ow._supabase.table("worker").update({"logfile": file_id}).eq(
                 "id", worker["id"]
             ).execute()
 
@@ -217,6 +265,7 @@ class OrganizationManager:
             logger.error(f"Error saving logs for worker {worker['id']}: {e}")
             return None
 
+    @supabase_retry()
     def clean_up_unresponsive_workers(self, workers):
         """
         Clean up workers that haven't pinged in more than UNRESPONSIVE_THRESHOLD seconds
@@ -253,7 +302,7 @@ class OrganizationManager:
 
                 # 1) Find any runs currently 'in_progress' for this worker.
                 runs = (
-                    self.supabase.table("runs")
+                    self._ow._supabase.table("runs")
                     .select("*")
                     .eq("worker_id", worker["id"])
                     .eq("status", "in_progress")
@@ -265,14 +314,14 @@ class OrganizationManager:
                 #    revert the job to 'pending' *only if* it's still in_progress for THIS worker.
                 for run in runs:
                     # Mark the run as failed
-                    self.supabase.table("runs").update({"status": "failed"}).eq(
+                    self._ow._supabase.table("runs").update({"status": "failed"}).eq(
                         "id", run["id"]
                     ).execute()
 
                     # Safely revert the job to 'pending' using your RPC that only updates
                     # if status='in_progress' for the same worker_id.
                     try:
-                        self.supabase.rpc(
+                        self._ow._supabase.rpc(
                             "update_job_status_if_in_progress",
                             {
                                 "_job_id": run["job_id"],
@@ -296,7 +345,7 @@ class OrganizationManager:
                         logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
 
                 # 4) Finally, mark the worker as 'terminated' in the DB
-                self.supabase.table("worker").update({"status": "terminated"}).eq(
+                self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
                     "id", worker["id"]
                 ).execute()
 
@@ -320,6 +369,7 @@ class OrganizationManager:
 
         return job_groups
 
+    @supabase_retry()
     def scale_workers(self, running_workers, pending_jobs):
         """Scale workers according to pending jobs and limits."""
         # Group active workers by docker image
@@ -352,7 +402,9 @@ class OrganizationManager:
 
             if len(image_pending_jobs) > 0:
                 available_slots = MAX_WORKERS - len(running_workers)
-                print(f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}")
+                print(
+                    f"available slots: {MAX_WORKERS - len(running_workers)}, MAX_WORKERS: {MAX_WORKERS}, running: {len(running_workers)}, active: {active_count}, starting: {starting_count}, pending jobs for image {docker_image}: {len(image_pending_jobs)}"
+                )
 
                 # Group jobs by hardware requirements
                 job_groups = self.group_jobs_by_hardware_requirements(
@@ -417,7 +469,9 @@ class OrganizationManager:
                                 "id": worker_id,
                                 "organization_id": self.org_id,
                             }
-                            self.supabase.table("worker").insert(worker_data).execute()
+                            self._ow._supabase.table("worker").insert(
+                                worker_data
+                            ).execute()
 
                             try:
                                 # Start the worker
@@ -427,12 +481,12 @@ class OrganizationManager:
                                     worker_id=worker_id,
                                     image=docker_image,
                                     env=self.worker_env,
-                                    name=f"{self.openweights.org_name}-{time.time()}-ow-1day",
-                                    runpod_client=runpod
+                                    name=f"{self._ow.org_name}-{time.time()}-ow-1day",
+                                    runpod_client=runpod,
                                 )
                                 # Update worker with pod_id
                                 assert pod is not None
-                                self.supabase.table("worker").update(
+                                self._ow._supabase.table("worker").update(
                                     {"pod_id": pod["id"]}
                                 ).eq("id", worker_id).execute()
                             except Exception as e:
@@ -451,7 +505,7 @@ class OrganizationManager:
                                         and allowed_hw[0] == current_hw
                                     ):
                                         # Mark job as failed
-                                        self.supabase.table("jobs").update(
+                                        self._ow._supabase.table("jobs").update(
                                             {
                                                 "status": "failed",
                                                 "outputs": {
@@ -467,12 +521,12 @@ class OrganizationManager:
                                         new_allowed_hw = [
                                             hw for hw in allowed_hw if hw != current_hw
                                         ]
-                                        self.supabase.table("jobs").update(
+                                        self._ow._supabase.table("jobs").update(
                                             {"allowed_hardware": new_allowed_hw}
                                         ).eq("id", job["id"]).execute()
                                 logger.error(f"Failed to start worker: {e}")
                                 # If worker creation fails, clean up the worker
-                                self.supabase.table("worker").update(
+                                self._ow._supabase.table("worker").update(
                                     {"status": "terminated"}
                                 ).eq("id", worker_id).execute()
                         except Exception as e:
@@ -482,12 +536,27 @@ class OrganizationManager:
                             )
                             continue
 
+    @supabase_retry()
+    def set_shutdown_flags(self, idle_workers):
+        for idle_worker in idle_workers:
+            logger.info(f"Setting shutdown flag for idle worker: {idle_worker['id']}")
+            try:
+                # Save logs before marking for shutdown
+                self.fetch_and_save_worker_logs(idle_worker)
+                self._ow._supabase.table("worker").update({"status": "shutdown"}).eq(
+                    "id", idle_worker["id"]
+                ).execute()
+            except Exception as e:
+                logger.error(
+                    f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
+                )
+
     def manage_cluster(self):
         """Main loop for managing the organization's cluster."""
         logger.info(f"Starting cluster management for organization {self.org_id}")
 
         global MAX_WORKERS
-        
+
         while not self.shutdown_flag:
             worker_env = self.worker_env
             MAX_WORKERS = int(worker_env.get("MAX_WORKERS", MAX_WORKERS))
@@ -513,23 +582,7 @@ class OrganizationManager:
                 w for w in running_workers if w["status"] in ["active", "starting"]
             ]
             idle_workers = self.get_idle_workers(active_and_starting_workers)
-            for idle_worker in idle_workers:
-                logger.info(
-                    f"Setting shutdown flag for idle worker: {idle_worker['id']}"
-                )
-                try:
-                    # Save logs before marking for shutdown
-                    self.fetch_and_save_worker_logs(idle_worker)
-                    self.supabase.table("worker").update({"status": "shutdown"}).eq(
-                        "id", idle_worker["id"]
-                    ).execute()
-                except Exception as e:
-                    logger.error(
-                        f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
-                    )
-
-            # except Exception as e:
-            #     logger.error(f"Error in management loop: {e}")
+            self.set_shutdown_flags(idle_workers)
 
             time.sleep(POLL_INTERVAL)
 

@@ -7,6 +7,7 @@ build-docker-in-runpod
 .env.prod
 .env.ow-dev
 .env.ow-migrations
+.env.*
 openweights/cluster/load.sh
 openweights/dashboard/backend/.env.ow-dev
 openweights/dashboard/backend/.env.ow-migrations
@@ -38,7 +39,6 @@ cache
 
 # Bazel IntelliJ plugin
 .ijwb/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -61,21 +61,44 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
 env/
 ENV/
 
-# IDE
-.idea/
+# IDEs
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.dev
+.env.prod
+.env.legacy
+.env.worker
+
+# Supabase
+.supabase/
+!.supabase/dev-project-ref
+!.supabase/prod-project-ref
+
+# Logs
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
 
+# Project specific
+outputs/
+tool_output/
+*.db
+cache/
+.env.backup
 example/ft_job_artifacts/
 example/mcq_dataset.jsonl
 openweights/jobs/unsloth/logp.ipynb
@@ -87,3 +110,5 @@ openweights/jobs/unsloth/check.ipynb
 .cache
 admin/
 todo.md
+.ow_sync
+.claude

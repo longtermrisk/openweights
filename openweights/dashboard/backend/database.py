@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import jwt
@@ -33,26 +33,16 @@ class Database:
     def __init__(self, auth_token: Optional[str] = None):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
-        self.supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         self.auth_token = auth_token
         self._current_org_id = None
 
-        if (
-            not self.supabase_url
-            or not self.supabase_anon_key
-            or not self.supabase_service_key
-        ):
-            raise ValueError(
-                "SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY must be set"
-            )
+        if not self.supabase_url or not self.supabase_anon_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
 
         # Initialize regular client for normal operations
         self.client = create_client(self.supabase_url, self.supabase_anon_key)
         if auth_token:
             self.client.postgrest.auth(auth_token)
-
-        # Initialize admin client for operations requiring service role
-        self.admin_client = create_client(self.supabase_url, self.supabase_service_key)
 
     @property
     def ow_client(self) -> OpenWeights:
@@ -104,53 +94,56 @@ class Database:
             raise ValueError(f"Invalid secrets: {error_message}")
 
         try:
-            # Create organization using admin client to bypass RLS
-            result = (
-                self.admin_client.from_("organizations")
-                .insert({"name": org_data.name})
-                .execute()
-            )
+            # Create organization using RPC (handles organization creation and membership)
+            org_response = self.client.rpc(
+                "create_organization", {"org_name": org_data.name}
+            ).execute()
 
-            if not result.data:
+            if not org_response.data:
                 raise ValueError("Failed to create organization")
 
-            org_id = result.data[0]["id"]
+            org_id = org_response.data
 
-            # Add the creator as an admin using admin client
-            user_id = self.get_user_id_from_token()
-            member_result = (
-                self.admin_client.from_("organization_members")
-                .insert(
-                    {"organization_id": org_id, "user_id": user_id, "role": "admin"}
-                )
-                .execute()
-            )
+            # Create a default API token for the organization
+            token = await self.create_token(org_id, TokenCreate(name="Default API Key"))
 
-            if not member_result.data:
-                raise ValueError("Failed to add admin member")
+            # Store the API token as an organization secret
+            secret_result = self.client.rpc(
+                "manage_organization_secret",
+                {
+                    "org_id": org_id,
+                    "secret_name": "OPENWEIGHTS_API_KEY",
+                    "secret_value": token.access_token,
+                },
+            ).execute()
 
-            # Add secrets using admin client
-            token = await self.create_token(
-                org_id, TokenCreate(name="OpenWeights API Key")
-            )
-            org_data.secrets["OPENWEIGHTS_API_KEY"] = token.access_token
+            if not secret_result.data:
+                raise ValueError("Failed to add OPENWEIGHTS_API_KEY secret")
+
+            # Add user-provided secrets using RPC
             for secret_name, secret_value in org_data.secrets.items():
-                secret_result = (
-                    self.admin_client.from_("organization_secrets")
-                    .insert(
-                        {
-                            "organization_id": org_id,
-                            "name": secret_name,
-                            "value": secret_value,
-                        }
-                    )
-                    .execute()
-                )
+                secret_result = self.client.rpc(
+                    "manage_organization_secret",
+                    {
+                        "org_id": org_id,
+                        "secret_name": secret_name,
+                        "secret_value": secret_value,
+                    },
+                ).execute()
 
                 if not secret_result.data:
                     raise ValueError(f"Failed to add secret: {secret_name}")
 
-            return Organization(**result.data[0])
+            # Fetch the created organization to return
+            org_result = (
+                self.client.from_("organizations")
+                .select("*")
+                .eq("id", org_id)
+                .single()
+                .execute()
+            )
+
+            return Organization(**org_result.data)
 
         except Exception as e:
             raise ValueError(f"Failed to create organization: {str(e)}")
@@ -200,7 +193,10 @@ class Database:
     async def update_organization_secrets(
         self, organization_id: str, secrets: Dict[str, str]
     ) -> bool:
-        """Update all organization secrets together. Deletes secrets not in the input dict."""
+        """Update all organization secrets together. Deletes secrets not in the input dict.
+
+        Note: OPENWEIGHTS_API_KEY is protected and will never be deleted.
+        """
         self.set_organization_id(organization_id)
 
         try:
@@ -223,7 +219,10 @@ class Database:
             new_secret_names = set(secrets.keys())
 
             # Delete secrets that are not in the new set
-            secrets_to_delete = current_secret_names - new_secret_names
+            # But protect OPENWEIGHTS_API_KEY from deletion
+            secrets_to_delete = (current_secret_names - new_secret_names) - {
+                "OPENWEIGHTS_API_KEY"
+            }
             for secret_name in secrets_to_delete:
                 delete_result = (
                     self.client.from_("organization_secrets")
@@ -257,65 +256,63 @@ class Database:
     async def create_token(
         self, organization_id: str, token_data: TokenCreate
     ) -> Token:
-        """Create a new token with optional expiration."""
+        """Create a new API token with optional expiration."""
         self.set_organization_id(organization_id)
-
-        # Get user ID from token
-        user_id = self.get_user_id_from_token()
-
-        # Check if user is an admin of the organization
-        admin_check = self.client.rpc(
-            "is_organization_admin", {"org_id": organization_id}
-        ).execute()
-
-        if not admin_check.data:
-            raise ValueError("User is not an admin of this organization")
 
         # Calculate expiration time if specified
         expires_at = None
         if token_data.expires_in_days is not None:
-            expires_at = datetime.utcnow() + timedelta(days=token_data.expires_in_days)
+            expires_at = datetime.now(timezone.utc) + timedelta(
+                days=token_data.expires_in_days
+            )
 
-        # Create service account token using admin client
-        result = self.admin_client.rpc(
-            "create_service_account_token",
+        # Create API token using the client (RLS will handle authorization)
+        result = self.client.rpc(
+            "create_api_token",
             {
                 "org_id": organization_id,
                 "token_name": token_data.name,
-                "created_by": user_id,
                 "expires_at": expires_at.isoformat() if expires_at else None,
             },
         ).execute()
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             raise ValueError("Failed to create token")
 
-        token_id = result.data[0]["token_id"]
-        jwt_token = result.data[0]["jwt_token"]
+        # Response is array of objects with token_id and token
+        token_data_result = result.data[0]
+        token_id = token_data_result["token_id"]
+        api_token = token_data_result["token"]
 
         return Token(
             id=token_id,
             name=token_data.name,
             expires_at=expires_at,
-            created_at=datetime.utcnow(),
-            access_token=jwt_token,
+            created_at=datetime.now(timezone.utc),
+            access_token=api_token,
         )
 
     async def list_tokens(self, organization_id: str) -> List[Token]:
-        """List all tokens for an organization."""
+        """List all API tokens for an organization."""
         self.set_organization_id(organization_id)
         result = (
-            self.client.table("tokens")
-            .select("*")
+            self.client.table("api_tokens")
+            .select("id, name, expires_at, created_at, revoked_at")
             .eq("organization_id", organization_id)
+            .order("created_at", desc=True)
             .execute()
         )
         return [Token(**token) for token in result.data]
 
     async def delete_token(self, organization_id: str, token_id: str):
-        """Delete a token."""
+        """Revoke an API token."""
         self.set_organization_id(organization_id)
-        self.client.table("tokens").delete().eq("id", token_id).execute()
+
+        # Use the revoke_api_token RPC instead of direct deletion
+        result = self.client.rpc("revoke_api_token", {"token_id": token_id}).execute()
+
+        if not result.data:
+            raise ValueError("Failed to revoke token or token not found")
 
     def get_jobs(self, organization_id: str, status: Optional[str] = None) -> List[Job]:
         self.set_organization_id(organization_id)

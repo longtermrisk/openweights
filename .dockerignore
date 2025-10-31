@@ -15,6 +15,10 @@ build-docker-in-runpod
 .env.prod
 .env.ow-dev
 .env.ow-migrations
+.env.legacy
+.env.worker
+.env.worker.backup
+.env.*
 openweights/dashboard/backend/.env.ow-dev
 openweights/dashboard/backend/.env.ow-migrations
 openweights/dashboard/frontend/.env.ow-dev
@@ -87,7 +91,7 @@ example/ft_job_artifacts/
 example/mcq_dataset.jsonl
 openweights/jobs/unsloth/logp.ipynb
 
-openweights/dashboard/backend/static/
+# openweights/dashboard/backend/static/ - now included for cluster image
 example/_*
 .logs
 openweights/jobs/unsloth/check.ipynb

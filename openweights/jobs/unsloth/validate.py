@@ -126,7 +126,7 @@ class TrainingConfig(BaseModel):
 
     @model_validator(mode="before")
     def validate_training_file_prefixes(cls, values):
-        loss = values.get("loss", "orpo")
+        loss = values.get("loss", "sft")
         training_file = values.get("training_file")
 
         if os.path.exists(training_file):
@@ -144,10 +144,16 @@ class TrainingConfig(BaseModel):
 
         return values
 
+    @model_validator(mode="before")
+    def not_logprobs_and_4bit(cls, values):
+        """For some reason, logprob tracking does not work with 4bit models"""
+        load_in_4bit = values.get("load_in_4bit") or "4bit" in values.get("model")
+        if load_in_4bit and values.get("logp_callback_datasets"):
+            raise ValueError(f"Logprob tracking does not work for 4bit models")
+        return values
+
     @field_validator("finetuned_model_id")
     def validate_finetuned_model_id(cls, v):
-        # if v and model_exists(v):
-        #     raise ValueError(f"Model {v} already exists")
         if len(v.split("/")) != 2:
             raise ValueError("Model ID must be in the format 'user/model'")
         org, model = v.split("/")

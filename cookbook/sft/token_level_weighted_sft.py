@@ -27,6 +27,7 @@ def submit_job():
         r=32,
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
+        requires_vram_gb=16,
     )
     return job
 

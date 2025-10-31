@@ -20,9 +20,6 @@ job = ow.fine_tuning.create(
     gradient_accumulation_steps=8,
     allowed_hardware=["1x H200"],
     merge_before_push=False,  # Push only the lora adapter
-    logp_callback_datasets={  # Track logprobs of tokens in the testfile to ensure that training works
-        "in-distribution": test_file
-    },
 )
 print(job)
 print(

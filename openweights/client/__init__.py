@@ -23,6 +23,32 @@ for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
     logging.getLogger(name).setLevel(logging.WARNING)
 
 
+def exchange_api_token_for_jwt(
+    supabase_url: str, supabase_anon_key: str, api_token: str
+) -> str:
+    """Exchange an OpenWeights API token for a short-lived JWT.
+
+    Args:
+        supabase_url: Supabase project URL
+        supabase_anon_key: Supabase anon key
+        api_token: OpenWeights API token (starts with 'ow_')
+
+    Returns:
+        JWT token for authenticating with Supabase
+    """
+    # Create temporary client without auth
+    temp_client = create_client(supabase_url, supabase_anon_key)
+
+    # Call the exchange function
+    response = temp_client.rpc(
+        "exchange_api_token_for_jwt", {"api_token": api_token}
+    ).execute()
+
+    if not response.data:
+        raise ValueError("Failed to exchange API token for JWT")
+    return response.data
+
+
 def create_authenticated_client(
     supabase_url: str, supabase_anon_key: str, auth_token: Optional[str] = None
 ):
@@ -31,14 +57,21 @@ def create_authenticated_client(
     Args:
         supabase_url: Supabase project URL
         supabase_anon_key: Supabase anon key
-        auth_token: Session token from Supabase auth (optional)
-        api_key: OpenWeights API key starting with 'ow_' (optional)
+        auth_token: Either a JWT token or an OpenWeights API token (starting with 'ow_')
     """
-    headers = {}
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
-    else:
+    if not auth_token:
         raise ValueError("No auth_token provided")
+
+    # If it's an API token (starts with 'ow_'), exchange for JWT
+    if auth_token.startswith("ow_"):
+        jwt_token = exchange_api_token_for_jwt(
+            supabase_url, supabase_anon_key, auth_token
+        )
+    else:
+        # Assume it's already a JWT
+        jwt_token = auth_token
+
+    headers = {"Authorization": f"Bearer {jwt_token}"}
 
     options = ClientOptions(
         schema="public",
@@ -86,11 +119,11 @@ class OpenWeights:
                        Can be either a session token or a service account JWT token
         """
         self.supabase_url = supabase_url or os.environ.get(
-            "SUPABASE_URL", "https://taofkfabrhpgtohaikst.supabase.co"
+            "SUPABASE_URL", "https://cmaguqyuzweixkrqjvnf.supabase.co"
         )
         self.supabase_key = supabase_key or os.environ.get(
             "SUPABASE_ANON_KEY",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhb2ZrZmFicmhwZ3RvaGFpa3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5MjkyMjcsImV4cCI6MjA0NzUwNTIyN30.KRufleTgprt16mfm0_91YjKIFZAne1-IW8buMxWVMeE",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtYWd1cXl1endlaXhrcnFqdm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2ODA1ODIsImV4cCI6MjA3NzI1NjU4Mn0.SlD0g3sWHsc3_SKEofR6Y6H01oWiEYBlmXYQiw0379s",
         )
         self.auth_token = auth_token or os.getenv("OPENWEIGHTS_API_KEY")
         self.deploy_kwargs = deploy_kwargs
@@ -109,16 +142,18 @@ class OpenWeights:
             self.supabase_url, self.supabase_key, self.auth_token
         )
 
+        # Store reference to this instance in the supabase client for token refresh
+        self._supabase._ow_instance = self
+
         # Get organization ID from token
         self.organization_id = organization_id or self.get_organization_id()
         self.org_name = self.get_organization_name()
-        print("Connected to org: ", self.org_name)
 
         # Initialize components with organization ID
-        self.files = Files(self._supabase, self.organization_id)
+        self.files = Files(self, self.organization_id)
         self.jobs = Jobs(self)
         self.runs = Runs(self)
-        self.events = Events(self._supabase)
+        self.events = Events(self)
         self.async_chat = AsyncChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.sync_chat = ChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.chat = self.async_chat if use_async else self.sync_chat
@@ -158,12 +193,25 @@ class OpenWeights:
             .select("value")
             .eq("organization_id", self.organization_id)
             .eq("name", "HF_ORG")
-            .single()
             .execute()
         )
-        if not result.data:
-            raise ValueError("Could not determine organization ID from token")
-        return result.data["value"]
+        if not result.data or len(result.data) == 0:
+            return os.environ.get("HF_ORG") or os.environ.get("HF_USER")
+        return result.data[0]["value"]
+
+    def _refresh_jwt(self):
+        """Refresh the JWT token by exchanging the API token again.
+
+        This is called automatically by @supabase_retry when a 401 error occurs.
+        """
+        # Only refresh if we have an ow_ API token (not a raw JWT)
+        if not self.auth_token.startswith("ow_"):
+            raise ValueError("Cannot refresh JWT: auth_token is not an ow_ API token")
+
+        # Get new client
+        self._supabase = create_authenticated_client(
+            self.supabase_url, self.supabase_key, self.auth_token
+        )
 
     @property
     def run(self):

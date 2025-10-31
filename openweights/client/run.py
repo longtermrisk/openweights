@@ -13,14 +13,13 @@ from supabase import Client
 class Run:
     def __init__(
         self,
-        client: "OpenWeights",
+        ow_instance: "OpenWeights",
         job_id: Optional[str] = None,
         worker_id: Optional[str] = None,
         organization_id: Optional[str] = None,
         run_id: Optional[str] = None,
     ):
-        self.client = client
-        self._supabase = client._supabase
+        self._ow = ow_instance
         self.organization_id = organization_id
         self.id = run_id or os.getenv("OPENWEIGHTS_RUN_ID")
         if self.id:
@@ -41,7 +40,7 @@ class Run:
                     "status": "in_progress",
                     "organization_id": self.organization_id,
                 }
-                job_result = self._supabase.table("jobs").insert(job_data).execute()
+                job_result = self._ow._supabase.table("jobs").insert(job_data).execute()
                 data["job_id"] = job_result.data[0]["id"]
 
             if worker_id:
@@ -52,7 +51,7 @@ class Run:
             if not job.data:
                 raise ValueError(f"Job {data['job_id']} not found")
 
-            result = self._supabase.table("runs").insert(data).execute()
+            result = self._ow._supabase.table("runs").insert(data).execute()
             self._load_data(result.data[0])
 
     @supabase_retry()
@@ -60,7 +59,7 @@ class Run:
         """Fetch run data and initialize"""
         try:
             result = (
-                self._supabase.table("runs")
+                self._ow._supabase.table("runs")
                 .select("*")
                 .eq("id", self.id)
                 .single()
@@ -81,7 +80,7 @@ class Run:
             # reassign run to self
             run_data["worker_id"] = worker_id
             result = (
-                self._supabase.table("runs")
+                self._ow._supabase.table("runs")
                 .update(run_data)
                 .eq("id", self.id)
                 .execute()
@@ -94,7 +93,7 @@ class Run:
     def _get_job_org_id_with_retry(self, job_id):
         """Get job organization ID with retry logic"""
         return (
-            self._supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .select("organization_id")
             .eq("id", job_id)
             .single()
@@ -136,7 +135,10 @@ class Run:
 
         if data:
             result = (
-                self._supabase.table("runs").update(data).eq("id", self.id).execute()
+                self._ow._supabase.table("runs")
+                .update(data)
+                .eq("id", self.id)
+                .execute()
             )
             self._load_data(result.data[0])
 
@@ -144,17 +146,20 @@ class Run:
     def log(self, event_data: Dict[str, Any], file: Optional[BinaryIO] = None):
         """Log an event for this run"""
         if file:
-            file_id = self._supabase.files.create(file, purpose="event")["id"]
+            file_id = self._ow._supabase.files.create(file, purpose="event")["id"]
         else:
             file_id = None
         data = {"run_id": self.id, "data": event_data, "file": file_id}
-        self._supabase.table("events").insert(data).execute()
+        self._ow._supabase.table("events").insert(data).execute()
 
     @property
     def events(self) -> List[Dict[str, Any]]:
         """Get all events for this run"""
         result = (
-            self._supabase.table("events").select("*").eq("run_id", self.id).execute()
+            self._ow._supabase.table("events")
+            .select("*")
+            .eq("run_id", self.id)
+            .execute()
         )
         return result.data
 
@@ -166,13 +171,13 @@ class Run:
         os.makedirs(target_dir, exist_ok=True)
         # Logs
         if self.log_file is not None:
-            log = self.client.files.content(self.log_file)
+            log = self._ow.files.content(self.log_file)
             with open(f"{target_dir}/{self.id}.log", "wb") as f:
                 f.write(log)
         events = self.events
         for i, event in enumerate(events):
             if event["data"].get("file"):
-                file = self.client.files.content(event["data"]["file"])
+                file = self._ow.files.content(event["data"]["file"])
                 rel_path = (
                     event["data"]["path"]
                     if "path" in event["data"]
@@ -185,9 +190,8 @@ class Run:
 
 
 class Runs:
-    def __init__(self, client: "OpenWeights"):
-        self.client = client
-        self._supabase = client._supabase
+    def __init__(self, ow_instance: "OpenWeights"):
+        self._ow = ow_instance
 
     @supabase_retry()
     def list(
@@ -198,7 +202,7 @@ class Runs:
         status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List runs by job_id or worker_id"""
-        query = self._supabase.table("runs").select("*").limit(limit)
+        query = self._ow._supabase.table("runs").select("*").limit(limit)
         if job_id:
             query = query.eq("job_id", job_id)
         if worker_id:
@@ -206,4 +210,4 @@ class Runs:
         if status:
             query = query.eq("status", status)
         result = query.execute()
-        return [Run(self.client, run_id=row["id"]) for row in result.data]
+        return [Run(self._ow, run_id=row["id"]) for row in result.data]

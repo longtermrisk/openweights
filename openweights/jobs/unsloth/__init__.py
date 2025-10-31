@@ -27,14 +27,11 @@ class FineTuning(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb=24, allowed_hardware=None, **params
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
-
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
 
         print(f"Training config params: {json.dumps(params, indent=4)}")
         params = TrainingConfig(**params).model_dump()
@@ -49,7 +46,7 @@ class FineTuning(Jobs):
         )
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
             job_id=job_id,
-            org_id=self.client.hf_org,
+            org_id=self._ow.hf_org,
             model_name=model_name,
             **str_params,
             **model_naming_extra_parameters,
@@ -57,7 +54,10 @@ class FineTuning(Jobs):
 
         try:
             validate_repo_id(params["finetuned_model_id"])
-        except HFValidationError as e:
+            assert (
+                params["finetuned_model_id"].split("/")[0] != "None"
+            ), "Set either $HF_ORG, $HF_USER, or specify the `finetuned_model_id` directly"
+        except (HFValidationError, AssertionError) as e:
             raise ValueError(
                 f"Invalid finetuned_model_id: {params['finetuned_model_id']}. Error: {e}"
             )
@@ -71,7 +71,7 @@ class FineTuning(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "docker_image": self.base_image,
-            "script": f"python training.py {job_id}",
+            "script": f"accelerate launch training.py {job_id}",
         }
         logging.info(
             f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"
@@ -91,7 +91,6 @@ class LogProb(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-unsloth-v2"
 
     @property
     def id_predix(self):
@@ -103,7 +102,7 @@ class LogProb(Jobs):
     ) -> Dict[str, Any]:
         """Create a logprob evaluation job"""
         if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
+            requires_vram_gb = 36
 
         params = LogProbJobModel(**params).model_dump()
 

@@ -4,11 +4,28 @@ An openai-like sdk with the flexibility of working on a local GPU: finetune, inf
 
 ## Installation
 Run `pip install openweights` or install from source via `pip install -e .`
-Then add your `$OPENWEIGHTS_API_KEY` to the `.env`. You can create one via the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
 
 ---
 
 ## Quickstart
+
+1. **Create an API key**
+You can create one via the `ow signup` or using the [dashboard](https://vy6y4zlof9jee0-8124.proxy.runpod.net).
+
+2. **Start the cluster manager** (skip this if you got an API key for a managed cluster)
+The cluster manager is the service that monitors the job queue and starts runpod workers. You have different options to start the cluster
+```bash
+ow cluster --env-file path/to/env   # Run locally
+ow deploy --env-file path/to/env    # Run on a runpod cpu instance
+
+# Or managed, if you trust us with your API keys (usually a bad idea, but okay if you know us personally)
+ow env import path/to/env
+ow manage start
+```
+In all cases, the env file needs at least all envs defined in [`.env.worker.example`](.env.worker.example).
+
+3. Submit a job
+
 ```python
 from openweights import OpenWeights
 
@@ -116,28 +133,76 @@ job = ow.inspect_ai.create(
 )
 
 if job.status == 'completed':
-    job.download(f"{args.local_save_dir}")
+    job.download('output')
 ```
 
 ---
 
+## CLI
+Use `ow {cmd} --help` for more help on the available commands:
+```bash
+❯ ow --help
+usage: ow [-h] {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage} ...
+
+OpenWeights CLI for remote GPU operations
+
+positional arguments:
+  {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage}
+    ssh                 Start or attach to a remote shell with live file sync.
+    exec                Execute a command on a remote GPU with file sync.
+    signup              Create a new user, organization, and API key.
+    cluster             Run the cluster manager locally with your own infrastructure.
+    worker              Run a worker to execute jobs from the queue.
+    token               Manage API tokens for organizations.
+    ls                  List job IDs.
+    cancel              Cancel jobs by ID.
+    logs                Display logs for a job.
+    fetch               Fetch file content by ID.
+    serve               Start the dashboard backend server.
+    deploy              Deploy a cluster instance on RunPod.
+    env                 Manage organization secrets (environment variables).
+    manage              Control managed cluster infrastructure.
+
+options:
+  -h, --help            show this help message and exit
+```
+For developing custom jobs, `ow ssh` is great - it starts a pod, connects via ssh, and live-syncs the local CWD into the remote. This allows editing finetuning code locally and testing it immediately.
 
 ## General notes
 
 ### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
-### Running a dev pod
-Start a pod in dev mode - that allows ssh'ing into it without starting a worker automatically. This is useful to debug the worker.
-```sh
-python openweights/cluster/start_runpod.py A6000 finetuning --dev_mode=true
+---
+### Citation
+Originally created by Niels Warncke ([@nielsrolf](github.com/nielsrolf)).
+
+If you find this repo useful for your research and want to cite it, you can do so via:
 ```
+@misc{warncke_openweights_2025,
+  author       = {Niels Warncke},
+  title        = {OpenWeights},
+  howpublished = {\url{https://github.com/longtermrisk/openweights}},
+  note         = {Commit abcdefg • accessed DD Mon YYYY},
+  year         = {2025}
+}
+```
+
+<.env.worker.example>
+OPENWEIGHTS_API_KEY=...
+RUNPOD_API_KEY=...
+HF_USER=...
+HF_TOKEN=...
+HF_ORG=...
+
+</.env.worker.example>
 
 <cookbook>
 README.md
 api-deployment
 custom_job
 inference
+inspect_eval.py
 preference_learning
 sft
 <cookbook/README.md>
@@ -150,13 +215,12 @@ This folder contains examples that demonstrate usgae of openweights features.
     - [Finetuning with token-level weights for loss](sft/token_level_weighted_sft.py)
     - [Sampling at intermediate steps](sft/sampling_callback.py)
     - [Preference learning (DPO and ORPO)](preference_learning)
-- Inference
-    - Minimal example using Qwen3-4B
+- [Batch inference](inference/run_inference.py), supports:
     - Inference from LoRA adapter
     - Inference from checkpoint
-- API deployment
-    - Minimal example to deploy a huggingface model as openai-compatible vllm API
-    - Starting a gradio playground to chat with multiple LoRA finetunes of the same parent model
+- [API deployment](api-deployment)
+    - [Minimal example](api-deployment/context_manager_api.py) to deploy a huggingface model as openai-compatible vllm API
+    - Starting a [gradio playground](api-deployment/gradio_ui.py) to chat with multiple LoRA finetunes of the same parent model
 - [Writing a custom job](custom_job)
 
 
@@ -247,7 +311,9 @@ Example:
 }
 ```
 This format is used for fine-tuning with `loss="dpo"` or `loss="orpo"`.
+
 </cookbook/README.md>
+
 <cookbook/sft/lora_qwen3_4b.py>
 from openweights import OpenWeights
 
@@ -293,9 +359,6 @@ job = ow.fine_tuning.create(
     gradient_accumulation_steps=8,
     allowed_hardware=["1x H200"],
     merge_before_push=False,  # Push only the lora adapter
-    logp_callback_datasets={  # Track logprobs of tokens in the testfile to ensure that training works
-        "in-distribution": test_file
-    },
 )
 print(job)
 print(
@@ -425,6 +488,7 @@ def submit_job():
         r=32,
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
+        requires_vram_gb=16,
     )
     return job
 
@@ -440,7 +504,7 @@ if __name__ == "__main__":
 
 <cookbook/sft/sampling_callback.py>
 """
-Note v0.6: sampling callbacks are currently broken due to an issue with unsloth. You can use save checkpoints at intermediate steps instead, and sample from those.
+Note v0.7: sampling callbacks are currently broken due to an issue with unsloth. You can use save checkpoints at intermediate steps instead, and sample from those.
 """
 
 import json
@@ -530,6 +594,86 @@ llama3_dpo.py
 llama3_orpo.py
 preferences.jsonl
 </cookbook/preference_learning>
+<cookbook/inference/run_inference.py>
+import json
+import time
+
+from openweights import OpenWeights
+
+ow = OpenWeights()
+
+# Create an inference job
+job = ow.inference.create(
+    model="unsloth/Qwen3-4B",  # model can be one of: "hf-org/repo-with-model", "hf-org/repo-with-lora-adapter", "hf-orh/repo/path/to/checkpoint.ckpt"
+    input_file_id=ow.files.upload("prompts.jsonl", purpose="conversations")["id"],
+    max_tokens=1000,
+    temperature=0.8,
+    max_model_len=2048,
+)
+print(job)
+
+# wait for completion
+while job.refresh().status != "completed":
+    time.sleep(5)
+
+# Get output
+outputs_str = ow.files.content(job.outputs["file"]).decode("utf-8")
+outputs = [json.loads(line) for line in outputs_str.split("\n") if line]
+print(outputs[0]["messages"][0]["content"])
+print(outputs[0]["completion"])
+
+</cookbook/inference/run_inference.py>
+
+<cookbook/api-deployment>
+api.md
+context_manager_api.py
+gradio_ui.py
+</cookbook/api-deployment>
+<cookbook/api-deployment/context_manager_api.py>
+from openweights import OpenWeights
+
+ow = OpenWeights()
+
+model = "unsloth/Qwen3-4B"
+
+# async with ow.api.deploy(model) also works
+with ow.api.deploy(model):  # async with ow.api.deploy(model) also works
+    # entering the context manager is equivalent to api = ow.api.deploy(model) ; api.up()
+    completion = ow.chat.completions.create(
+        model=model, messages=[{"role": "user", "content": "is 9.11 > 9.9?"}]
+    )
+    print(
+        completion.choices[0].message
+    )  # when this context manager exits, it calls api.down()
+
+</cookbook/api-deployment/context_manager_api.py>
+
+<cookbook/api-deployment/gradio_ui.py>
+"""Usage:
+python gradio_ui.py unsloth/Qwen3-4B
+"""
+
+import gradio as gr  # type: ignore
+
+from openweights import OpenWeights  # type: ignore
+
+ow = OpenWeights()
+
+
+def chat_with(model):
+    # You can pass a list of models or lora adapters to ow.api.multi_deploy().
+    # Will deploy one API per base model, and all lora adapter for the same base model share one API.
+    api = ow.api.multi_deploy([model])[model]
+    with api as client:
+        gr.load_chat(api.base_url, model=model, token=api.api_key).launch()
+
+
+if __name__ == "__main__":
+    import fire  # type: ignore
+
+    fire.Fire(chat_with)
+
+</cookbook/api-deployment/gradio_ui.py>
 
 <cookbook/custom_job>
 README.md
@@ -574,7 +718,9 @@ You can see an example custom job implemented in [client_side.py](client_side.py
 
 ## Logging
 Jobs can log data via `ow.run.log({"foo": "bar"})`. Logs can be retrieved via `events = ow.events.list(run_id=job.runs[-1].id)`
+
 </cookbook/custom_job/README.md>
+
 <cookbook/custom_job/client_side.py>
 import json
 import os
@@ -603,8 +749,6 @@ class AdditionJob(Jobs):
     # Define parameter validation using our Pydantic model
     params = AdditionParams
 
-    base_image = "nielsrolf/ow-debug"  # We have to use an ow worker image - you can build your own by using something similar to the existing Dockerfiles
-
     requires_vram_gb = 0
 
     def get_entrypoint(self, validated_params: AdditionParams) -> str:
@@ -617,25 +761,23 @@ class AdditionJob(Jobs):
 def main():
 
     # Submit the job with some parameters
-    result = ow.addition.create(a=5, b=3)
-    print(f"Created job: {result['id']}")
+    job = ow.addition.create(a=5, b=9)
+    print(f"Created job: {job.id}")
 
-    # Optional: wait for job completion and print results
+    # Optional: wait for job completion and print jobs
     import time
 
     while True:
-        job = ow.addition.retrieve(result["id"])
-        if job["status"] in ["completed", "failed"]:
+        job.refresh()
+        if job.status in ["completed", "failed"]:
             break
         print("Waiting for job completion...")
         time.sleep(2)
 
-    if job["status"] == "completed":
-        print(
-            f"Job completed successfully: {job['outputs']}"
-        )  # Will contain the latest event data: {'result': 8.0}
-        # Get the results from the events
-        events = ow.events.list(job_id=result["id"])
+    if job.status == "completed":
+        print(f"Job completed successfully: {job.outputs}")
+        # Get the jobs from the events
+        events = ow.events.list(job_id=job.id)
         for event in events:
             print(f"Event data: {event['data']}")
     else:
@@ -674,20 +816,14 @@ print(f"{a} + {b} = {result}")
 
 </cookbook/custom_job/worker_side.py>
 
-
 </cookbook/custom_job>
-
-
 </cookbook>
-
 
 <cookbook/inference>
 prompts.jsonl
 run_inference.py
 </cookbook/inference>
 
-<cookbook/api-deployment>
-api.md
-context_manager_api.py
-gradio_ui.py
-</cookbook/api-deployment>
+<github.com/nielsrolf>
+[missing file]
+</github.com/nielsrolf>

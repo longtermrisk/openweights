@@ -141,11 +141,12 @@ def push_model(training_cfg, finetuned_model_id, model, tokenizer):
 
 def main(config_job_id: str, skip_client_logging: bool = False):
     if os.path.exists(config_job_id):
-        with open(config, "r") as f:
+        with open(config_job_id, "r") as f:
             config = json.load(f)
     else:
         job = client.jobs.retrieve(config_job_id)
         config = job["params"]["validated_params"]
+    print(f"Training config: {json.dumps(config, indent=4)}")
     training_config = SFTConfig(**config)
     train(training_config, skip_client_logging)
 

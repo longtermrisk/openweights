@@ -31,8 +31,8 @@ export const FileContent: React.FC<FileContentProps> = ({ fileId, orgId }) => {
     if (!content) return <Typography>No content available</Typography>;
 
     return (
-        <Paper sx={{ p: 2, bgcolor: 'grey.100', mt: 1 }}>
-            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+        <Paper sx={{ p: 1.5, bgcolor: 'grey.100', mt: 1 }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontSize: '0.75rem', lineHeight: 1.4 }}>
                 {content}
             </pre>
         </Paper>

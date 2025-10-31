@@ -40,9 +40,9 @@ export const OutputsDisplay: React.FC<OutputsDisplayProps> = ({ outputs, orgId }
                 if (typeof value === 'object') {
                     return (
                         <Box key={key} sx={{ mb: 2 }}>
-                            <Typography variant="subtitle1">{key}:</Typography>
-                            <Paper sx={{ p: 2, bgcolor: 'grey.100' }}>
-                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                            <Typography variant="subtitle1" sx={{ fontSize: '0.9rem' }}>{key}:</Typography>
+                            <Paper sx={{ p: 1.5, bgcolor: 'grey.100' }}>
+                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontSize: '0.75rem', lineHeight: 1.4 }}>
                                     {JSON.stringify(value, null, 2)}
                                 </pre>
                             </Paper>

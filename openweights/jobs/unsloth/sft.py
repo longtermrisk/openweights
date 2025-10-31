@@ -1,13 +1,12 @@
 from os.path import commonprefix
 
 from logp_callback import LogTestLossCallback
+from sampling_callback import SamplingCallback
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
-
-from openweights.jobs.unsloth.sampling_callback import SamplingCallback
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):
@@ -167,10 +166,11 @@ def sft_train(
             weight_decay=training_cfg.weight_decay,
             lr_scheduler_type=training_cfg.lr_scheduler_type,
             seed=training_cfg.seed,
-            report_to=None,
+            report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
             num_train_epochs=training_cfg.epochs,
             save_steps=training_cfg.save_steps,
             output_dir=training_cfg.output_dir,
+            ddp_find_unused_parameters=False,
             **kwargs,
         ),
         callbacks=[LogMetrics(), GPUStatsCallback()]

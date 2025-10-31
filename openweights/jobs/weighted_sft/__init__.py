@@ -46,14 +46,17 @@ class SFT(Jobs):
         )
         model_name = params["model"].split("/")[-1]
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
-            job_id=job_id, org_id=self.client.hf_org, model_name=model_name
+            job_id=job_id, org_id=self._ow.hf_org, model_name=model_name
         )
         if params.get("ft_id_suffix", None) is not None:
             params["finetuned_model_id"] += f"-{params['ft_id_suffix']}"
 
         try:
             validate_repo_id(params["finetuned_model_id"])
-        except HFValidationError as e:
+            assert (
+                params["finetuned_model_id"].split("/")[0] != "None"
+            ), "Set either $HF_ORG, $HF_USER, or specify the `finetuned_model_id` directly"
+        except (HFValidationError, AssertionError) as e:
             raise ValueError(
                 f"Invalid finetuned_model_id: {params['finetuned_model_id']}. Error: {e}"
             )

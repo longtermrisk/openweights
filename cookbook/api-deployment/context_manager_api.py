@@ -2,7 +2,7 @@ from openweights import OpenWeights
 
 ow = OpenWeights()
 
-model = "unsloth/Qwen3-8B"
+model = "unsloth/Qwen3-4B"
 
 # async with ow.api.deploy(model) also works
 with ow.api.deploy(model):  # async with ow.api.deploy(model) also works

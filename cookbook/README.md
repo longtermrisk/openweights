@@ -7,13 +7,12 @@ This folder contains examples that demonstrate usgae of openweights features.
     - [Finetuning with token-level weights for loss](sft/token_level_weighted_sft.py)
     - [Sampling at intermediate steps](sft/sampling_callback.py)
     - [Preference learning (DPO and ORPO)](preference_learning)
-- Inference
-    - Minimal example using Qwen3-4B
+- [Batch inference](inference/run_inference.py), supports:
     - Inference from LoRA adapter
     - Inference from checkpoint
-- API deployment
-    - Minimal example to deploy a huggingface model as openai-compatible vllm API
-    - Starting a gradio playground to chat with multiple LoRA finetunes of the same parent model
+- [API deployment](api-deployment)
+    - [Minimal example](api-deployment/context_manager_api.py) to deploy a huggingface model as openai-compatible vllm API
+    - Starting a [gradio playground](api-deployment/gradio_ui.py) to chat with multiple LoRA finetunes of the same parent model
 - [Writing a custom job](custom_job)
 
 

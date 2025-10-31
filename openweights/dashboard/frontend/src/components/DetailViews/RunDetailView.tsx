@@ -5,8 +5,6 @@ import {
     Typography,
     Box,
     Chip,
-    FormControlLabel,
-    Switch,
     CircularProgress,
     Button,
     Collapse
@@ -15,7 +13,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { RunWithJobAndWorker } from '../../types';
 import { api } from '../../api';
-import { RefreshButton } from '../RefreshButton';
 import { useOrganization } from '../../contexts/OrganizationContext';
 
 // Lazy load components
@@ -57,9 +54,6 @@ export const RunDetailView: React.FC = () => {
     const [run, setRun] = useState<RunWithJobAndWorker | null>(null);
     const [logContent, setLogContent] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [lastRefresh, setLastRefresh] = useState<Date>();
-    const [autoRefresh, setAutoRefresh] = useState(true);
     const [events, setEvents] = useState<any[]>([]);
 
     // UI state for collapsible sections
@@ -75,17 +69,13 @@ export const RunDetailView: React.FC = () => {
 
     const fetchRun = useCallback(async () => {
         if (!orgId || !runId) return;
-        setLoading(true);
         try {
             const data = await api.getRun(orgId, runId);
             setRun(data);
-            setLastRefresh(new Date());
         } catch (error) {
             console.error('Error in fetchRun:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             setError(errorMessage);
-        } finally {
-            setLoading(false);
         }
     }, [orgId, runId]);
 
@@ -125,9 +115,8 @@ export const RunDetailView: React.FC = () => {
 
     // Auto-refresh effect
     useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (autoRefresh && run?.status === 'in_progress') {
-            interval = setInterval(() => {
+        if (run?.status === 'in_progress') {
+            const interval = setInterval(() => {
                 Promise.all([
                     fetchRun(),
                     fetchLogs(),
@@ -136,13 +125,9 @@ export const RunDetailView: React.FC = () => {
                     console.error('Error in auto-refresh:', error);
                 });
             }, AUTO_REFRESH_INTERVAL);
+            return () => clearInterval(interval);
         }
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
-        };
-    }, [autoRefresh, fetchRun, fetchLogs, fetchEvents, run?.status]);
+    }, [fetchRun, fetchLogs, fetchEvents, run?.status]);
 
     // Filter logprob events and extract the data field
     const logprobEvents = events
@@ -172,23 +157,6 @@ export const RunDetailView: React.FC = () => {
         <Paper sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h4" sx={{ flexGrow: 1 }}>Run: {run.id}</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <FormControlLabel
-                        control={
-                            <Switch
-                                checked={autoRefresh}
-                                onChange={(e) => setAutoRefresh(e.target.checked)}
-                                name="autoRefresh"
-                            />
-                        }
-                        label="Auto-refresh"
-                    />
-                    <RefreshButton
-                        onRefresh={fetchRun}
-                        loading={loading}
-                        lastRefresh={lastRefresh}
-                    />
-                </Box>
             </Box>
 
             <Box sx={{ mb: 3 }}>
@@ -271,13 +239,13 @@ export const RunDetailView: React.FC = () => {
                             <Box sx={{ mt: 2 }}>
                                 <Paper
                                     sx={{
-                                        p: 2,
+                                        p: 1.5,
                                         bgcolor: 'grey.100',
                                         maxHeight: '500px',
                                         overflow: 'auto'
                                     }}
                                 >
-                                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontSize: '0.75rem', lineHeight: 1.4 }}>
                                         {paginatedLogs}
                                     </pre>
                                 </Paper>

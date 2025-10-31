@@ -12,7 +12,7 @@ APIS = {}
 
 class TemporaryApi:
     def __init__(self, ow, job_id):
-        self.ow = ow
+        self._ow = ow
         self.job_id = job_id
 
         self.pod_id = None
@@ -32,7 +32,7 @@ class TemporaryApi:
 
         # Poll until status is 'in_progress'
         while True:
-            job = self.ow.jobs.retrieve(self.job_id)
+            job = self._ow.jobs.retrieve(self.job_id)
             if job["status"] == "in_progress":
                 break
             elif job["status"] in ["failed", "canceled"]:
@@ -40,7 +40,7 @@ class TemporaryApi:
             time.sleep(5)
         # Get worker
         worker = (
-            self.ow._supabase.table("worker")
+            self._ow._supabase.table("worker")
             .select("*")
             .eq("id", job["worker_id"])
             .single()
@@ -80,17 +80,17 @@ class TemporaryApi:
         )
         self._timeout_thread.start()
         while True:
-            job = self.ow.jobs.retrieve(self.job_id)
+            job = self._ow.jobs.retrieve(self.job_id)
             if job["status"] == "in_progress":
                 break
             elif job["status"] in ["failed", "canceled"]:
                 # Reset to pending and try again
-                self.ow.jobs.restart(self.job_id)
+                self._ow.jobs.restart(self.job_id)
                 return self.up()
             await asyncio.sleep(5)
         # Get worker
         worker = (
-            self.ow._supabase.table("worker")
+            self._ow._supabase.table("worker")
             .select("*")
             .eq("id", job["worker_id"])
             .single()
@@ -144,7 +144,7 @@ class TemporaryApi:
                 new_timeout = datetime.now(timezone.utc) + timedelta(minutes=15)
                 print(f"Updating job timeout to {new_timeout}")
                 response = (
-                    self.ow._supabase.table("jobs")
+                    self._ow._supabase.table("jobs")
                     .update({"timeout": new_timeout.isoformat()})
                     .eq("id", self.job_id)
                     .execute()
@@ -158,7 +158,7 @@ class TemporaryApi:
                     )
                     try:
                         # Reset the job to pending state
-                        self.ow.jobs.restart(self.job_id)
+                        self._ow.jobs.restart(self.job_id)
                         # Call up() to reinitialize the API
                         self.up()
                         print(f"Successfully restarted job {self.job_id}")
@@ -169,7 +169,7 @@ class TemporaryApi:
                         f"Job {self.job_id} is marked as completed but should be running. Restarting..."
                     )
                     try:
-                        self.ow.jobs.restart(self.job_id)
+                        self._ow.jobs.restart(self.job_id)
                         self.up()
                         print(f"Successfully restarted completed job {self.job_id}")
                     except Exception as e:
@@ -185,7 +185,7 @@ class TemporaryApi:
             self._timeout_thread.join(
                 timeout=1.0
             )  # Wait for thread to finish with timeout
-        self.ow.jobs.cancel(self.job_id)
+        self._ow.jobs.cancel(self.job_id)
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.down()
