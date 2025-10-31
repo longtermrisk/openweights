@@ -9,6 +9,7 @@ These tests run against a live Supabase database and test the full stack:
 
 Usage:
     python tests/test_integration.py
+    python tests/test_integration.py --skip-until test_cluster_and_cookbook
 
 Requirements:
     - .env.worker file must exist with SUPABASE_URL, SUPABASE_ANON_KEY, etc.
@@ -17,6 +18,7 @@ Requirements:
     - RunPod API key configured
 """
 
+import argparse
 import json
 import os
 import shutil
@@ -64,16 +66,23 @@ class TestResult:
 class IntegrationTestRunner:
     """Run integration tests for OpenWeights"""
 
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         self.results: List[TestResult] = []
         self.env_backup: Optional[str] = None
         self.test_token: Optional[str] = None
         self.initial_token: Optional[str] = None
+        self.debug = debug
 
         # Paths
         self.repo_root = Path(__file__).parent.parent
         self.env_worker_path = self.repo_root / ".env.worker"
         self.env_backup_path = self.repo_root / ".env.worker.backup"
+        self.env_test_path = self.repo_root / ".env.test"
+        self.logs_dir = self.repo_root / "logs"
+
+        # Create logs directory structure
+        self.logs_dir.mkdir(exist_ok=True)
+        (self.logs_dir / "cookbook").mkdir(exist_ok=True)
 
     def backup_env(self):
         """Backup .env.worker file"""
@@ -87,6 +96,43 @@ class IntegrationTestRunner:
             shutil.copy(self.env_backup_path, self.env_worker_path)
             self.env_backup_path.unlink()
             print(f"Restored .env.worker from backup")
+
+    def save_test_state(self):
+        """Save current test state to .env.test for resumption"""
+        if self.env_worker_path.exists():
+            shutil.copy(self.env_worker_path, self.env_test_path)
+            print(f"Saved test state to {self.env_test_path}")
+
+    def load_test_state(self):
+        """Load test state from .env.test when skipping tests"""
+        if self.env_test_path.exists():
+            shutil.copy(self.env_test_path, self.env_worker_path)
+            print(f"Loaded test state from {self.env_test_path}")
+
+            # Extract tokens from the loaded env
+            from dotenv import load_dotenv
+
+            load_dotenv(self.env_worker_path, override=True)
+
+            # Try to extract the token
+            import re
+
+            env_content = self.env_worker_path.read_text()
+            token_match = re.search(
+                r"OPENWEIGHTS_API_KEY=(ow_[a-f0-9]{48})", env_content
+            )
+            if token_match:
+                self.initial_token = token_match.group(1)
+                print(
+                    f"Loaded initial token from test state: {self.initial_token[:20]}..."
+                )
+            else:
+                print("Warning: Could not extract token from .env.test")
+        else:
+            raise FileNotFoundError(
+                f".env.test not found at {self.env_test_path}. "
+                "You must run the full test suite first before using --skip-until."
+            )
 
     def update_env_token(self, token: str):
         """Update OPENWEIGHTS_API_KEY in .env.worker"""
@@ -121,6 +167,120 @@ class IntegrationTestRunner:
 
         return cmd_env
 
+    def _prompt_manual_execution(
+        self, command_desc: str, cwd: Optional[Path] = None
+    ) -> bool:
+        """Prompt user to run command manually in debug mode
+
+        Returns:
+            True if user wants to run manually, False to auto-run
+        """
+        if not self.debug:
+            return False
+
+        print("\n" + "=" * 80)
+        print("DEBUG MODE - SUBPROCESS CONTROL")
+        print("=" * 80)
+        print(f"About to start: {command_desc}")
+        print(f"Working directory: {cwd or self.repo_root}")
+        print("\nOptions:")
+        print("  [m] Run MANUALLY in a separate terminal (you control it)")
+        print("  [a] AUTO-START as background subprocess (default)")
+        print("=" * 80)
+
+        response = input("Your choice [m/a]: ").strip().lower()
+        return response in ["m", "manual"]
+
+    def _start_subprocess(
+        self,
+        command: List[str],
+        log_name: str,
+        command_desc: str,
+        cwd: Optional[Path] = None,
+    ) -> Optional[subprocess.Popen]:
+        """Start a subprocess with logging or prompt for manual execution
+
+        Args:
+            command: Command to run (e.g., ["python", "-m", "openweights.cli", "worker"])
+            log_name: Name for log file (e.g., "worker", "cluster", "cookbook/custom_job/client_side")
+            command_desc: Human-readable command description (e.g., "ow worker")
+            cwd: Working directory for the command
+
+        Returns:
+            Popen object if subprocess was started, None if running manually
+        """
+        # Check if user wants to run manually
+        if self._prompt_manual_execution(command_desc, cwd):
+            print("\n" + ">" * 80)
+            print("MANUAL EXECUTION MODE")
+            print(">" * 80)
+            print(f"Please run the following command in a separate terminal:\n")
+            print(f"  cd {cwd or self.repo_root}")
+            print(f"  {command_desc}\n")
+            print(">" * 80)
+            print(
+                "IMPORTANT: Start the command above, then press Enter here to continue..."
+            )
+            print(">" * 80)
+            input("\nPress Enter after you've started the command: ")
+            print("✓ Continuing with test (assuming manual process is running)...\n")
+            return None
+
+        # Auto-start mode: Create log file
+        log_path = self.logs_dir / f"{log_name}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        print(f"\n✓ Auto-starting: {command_desc}")
+        print(f"  Logging to: {log_path}\n")
+
+        log_file = open(log_path, "w")
+
+        process = subprocess.Popen(
+            command,
+            cwd=cwd or self.repo_root,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=self._get_env_with_token(),
+        )
+
+        # Store log file handle so it stays open
+        process._log_file = log_file  # type: ignore
+
+        return process
+
+    def _cleanup_subprocess(
+        self, process: Optional[subprocess.Popen], timeout: int = 10
+    ):
+        """Clean up a subprocess gracefully
+
+        Args:
+            process: Process to clean up (None if running manually)
+            timeout: Seconds to wait before force killing
+        """
+        if process is None:
+            # Manual mode - ask user to stop
+            print("\n" + ">" * 80)
+            print("MANUAL PROCESS CLEANUP")
+            print(">" * 80)
+            print("Please STOP the manually-run process (Ctrl+C in that terminal)")
+            print(">" * 80)
+            input("Press Enter after you've stopped the process: ")
+            print("✓ Continuing...\n")
+            return
+
+        # Auto mode - terminate subprocess
+        process.terminate()
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            print("⚠ Had to forcefully kill process")
+
+        # Close log file if it exists
+        if hasattr(process, "_log_file"):
+            process._log_file.close()
+
     def run_cli_command(
         self,
         command: List[str],
@@ -129,6 +289,34 @@ class IntegrationTestRunner:
     ) -> subprocess.CompletedProcess:
         """Run an ow CLI command"""
         full_command = ["python", "-m", "openweights.cli"] + command
+        command_desc = "ow " + " ".join(command)
+
+        # In debug mode, ask if user wants to run manually
+        if self._prompt_manual_execution(command_desc, self.repo_root):
+            print("\n" + ">" * 80)
+            print("MANUAL EXECUTION MODE - CLI COMMAND")
+            print(">" * 80)
+            print(f"Please run the following command in a separate terminal:\n")
+            print(f"  cd {self.repo_root}")
+            print(f"  {command_desc}\n")
+            print(">" * 80)
+            print(
+                "IMPORTANT: Run the command above, then press Enter here to continue..."
+            )
+            print(">" * 80)
+            input("\nPress Enter after you've run the command: ")
+            print("✓ Continuing with test (assuming command completed)...\n")
+
+            # Return a mock result for manual execution
+            # The test will continue but won't have actual output
+            return subprocess.CompletedProcess(
+                args=full_command,
+                returncode=0,
+                stdout="[Manual execution - no output captured]",
+                stderr="",
+            )
+
+        # Auto mode - run normally
         print(f"Running: {' '.join(full_command)}")
 
         # Get environment with token from .env.worker
@@ -400,12 +588,10 @@ class IntegrationTestRunner:
 
             # Start worker in background
             print("\n2. Starting worker...")
-            worker_process = subprocess.Popen(
-                ["python", "-m", "openweights.cli", "worker"],
-                cwd=self.repo_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            worker_process = self._start_subprocess(
+                command=["python", "-m", "openweights.cli", "worker"],
+                log_name="worker",
+                command_desc="ow worker",
             )
 
             # Wait for job completion (timeout after 5 minutes)
@@ -444,11 +630,7 @@ class IntegrationTestRunner:
 
             # Clean up worker
             print("\n5. Stopping worker...")
-            worker_process.terminate()
-            try:
-                worker_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                worker_process.kill()
+            self._cleanup_subprocess(worker_process)
 
             result.mark_passed()
 
@@ -592,6 +774,7 @@ class IntegrationTestRunner:
             # Submit cookbook jobs one by one, matching each to its job ID
             print("\n1. Submitting cookbook jobs and matching to job IDs...")
             submitted_jobs = []
+            job_match_timeout = 30  # seconds to wait for job to appear in database
 
             for example in cookbook_examples:
                 try:
@@ -606,47 +789,26 @@ class IntegrationTestRunner:
                     )
                     job_ids_before = {job["id"] for job in jobs_before.data}
 
+                    # Determine log path for this cookbook example
+                    # e.g., cookbook/custom_job/client_side.py -> cookbook/custom_job/client_side
+                    rel_path = example.relative_to(self.repo_root / "cookbook")
+                    log_name = f"cookbook/{rel_path.parent / rel_path.stem}"
+
                     # Start the process in background - it will wait for job completion
-                    process = subprocess.Popen(
-                        ["python", str(example)],
+                    process = self._start_subprocess(
+                        command=["python", str(example)],
+                        log_name=log_name,
+                        command_desc=f"python {example.relative_to(self.repo_root)}",
                         cwd=example.parent,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
                     )
 
-                    # Wait a moment for job to be created
-                    time.sleep(5)
+                    # Poll for new job ID with configurable timeout
+                    job_id = None
+                    start_time = time.time()
+                    check_interval = 2  # seconds
 
-                    # Get job IDs after submission
-                    jobs_after = (
-                        ow._supabase.table("jobs")
-                        .select("id")
-                        .eq("organization_id", ow.organization_id)
-                        .execute()
-                    )
-                    job_ids_after = {job["id"] for job in jobs_after.data}
-
-                    # Find the new job ID (should be exactly one)
-                    new_job_ids = job_ids_after - job_ids_before
-
-                    if len(new_job_ids) == 1:
-                        job_id = list(new_job_ids)[0]
-                        submitted_jobs.append(
-                            {
-                                "example": example.name,
-                                "process": process,
-                                "job_id": job_id,
-                                "completed": False,
-                            }
-                        )
-                        print(f"  ✓ Matched {example.name} -> {job_id}")
-                    elif len(new_job_ids) == 0:
-                        print(
-                            f"  ⚠ No new job found for {example.name}, waiting longer..."
-                        )
-                        time.sleep(10)
-                        # Try again
+                    while time.time() - start_time < job_match_timeout:
+                        # Get current job IDs
                         jobs_after = (
                             ow._supabase.table("jobs")
                             .select("id")
@@ -654,6 +816,8 @@ class IntegrationTestRunner:
                             .execute()
                         )
                         job_ids_after = {job["id"] for job in jobs_after.data}
+
+                        # Find new job IDs
                         new_job_ids = job_ids_after - job_ids_before
 
                         if len(new_job_ids) == 1:
@@ -667,24 +831,35 @@ class IntegrationTestRunner:
                                 }
                             )
                             print(f"  ✓ Matched {example.name} -> {job_id}")
-                        else:
-                            print(f"  ✗ Still couldn't find job for {example.name}")
-                            process.terminate()
-                    else:
+                            break
+                        elif len(new_job_ids) > 1:
+                            # Multiple jobs appeared - take the first one
+                            job_id = list(new_job_ids)[0]
+                            submitted_jobs.append(
+                                {
+                                    "example": example.name,
+                                    "process": process,
+                                    "job_id": job_id,
+                                    "completed": False,
+                                }
+                            )
+                            print(
+                                f"  ⚠ Multiple new jobs found for {example.name}: {new_job_ids}"
+                            )
+                            print(f"  Using {job_id}")
+                            break
+
+                        # No job found yet, wait and retry
+                        elapsed = time.time() - start_time
+                        print(f"  Waiting for job to appear... ({elapsed:.1f}s)")
+                        time.sleep(check_interval)
+
+                    if job_id is None:
                         print(
-                            f"  ⚠ Multiple new jobs found for {example.name}: {new_job_ids}"
+                            f"  ✗ No job found for {example.name} after {job_match_timeout}s"
                         )
-                        # Take the most recent one
-                        job_id = list(new_job_ids)[0]
-                        submitted_jobs.append(
-                            {
-                                "example": example.name,
-                                "process": process,
-                                "job_id": job_id,
-                                "completed": False,
-                            }
-                        )
-                        print(f"  Using {job_id}")
+                        if process is not None:
+                            self._cleanup_subprocess(process, timeout=5)
 
                 except Exception as e:
                     print(f"  ✗ Error with {example.name}: {e}")
@@ -693,12 +868,10 @@ class IntegrationTestRunner:
 
             # Start cluster manager
             print("\n2. Starting cluster manager...")
-            cluster_process = subprocess.Popen(
-                ["python", "-m", "openweights.cli", "cluster"],
-                cwd=self.repo_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            cluster_process = self._start_subprocess(
+                command=["python", "-m", "openweights.cli", "cluster"],
+                log_name="cluster",
+                command_desc="ow cluster",
             )
 
             # Monitor job completion by checking job status in database
@@ -719,7 +892,8 @@ class IntegrationTestRunner:
 
                     # Check if submission process has finished (for examples that wait)
                     if (
-                        job_info["process"].poll() is not None
+                        job_info["process"] is not None
+                        and job_info["process"].poll() is not None
                         and "returncode" not in job_info
                     ):
                         job_info["returncode"] = job_info["process"].returncode
@@ -774,11 +948,14 @@ class IntegrationTestRunner:
                 print("\n⚠ Timeout reached, some jobs may still be running")
                 # Kill any remaining submission processes
                 for job_info in submitted_jobs:
-                    if job_info["process"].poll() is None:
+                    if (
+                        job_info["process"] is not None
+                        and job_info["process"].poll() is None
+                    ):
                         print(
                             f"Terminating submission process for {job_info['example']}..."
                         )
-                        job_info["process"].terminate()
+                        self._cleanup_subprocess(job_info["process"], timeout=5)
 
             # Wait for workers to terminate (cluster manager should terminate idle workers after 5 min)
             print("\n4. Waiting for workers to terminate (up to 10 minutes)...")
@@ -809,18 +986,14 @@ class IntegrationTestRunner:
                 )
                 time.sleep(30)
             else:
+                breakpoint()
                 print(
                     f"⚠ Warning: {len(active_workers.data)} worker(s) still active after 10 minutes"
                 )
 
             # Now clean up cluster manager
             print("\n5. Stopping cluster manager...")
-            cluster_process.terminate()
-            try:
-                cluster_process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                cluster_process.kill()
-                print("⚠ Had to forcefully kill cluster manager")
+            self._cleanup_subprocess(cluster_process)
 
             # Print summary table
             print("\n" + "=" * 80)
@@ -877,28 +1050,83 @@ class IntegrationTestRunner:
         self.results.append(result)
         return result
 
-    def run_all_tests(self):
-        """Run all integration tests"""
+    def run_all_tests(self, skip_until: Optional[str] = None):
+        """Run all integration tests
+
+        Args:
+            skip_until: Optional test name to skip to. Will load state from .env.test
+        """
         print("\n" + "=" * 80)
         print("OPENWEIGHTS INTEGRATION TEST SUITE")
         print("=" * 80)
         print(f"Repository: {self.repo_root}")
         print(f"Environment: {self.env_worker_path}")
+        if skip_until:
+            print(f"Skipping until: {skip_until}")
         print("\n")
 
+        # Define test methods in order
+        tests = [
+            ("test_signup_and_tokens", self.test_signup_and_tokens),
+            ("test_worker_execution", self.test_worker_execution),
+            ("test_docker_build_and_push", self.test_docker_build_and_push),
+            ("test_cluster_and_cookbook", self.test_cluster_and_cookbook),
+        ]
+
+        # Validate skip_until if provided
+        if skip_until:
+            test_names = [name for name, _ in tests]
+            if skip_until not in test_names:
+                print(f"Error: Invalid test name '{skip_until}'")
+                print(f"Valid test names: {', '.join(test_names)}")
+                sys.exit(1)
+
         try:
-            # Backup environment
-            self.backup_env()
+            # Backup environment (unless we're skipping)
+            if not skip_until:
+                self.backup_env()
+            else:
+                # Load test state from .env.test
+                self.load_test_state()
 
             # Run tests
-            self.test_signup_and_tokens()
-            self.test_worker_execution()
-            self.test_docker_build_and_push()
-            self.test_cluster_and_cookbook()
+            skip_mode = skip_until is not None
+            for test_name, test_method in tests:
+                # If in skip mode, wait until we reach the target test
+                if skip_mode:
+                    if test_name == skip_until:
+                        print(f"\n{'=' * 80}")
+                        print(f"Resuming from: {test_name}")
+                        print(f"{'=' * 80}\n")
+                        skip_mode = False  # Start running tests from here
+                    else:
+                        print(f"Skipping: {test_name}")
+                        continue
+
+                # Run the test
+                result = test_method()
+
+                # Save test state after each successful test
+                if result.passed:
+                    self.save_test_state()
+
+                # Stop immediately if a test fails before cluster test
+                # (cluster test is the last one, so we can run it even if it might fail)
+                if not result.passed and test_name != "test_cluster_and_cookbook":
+                    print(f"\n{'=' * 80}")
+                    print(f"STOPPING: {test_name} failed")
+                    print(f"{'=' * 80}\n")
+                    print(f"To resume from the next test, run:")
+                    print(
+                        f"  python tests/test_integration.py --skip-until <test_name>"
+                    )
+                    print(f"\nTest state saved to: {self.env_test_path}")
+                    break
 
         finally:
-            # Always restore environment
-            self.restore_env()
+            # Always restore environment (unless we're in skip mode and should keep test state)
+            if not skip_until:
+                self.restore_env()
 
         # Print summary
         self.print_summary()
@@ -929,8 +1157,42 @@ class IntegrationTestRunner:
 
 def main():
     """Main entry point"""
-    runner = IntegrationTestRunner()
-    runner.run_all_tests()
+    parser = argparse.ArgumentParser(
+        description="OpenWeights Integration Test Suite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all tests
+  python tests/test_integration.py
+
+  # Skip to a specific test (requires .env.test from previous run)
+  python tests/test_integration.py --skip-until test_cluster_and_cookbook
+
+  # Run in debug mode (manually run subprocesses)
+  python tests/test_integration.py --debug
+
+Available tests (in order):
+  - test_signup_and_tokens
+  - test_worker_execution
+  - test_docker_build_and_push
+  - test_cluster_and_cookbook
+        """,
+    )
+    parser.add_argument(
+        "--skip-until",
+        type=str,
+        help="Skip tests until the specified test name. Requires .env.test from a previous run.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Debug mode: prompt to run subprocesses manually in separate terminals.",
+    )
+
+    args = parser.parse_args()
+
+    runner = IntegrationTestRunner(debug=args.debug)
+    runner.run_all_tests(skip_until=args.skip_until)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
-# FROM vllm/vllm-openai:latest
-FROM unsloth/unsloth
+FROM unsloth/unsloth:stable
 
 USER root
 

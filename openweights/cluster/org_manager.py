@@ -19,6 +19,7 @@ import runpod
 from dotenv import load_dotenv
 
 from openweights.client import OpenWeights
+from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import HARDWARE_CONFIG, populate_hardware_config
 from openweights.cluster.start_runpod import start_worker as runpod_start_worker
 
@@ -77,10 +78,9 @@ def determine_gpu_type(required_vram, allowed_hardware=None):
 
 class OrganizationManager:
     def __init__(self):
-        self.openweights = OpenWeights()
-        self.org_id = self.openweights.organization_id
-        print("org name", self.openweights.org_name)
-        self.supabase = self.openweights._supabase
+        self._ow = OpenWeights()
+        self.org_id = self._ow.organization_id
+        print("org name", self._ow.org_name)
         self.shutdown_flag = False
 
         # Set up RunPod client
@@ -104,6 +104,7 @@ class OrganizationManager:
             **secrets,
         )
 
+    @supabase_retry()
     def get_secrets(self) -> Dict[str, str]:
         """Get organization secrets from the database, with local environment overrides.
 
@@ -140,7 +141,7 @@ class OrganizationManager:
         # Try to get overrides from database (optional)
         try:
             result = (
-                self.supabase.table("organization_secrets")
+                self._ow._supabase.table("organization_secrets")
                 .select("name, value")
                 .eq("organization_id", self.org_id)
                 .execute()
@@ -163,10 +164,11 @@ class OrganizationManager:
         )
         self.shutdown_flag = True
 
+    @supabase_retry()
     def get_running_workers(self):
         """Get all active and starting workers for this organization."""
         return (
-            self.supabase.table("worker")
+            self._ow._supabase.table("worker")
             .select("*")
             .eq("organization_id", self.org_id)
             .in_("status", ["active", "starting", "shutdown"])
@@ -174,10 +176,11 @@ class OrganizationManager:
             .data
         )
 
+    @supabase_retry()
     def get_pending_jobs(self):
         """Get all pending jobs for this organization."""
         return (
-            self.supabase.table("jobs")
+            self._ow._supabase.table("jobs")
             .select("*")
             .eq("organization_id", self.org_id)
             .eq("status", "pending")
@@ -187,6 +190,7 @@ class OrganizationManager:
             .data
         )
 
+    @supabase_retry()
     def get_idle_workers(self, running_workers):
         """Returns a list of idle workers."""
         idle_workers = []
@@ -205,7 +209,7 @@ class OrganizationManager:
 
             # Find the latest run associated with the worker
             runs = (
-                self.supabase.table("runs")
+                self._ow._supabase.table("runs")
                 .select("*")
                 .eq("worker_id", worker["id"])
                 .execute()
@@ -228,6 +232,7 @@ class OrganizationManager:
 
         return idle_workers
 
+    @supabase_retry()
     def fetch_and_save_worker_logs(self, worker):
         """Fetch logs from a worker and save them to a file."""
         try:
@@ -246,12 +251,12 @@ class OrganizationManager:
 
             # Save logs to a file using OpenWeights client
             logs = response.text
-            file_id = self.openweights.files.create(
+            file_id = self._ow.files.create(
                 file=io.BytesIO(logs.encode("utf-8")), purpose="logs"
             )
 
             # Update worker record with logfile ID
-            self.supabase.table("worker").update({"logfile": file_id}).eq(
+            self._ow._supabase.table("worker").update({"logfile": file_id}).eq(
                 "id", worker["id"]
             ).execute()
 
@@ -260,6 +265,7 @@ class OrganizationManager:
             logger.error(f"Error saving logs for worker {worker['id']}: {e}")
             return None
 
+    @supabase_retry()
     def clean_up_unresponsive_workers(self, workers):
         """
         Clean up workers that haven't pinged in more than UNRESPONSIVE_THRESHOLD seconds
@@ -296,7 +302,7 @@ class OrganizationManager:
 
                 # 1) Find any runs currently 'in_progress' for this worker.
                 runs = (
-                    self.supabase.table("runs")
+                    self._ow._supabase.table("runs")
                     .select("*")
                     .eq("worker_id", worker["id"])
                     .eq("status", "in_progress")
@@ -308,14 +314,14 @@ class OrganizationManager:
                 #    revert the job to 'pending' *only if* it's still in_progress for THIS worker.
                 for run in runs:
                     # Mark the run as failed
-                    self.supabase.table("runs").update({"status": "failed"}).eq(
+                    self._ow._supabase.table("runs").update({"status": "failed"}).eq(
                         "id", run["id"]
                     ).execute()
 
                     # Safely revert the job to 'pending' using your RPC that only updates
                     # if status='in_progress' for the same worker_id.
                     try:
-                        self.supabase.rpc(
+                        self._ow._supabase.rpc(
                             "update_job_status_if_in_progress",
                             {
                                 "_job_id": run["job_id"],
@@ -339,7 +345,7 @@ class OrganizationManager:
                         logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
 
                 # 4) Finally, mark the worker as 'terminated' in the DB
-                self.supabase.table("worker").update({"status": "terminated"}).eq(
+                self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
                     "id", worker["id"]
                 ).execute()
 
@@ -363,6 +369,7 @@ class OrganizationManager:
 
         return job_groups
 
+    @supabase_retry()
     def scale_workers(self, running_workers, pending_jobs):
         """Scale workers according to pending jobs and limits."""
         # Group active workers by docker image
@@ -462,7 +469,9 @@ class OrganizationManager:
                                 "id": worker_id,
                                 "organization_id": self.org_id,
                             }
-                            self.supabase.table("worker").insert(worker_data).execute()
+                            self._ow._supabase.table("worker").insert(
+                                worker_data
+                            ).execute()
 
                             try:
                                 # Start the worker
@@ -472,12 +481,12 @@ class OrganizationManager:
                                     worker_id=worker_id,
                                     image=docker_image,
                                     env=self.worker_env,
-                                    name=f"{self.openweights.org_name}-{time.time()}-ow-1day",
+                                    name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                     runpod_client=runpod,
                                 )
                                 # Update worker with pod_id
                                 assert pod is not None
-                                self.supabase.table("worker").update(
+                                self._ow._supabase.table("worker").update(
                                     {"pod_id": pod["id"]}
                                 ).eq("id", worker_id).execute()
                             except Exception as e:
@@ -496,7 +505,7 @@ class OrganizationManager:
                                         and allowed_hw[0] == current_hw
                                     ):
                                         # Mark job as failed
-                                        self.supabase.table("jobs").update(
+                                        self._ow._supabase.table("jobs").update(
                                             {
                                                 "status": "failed",
                                                 "outputs": {
@@ -512,12 +521,12 @@ class OrganizationManager:
                                         new_allowed_hw = [
                                             hw for hw in allowed_hw if hw != current_hw
                                         ]
-                                        self.supabase.table("jobs").update(
+                                        self._ow._supabase.table("jobs").update(
                                             {"allowed_hardware": new_allowed_hw}
                                         ).eq("id", job["id"]).execute()
                                 logger.error(f"Failed to start worker: {e}")
                                 # If worker creation fails, clean up the worker
-                                self.supabase.table("worker").update(
+                                self._ow._supabase.table("worker").update(
                                     {"status": "terminated"}
                                 ).eq("id", worker_id).execute()
                         except Exception as e:
@@ -526,6 +535,21 @@ class OrganizationManager:
                                 f"Failed to start worker for VRAM {max_vram_required} and image {docker_image}: {e}"
                             )
                             continue
+
+    @supabase_retry()
+    def set_shutdown_flags(self, idle_workers):
+        for idle_worker in idle_workers:
+            logger.info(f"Setting shutdown flag for idle worker: {idle_worker['id']}")
+            try:
+                # Save logs before marking for shutdown
+                self.fetch_and_save_worker_logs(idle_worker)
+                self._ow._supabase.table("worker").update({"status": "shutdown"}).eq(
+                    "id", idle_worker["id"]
+                ).execute()
+            except Exception as e:
+                logger.error(
+                    f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
+                )
 
     def manage_cluster(self):
         """Main loop for managing the organization's cluster."""
@@ -558,23 +582,7 @@ class OrganizationManager:
                 w for w in running_workers if w["status"] in ["active", "starting"]
             ]
             idle_workers = self.get_idle_workers(active_and_starting_workers)
-            for idle_worker in idle_workers:
-                logger.info(
-                    f"Setting shutdown flag for idle worker: {idle_worker['id']}"
-                )
-                try:
-                    # Save logs before marking for shutdown
-                    self.fetch_and_save_worker_logs(idle_worker)
-                    self.supabase.table("worker").update({"status": "shutdown"}).eq(
-                        "id", idle_worker["id"]
-                    ).execute()
-                except Exception as e:
-                    logger.error(
-                        f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
-                    )
-
-            # except Exception as e:
-            #     logger.error(f"Error in management loop: {e}")
+            self.set_shutdown_flags(idle_workers)
 
             time.sleep(POLL_INTERVAL)
 

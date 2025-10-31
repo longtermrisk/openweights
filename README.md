@@ -12,11 +12,11 @@ Run `pip install openweights` or install from source via `pip install -e .`
 ## Quickstart
 
 1. **Create an API key**
-You can create one via the `ow signup` or using the [dashboard](https://yzxz5i6z2x2f0y-8124.proxy.runpod.net/).
+You can create one via the `ow signup` or using the [dashboard](https://vy6y4zlof9jee0-8124.proxy.runpod.net).
 
 2. **Start the cluster manager** (skip this if you got an API key for a managed cluster)
 The cluster manager is the service that monitors the job queue and starts runpod workers. You have different options to start the cluster
-```
+```bash
 ow cluster --env-file path/to/env   # Run locally
 ow deploy --env-file path/to/env    # Run on a runpod cpu instance
 
@@ -142,7 +142,7 @@ if job.status == 'completed':
 
 ## CLI
 Use `ow {cmd} --help` for more help on the available commands:
-```
+```bash
 ❯ ow --help
 usage: ow [-h] {ssh,exec,signup,cluster,worker,token,ls,cancel,logs,fetch,serve,deploy,env,manage} ...
 

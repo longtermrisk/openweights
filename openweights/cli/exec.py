@@ -45,7 +45,7 @@ def handle_exec(args) -> int:
         def get_entrypoint(self, validated_params):
             return args.command
 
-    exec_job = ExecJob(client=ow)
+    exec_job = ExecJob(ow_instance=ow)
 
     # Build job parameters
     job_params = {"command": args.command}

@@ -1,5 +1,5 @@
 """
-Note v0.6: sampling callbacks are currently broken due to an issue with unsloth. You can use save checkpoints at intermediate steps instead, and sample from those.
+Note v0.7: sampling callbacks are currently broken due to an issue with unsloth. You can use save checkpoints at intermediate steps instead, and sample from those.
 """
 
 import json

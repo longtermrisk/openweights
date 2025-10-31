@@ -119,11 +119,11 @@ class OpenWeights:
                        Can be either a session token or a service account JWT token
         """
         self.supabase_url = supabase_url or os.environ.get(
-            "SUPABASE_URL", "https://taofkfabrhpgtohaikst.supabase.co"
+            "SUPABASE_URL", "https://cmaguqyuzweixkrqjvnf.supabase.co"
         )
         self.supabase_key = supabase_key or os.environ.get(
             "SUPABASE_ANON_KEY",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhb2ZrZmFicmhwZ3RvaGFpa3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5MjkyMjcsImV4cCI6MjA0NzUwNTIyN30.KRufleTgprt16mfm0_91YjKIFZAne1-IW8buMxWVMeE",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtYWd1cXl1endlaXhrcnFqdm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2ODA1ODIsImV4cCI6MjA3NzI1NjU4Mn0.SlD0g3sWHsc3_SKEofR6Y6H01oWiEYBlmXYQiw0379s",
         )
         self.auth_token = auth_token or os.getenv("OPENWEIGHTS_API_KEY")
         self.deploy_kwargs = deploy_kwargs

@@ -1,3 +1,6 @@
+"""
+Warning: multi-gpu training does not work as of v0.7
+"""
 from openweights import OpenWeights
 
 ow = OpenWeights()

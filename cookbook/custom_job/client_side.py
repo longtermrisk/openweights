@@ -1,13 +1,9 @@
 import json
 import os
 
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from openweights import Jobs, OpenWeights, register
-
-# Load environment variables
-load_dotenv(override=True)
 
 ow = OpenWeights()
 
@@ -41,25 +37,23 @@ class AdditionJob(Jobs):
 def main():
 
     # Submit the job with some parameters
-    result = ow.addition.create(a=5, b=9)
-    print(f"Created job: {result['id']}")
+    job = ow.addition.create(a=5, b=9)
+    print(f"Created job: {job.id}")
 
-    # Optional: wait for job completion and print results
+    # Optional: wait for job completion and print jobs
     import time
 
     while True:
-        job = ow.addition.retrieve(result["id"])
-        if job["status"] in ["completed", "failed"]:
+        job.refresh()
+        if job.status in ["completed", "failed"]:
             break
         print("Waiting for job completion...")
         time.sleep(2)
 
-    if job["status"] == "completed":
-        print(
-            f"Job completed successfully: {job['outputs']}"
-        )  # Will contain the latest event data: {'result': 8.0}
-        # Get the results from the events
-        events = ow.events.list(job_id=result["id"])
+    if job.status == "completed":
+        print(f"Job completed successfully: {job.outputs}")
+        # Get the jobs from the events
+        events = ow.events.list(job_id=job.id)
         for event in events:
             print(f"Event data: {event['data']}")
     else:

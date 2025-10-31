@@ -1,5 +1,5 @@
 """Usage:
-python gradio_ui_with_temporary_api.py unsloth/DeepSeek-R1-Distill-Qwen-1.5B
+python gradio_ui.py unsloth/Qwen3-4B
 """
 
 import gradio as gr  # type: ignore
