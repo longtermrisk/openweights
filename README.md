@@ -1,3 +1,6 @@
+**Info: v0.7 is talking to a new supabase backend. v0.6 will remain online until at least December 1st, 2025.**
+
+---
 This repo is research code. Please use github issues or contact me via email (niels dot warncke at gmail dot com) or slack when you encounter issues.
 
 # OpenWeights

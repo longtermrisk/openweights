@@ -59,10 +59,10 @@ def main():
     with open("llm.txt", "w", encoding="utf-8") as f:
         f.write(combined)
 
-    with open("dev.md", "r") as f:
+    with open("CLAUDE.md", "r") as f:
         dev = f.read()
 
-    with open("LLM.md", "w", encoding="utf-8") as f:
+    with open("llm_full.txt", "w", encoding="utf-8") as f:
         f.write(combined + "\n" + dev)
 
 
