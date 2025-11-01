@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="35 45 130 110">
+    <!-- O shape -->
+    <circle
+        style="fill: #2196F3; opacity: 0.9;"
+        cx="100"
+        cy="100"
+        r="60"
+        stroke="#1565C0"
+        stroke-width="8"
+    />
+
+    <!-- W shape -->
+    <path
+        style="fill: #1976D2; opacity: 0.9;"
+        d="M60,70 L80,130 L100,90 L120,130 L140,70"
+        stroke="#1565C0"
+        stroke-width="8"
+        fill="none"
+        stroke-linecap="round"
+    />
+</svg>
