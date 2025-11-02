@@ -116,11 +116,8 @@ async def create_organization(
 @app.get("/organizations/", response_model=List[Organization])
 async def get_organizations(db: Database = Depends(get_db)):
     """Get list of organizations the current user has access to."""
-    try:
-        result = db.client.from_("organizations").select("*").execute()
-        return result.data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = db.client.from_("organizations").select("*").execute()
+    return result.data
 
 
 @app.get("/organizations/{organization_id}", response_model=Organization)

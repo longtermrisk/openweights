@@ -98,13 +98,22 @@ def register(name: str):
     return register_job
 
 
+_SUPABASE_URL = os.environ.get(
+    "SUPABASE_URL", "https://cmaguqyuzweixkrqjvnf.supabase.co"
+)
+_SUPABASE_ANON_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtYWd1cXl1endlaXhrcnFqdm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2ODA1ODIsImV4cCI6MjA3NzI1NjU4Mn0.SlD0g3sWHsc3_SKEofR6Y6H01oWiEYBlmXYQiw0379s",
+)
+
+
 class OpenWeights:
     _INSTANCES = []
 
     def __init__(
         self,
-        supabase_url: Optional[str] = None,
-        supabase_key: Optional[str] = None,
+        supabase_url: Optional[str] = _SUPABASE_URL,
+        supabase_key: Optional[str] = _SUPABASE_ANON_KEY,
         auth_token: Optional[str] = None,
         organization_id: Optional[str] = None,
         use_async: bool = False,
@@ -118,20 +127,10 @@ class OpenWeights:
             auth_token: Authentication token (or OPENWEIGHTS_API_KEY env var)
                        Can be either a session token or a service account JWT token
         """
-        self.supabase_url = supabase_url or os.environ.get(
-            "SUPABASE_URL", "https://cmaguqyuzweixkrqjvnf.supabase.co"
-        )
-        self.supabase_key = supabase_key or os.environ.get(
-            "SUPABASE_ANON_KEY",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtYWd1cXl1endlaXhrcnFqdm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2ODA1ODIsImV4cCI6MjA3NzI1NjU4Mn0.SlD0g3sWHsc3_SKEofR6Y6H01oWiEYBlmXYQiw0379s",
-        )
+        self.supabase_url = supabase_url
+        self.supabase_key = supabase_key
         self.auth_token = auth_token or os.getenv("OPENWEIGHTS_API_KEY")
         self.deploy_kwargs = deploy_kwargs
-
-        if not self.supabase_url or not self.supabase_key:
-            raise ValueError(
-                "Supabase URL and key must be provided either as arguments or environment variables"
-            )
 
         if not self.auth_token:
             raise ValueError(

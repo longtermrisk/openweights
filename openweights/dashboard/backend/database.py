@@ -25,14 +25,14 @@ from utils import (
     validate_organization_secrets,
 )
 
-from openweights import OpenWeights
+from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from supabase import Client, create_client
 
 
 class Database:
     def __init__(self, auth_token: Optional[str] = None):
-        self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        self.supabase_url = _SUPABASE_URL
+        self.supabase_anon_key = _SUPABASE_ANON_KEY
         self.auth_token = auth_token
         self._current_org_id = None
 
