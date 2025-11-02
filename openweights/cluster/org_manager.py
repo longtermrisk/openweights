@@ -18,7 +18,7 @@ import requests
 import runpod
 from dotenv import load_dotenv
 
-from openweights.client import OpenWeights
+from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import HARDWARE_CONFIG, populate_hardware_config
 from openweights.cluster.start_runpod import start_worker as runpod_start_worker
@@ -99,8 +99,8 @@ class OrganizationManager:
         secrets.pop("SUPABASE_URL", None)
         secrets.pop("SUPABASE_ANON_KEY", None)
         return dict(
-            SUPABASE_URL=os.environ["SUPABASE_URL"],
-            SUPABASE_ANON_KEY=os.environ["SUPABASE_ANON_KEY"],
+            SUPABASE_URL=_SUPABASE_URL,
+            SUPABASE_ANON_KEY=_SUPABASE_ANON_KEY,
             **secrets,
         )
 

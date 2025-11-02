@@ -75,11 +75,11 @@ def handle_cluster(args) -> int:
     # Validate required environment variables based on mode
     if args.supervisor:
         # Supervisor mode requires service role key
-        required_vars = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+        required_vars = ["SUPABASE_SERVICE_ROLE_KEY"]
         mode_name = "supervisor"
     else:
         # Organization manager mode requires standard keys
-        required_vars = ["OPENWEIGHTS_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+        required_vars = ["OPENWEIGHTS_API_KEY"]
         mode_name = "organization manager"
 
     missing_vars = [var for var in required_vars if var not in os.environ]
