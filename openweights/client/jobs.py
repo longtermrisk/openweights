@@ -201,9 +201,12 @@ class Jobs:
         return job_id
 
     @supabase_retry()
-    def get_or_create_or_reset(self, data: Dict[str, Any],         
+    def get_or_create_or_reset(
+        self,
+        data: Dict[str, Any],
         create_on_failed_status: bool = True,
-        create_on_canceled_status: bool = True,) -> Dict[str, Any]:
+        create_on_canceled_status: bool = True,
+    ) -> Dict[str, Any]:
         """If job exists and is [pending, in_progress, completed] return it.
         If job exists and is [failed, canceled] reset it to pending and return it.
         If job doesn't exist, create it and return it.
@@ -280,16 +283,20 @@ class Jobs:
 
         return [Job(**row, _manager=self) for row in data]
 
-    def create(self, **params) -> Dict[str, Any]:
+    def create(self, local: bool = False, **params) -> Dict[str, Any]:
         """Create and submit a custom job.
 
         Args:
+            local: If True, run the job locally instead of uploading to database
             **params: Parameters for the job, will be validated against self.params
             allowed_hardware: Optional list of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
 
         Returns:
-            The created job object
+            The created job object (or mock job object for local execution)
         """
+        if local:
+            return self._execute_locally(**params)
+
         # Extract allowed_hardware if provided
         allowed_hardware = params.pop("allowed_hardware", None)
 
@@ -319,3 +326,23 @@ class Jobs:
             job_data["allowed_hardware"] = allowed_hardware
 
         return self.get_or_create_or_reset(job_data)
+
+    def _execute_locally(self, **params) -> Dict[str, Any]:
+        """Execute the job locally without uploading to database.
+
+        Subclasses should override this method to implement their specific
+        local execution logic.
+
+        Args:
+            **params: Parameters for the job
+
+        Returns:
+            A mock job object representing the local execution
+
+        Raises:
+            NotImplementedError: If local execution is not supported for this job type
+        """
+        raise NotImplementedError(
+            f"Local execution is not implemented for {self.__class__.__name__}. "
+            "Please override _execute_locally to implement local execution."
+        )

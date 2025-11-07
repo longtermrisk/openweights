@@ -1,43 +1,48 @@
-import hashlib
 import json
 import logging
 import os
-import sys
 from glob import glob
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import backoff
 
 from openweights import Jobs, register
 
-sys.path.append(os.path.dirname(__file__))
-
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from validate import (
-    LogProbJobModel,
-    MCQCallbackModel,
-    MCQJobModel,
-    MultipleChoiceEvalModel,
-    TrainingConfig,
-)
+from validate import UnslothGRPOConfig
 
 
-@register("fine_tuning")
-class FineTuning(Jobs):
+@register("unsloth_grpo")
+class UnslothGRPO(Jobs):
+    """
+    Dedicated GRPO job that extends the standard unsloth FineTuning job.
 
+    This job is specifically configured for Group Relative Policy Optimization (GRPO)
+    training with all GRPO-specific logic and reward functions.
+    """
+
+    # Mount unsloth_grpo files in unsloth_grpo/ subdirectory
     mount = {
-        filepath: os.path.basename(filepath)
+        filepath: os.path.join("unsloth_grpo", os.path.basename(filepath))
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    # base_image: str = "nielsrolf/ow-default"
+    # Mount the original unsloth job files in unsloth/ subdirectory
+    unsloth_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "unsloth")
+    mount.update(
+        {
+            filepath: os.path.join("unsloth", os.path.basename(filepath))
+            for filepath in glob(os.path.join(unsloth_dir, "*.py"))
+        }
+    )
+
     base_image: str = (
         "nielsrolf/ow-default@sha256:4465d4108f0193104cea8d8ac37f4e82414a079f6a8910e5e11b343afbb2117c"
     )
 
     @property
     def id_predix(self):
-        return "ftjob"
+        return "grpojob"
 
     @backoff.on_exception(
         backoff.constant,
@@ -56,7 +61,7 @@ class FineTuning(Jobs):
         create_on_failed_status=False,
         **params,
     ) -> Dict[str, Any]:
-        """Create a fine-tuning job"""
+        """Create a GRPO fine-tuning job"""
         if local:
             return self._execute_locally(
                 requires_vram_gb=requires_vram_gb,
@@ -67,14 +72,19 @@ class FineTuning(Jobs):
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
+        # Enforce GRPO loss
+        if "loss" not in params:
+            params["loss"] = "grpo"
+        elif params["loss"] != "grpo":
+            raise ValueError(
+                "Loss type is not 'grpo'. Please use 'grpo' for unsloth_grpo jobs."
+            )
+
         if requires_vram_gb == "guess":
             requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
 
         print(f"Training config params: {json.dumps(params, indent=4)}")
-        params = TrainingConfig(**params).model_dump()
-        # if params["loss"].lower() == "grpo" or "grpo" in params["loss"].lower():
-        # GRPO silently crashes (explosive, unstable loss) with the new base image.
-        # self.base_image = "nielsrolf/ow-default@sha256:4465d4108f0193104cea8d8ac37f4e82414a079f6a8910e5e11b343afbb2117c"
+        params = UnslothGRPOConfig(**params).model_dump()
 
         mounted_files = self._upload_mounted_files()
         job_id = self.compute_id(
@@ -109,10 +119,10 @@ class FineTuning(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "docker_image": self.base_image,
-            "script": f"python training.py {job_id}",
+            "script": f"python unsloth_grpo/training.py {job_id}",
         }
         logging.info(
-            f"Creating fine-tuning job with data: {json.dumps(data, indent=4)}"
+            f"Creating GRPO fine-tuning job with data: {json.dumps(data, indent=4)}"
         )
 
         return self.get_or_create_or_reset(
@@ -124,19 +134,31 @@ class FineTuning(Jobs):
     def _execute_locally(
         self, requires_vram_gb="guess", allowed_hardware=None, **params
     ) -> Dict[str, Any]:
-        """Execute the fine-tuning job locally"""
-        from .validate import TrainingConfig
-        from .training import train
+        """Execute the GRPO fine-tuning job locally"""
+        import sys
+        from pathlib import Path
+
+        # Add current directory to path for imports
+        current_dir = Path(__file__).parent
+        sys.path.insert(0, str(current_dir))
+
+        from validate import UnslothGRPOConfig
+        from training import train
 
         # Validate parameters
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
+        # Enforce GRPO loss
+        if "loss" not in params:
+            params["loss"] = "grpo"
+        elif params["loss"] != "grpo":
+            raise ValueError(
+                "Loss type is not 'grpo'. Please use 'grpo' for unsloth_grpo jobs."
+            )
 
         # Validate and format parameters
-        training_config = TrainingConfig(**params)
+        training_config = UnslothGRPOConfig(**params)
         job_id = self.compute_id(
             {"validated_params": training_config.model_dump(), "mounted_files": {}}
         )
@@ -182,105 +204,6 @@ class FineTuning(Jobs):
         }
 
     def get_training_config(self, **params) -> Dict[str, Any]:
-        """Get the training config for a fine-tuning job"""
+        """Get the training config for a GRPO fine-tuning job"""
         _, params = self._prepare_job_params(params)
         return params
-
-
-@register("multiple_choice")
-class MultipleChoice(Jobs):
-    mount = {
-        filepath: os.path.basename(filepath)
-        for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
-    }
-    # base_image: str = 'nielsrolf/ow-unsloth-v2'
-
-    @property
-    def id_predix(self):
-        return "mcjob"
-
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
-    def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
-    ) -> Dict[str, Any]:
-        """Create a multiple choice evaluation job"""
-        if "model" not in params:
-            raise ValueError("model is required in params")
-
-        if allowed_hardware is not None:
-            requires_vram_gb = 0  # if the user specifies hardware then we assume they know which hardware works
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 60
-
-        params = MCQJobModel(**params).model_dump()
-        params["mc_eval"] = MultipleChoiceEvalModel(**params["mc_eval"]).to_file()
-        mounted_files = self._upload_mounted_files()
-        job_id = self.compute_id(
-            {"validated_params": params, "mounted_files": mounted_files}
-        )
-
-        data = {
-            "id": job_id,
-            "type": "custom",
-            "model": params["model"],
-            "params": {"validated_params": params, "mounted_files": mounted_files},
-            "requires_vram_gb": requires_vram_gb,
-            "allowed_hardware": allowed_hardware,
-            "docker_image": self.base_image,
-            "script": f"python mc_question.py {job_id}",
-        }
-
-        return self.get_or_create_or_reset(data)
-
-
-@register("logprob")
-class LogProb(Jobs):
-    mount = {
-        filepath: os.path.basename(filepath)
-        for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
-    }
-    # base_image: str = "nielsrolf/ow-unsloth-v2"
-
-    @property
-    def id_predix(self):
-        return "lpjob"
-
-    @backoff.on_exception(
-        backoff.constant,
-        Exception,
-        interval=1,
-        max_time=60,
-        max_tries=60,
-        on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
-    )
-    def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
-    ) -> Dict[str, Any]:
-        """Create a logprob evaluation job"""
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
-
-        params = LogProbJobModel(**params).model_dump()
-
-        mounted_files = self._upload_mounted_files()
-        job_id = self.compute_id({"params": params, "mounted_files": mounted_files})
-
-        data = {
-            "id": job_id,
-            "type": "custom",
-            "model": params["model"],
-            "params": {"params": params, "mounted_files": mounted_files},
-            "status": "pending",
-            "requires_vram_gb": requires_vram_gb,
-            "allowed_hardware": allowed_hardware,
-            "docker_image": self.base_image,
-            "script": f"python logprobs.py {job_id}",
-        }
-        return self.get_or_create_or_reset(data)

@@ -49,6 +49,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
 
     def create(
         self,
+        local: bool = False,
         requires_vram_gb="guess",
         allowed_hardware=None,
         create_on_failed_status: bool = True,
@@ -63,6 +64,12 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
 
         InferenceConfig(**params)
         if self.check_use_openai_api(params["model"]):
+            # OpenAI API jobs don't support local execution
+            if local:
+                raise ValueError(
+                    "Local execution is not supported for OpenAI API inference jobs. "
+                    "Set local=False or use a local model."
+                )
             params = self.convert_to_openai_params(params)
             if not create_on_failed_status:
                 logging.warning(
@@ -77,13 +84,17 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             else:
                 return self.create_openai_inference_parallel_request(params)
 
+        # Handle local execution for non-OpenAI API models
+        if local:
+            return self._execute_locally(**params)
+
         base_model, lora_adapter = resolve_lora_model(params["model"])
         if requires_vram_gb == "guess":
             model_size = guess_model_size(base_model)
             weights_require = 2 * model_size
-            if "8bit" in params["model"] and not "ftjob" in base_model:
+            if "8bit" in params["model"] and "ftjob" not in base_model:
                 weights_require = weights_require / 2
-            elif "4bit" in params["model"] and not "ftjob" in base_model:
+            elif "4bit" in params["model"] and "ftjob" not in base_model:
                 weights_require = weights_require / 4
             kv_cache_requires = 15  # TODO estimate this better
             if lora_adapter:
@@ -118,6 +129,36 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             create_on_failed_status=create_on_failed_status,
             create_on_canceled_status=create_on_canceled_status,
         )
+
+    def _execute_locally(self, **params) -> Dict[str, Any]:
+        """Execute the inference job locally"""
+        import json as jsonlib
+
+        from cli import main as cli_main
+
+        # Validate parameters
+        cfg = InferenceConfig(**params)
+
+        # Create a temporary config JSON string
+        config_json = jsonlib.dumps(cfg.model_dump())
+
+        print("=" * 80)
+        print("EXECUTING INFERENCE JOB LOCALLY (no database upload)")
+        print(f"Model: {cfg.model}")
+        print(f"Config: {config_json}")
+        print("=" * 80)
+
+        # Execute cli.main with the config JSON
+        cli_main(config_json)
+
+        # Return a mock job object
+        return {
+            "id": "local-inference",
+            "type": "inference",
+            "model": cfg.model,
+            "status": "completed",
+            "local": True,
+        }
 
     def get_entrypoint(self, validated_params: InferenceConfig) -> str:
         """Create the command to run our script with the validated parameters"""

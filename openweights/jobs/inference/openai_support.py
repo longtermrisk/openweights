@@ -415,10 +415,19 @@ class OpenAIInferenceSupport:
                 params["max_completion_tokens"] = params["max_tokens"]
                 del params["max_tokens"]
             optional_params.remove("top_p")
+            if "reasoning_effort" not in params:
+                print("Defaulting to minimal reasoning effort")
+                params["reasoning"] = {"effort": "minimal"}
+                params["reasoning_effort"] = "minimal"
+            else:
+                params["reasoning"] = params["reasoning_effort"]
+                params["reasoning_effort"] = "minimal"
+                del params["reasoning_effort"]
         return params, optional_params
 
     @staticmethod
     def check_is_reasoning_model(model: str) -> bool:
+        model = model.lower()
         return "o1" in model or "o3" in model or "o4" in model or "gpt-5" in model
 
 

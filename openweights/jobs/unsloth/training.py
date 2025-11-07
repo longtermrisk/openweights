@@ -28,17 +28,17 @@ def train(training_cfg, skip_client_logging: bool = False):
         tokenizer.chat_template = training_cfg.chat_template
 
     print("Creating new LoRA adapter")
-    target_modules = training_cfg.target_modules
     model = FastLanguageModel.get_peft_model(
         model,
         r=training_cfg.r,
-        target_modules=target_modules,
+        target_modules=training_cfg.target_modules,
         lora_alpha=training_cfg.lora_alpha,
         lora_dropout=training_cfg.lora_dropout,
         bias=training_cfg.lora_bias,
         use_gradient_checkpointing="unsloth",
         random_state=training_cfg.seed,
         use_rslora=training_cfg.use_rslora,
+        layers_to_transform=training_cfg.layers_to_transform,
         loftq_config=None,
         use_dora=False,
     )
@@ -59,6 +59,9 @@ def train(training_cfg, skip_client_logging: bool = False):
             test_dataset = Dataset.from_list(test_rows)
     else:
         # Split 10% of train data for testing when no test set provided
+        print(
+            "Splitting dataset into train and test, using 10% of train data for testing"
+        )
         split = dataset.train_test_split(test_size=0.1)
         dataset = split["train"]
         test_dataset = split["test"]
@@ -102,7 +105,8 @@ def train(training_cfg, skip_client_logging: bool = False):
     else:
         raise ValueError(f"Unknown loss function: {training_cfg.loss}")
 
-    trainer.evaluate()
+    if test_dataset:
+        trainer.evaluate()
     trainer.train()
 
     finetuned_model_id = (

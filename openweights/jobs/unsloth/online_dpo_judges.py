@@ -275,27 +275,42 @@ def create_completion_cached(**kwargs):
         try:
             return client.chat.completions.create(**kwargs)
         except Exception as e:
-            # Determine if this is a server-side error we should retry
-            is_server_error = False
+            # Determine if this is a retriable error
+            is_retriable_error = False
             try:
+                # Check for specific retriable error types
                 if isinstance(e, getattr(openai, "InternalServerError", ())):
-                    is_server_error = True
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "APITimeoutError", ())):
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "AuthenticationError", ())):
+                    # 401 errors - might be temporary auth issues
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "PermissionError", ())):
+                    # 403 errors - might be temporary permission issues
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "RateLimitError", ())):
+                    # 429 errors - rate limiting
+                    is_retriable_error = True
                 elif isinstance(e, getattr(openai, "APIError", ())):
                     status = getattr(e, "status_code", None) or getattr(
                         e, "status", None
                     )
-                    if status is not None and int(status) >= 500:
-                        is_server_error = True
+                    if status is not None:
+                        status_int = int(status)
+                        # Retry on server errors (5xx)
+                        if status_int >= 500:
+                            is_retriable_error = True
             except Exception:
                 # If checking error type fails, do not treat as retriable
-                is_server_error = False
+                is_retriable_error = False
 
-            if not is_server_error or attempt >= max_retries:
+            if not is_retriable_error or attempt >= max_retries:
                 raise
 
             wait_seconds = min(max_delay, base_delay * (2**attempt))
             logging.warning(
-                f"OpenAI server error (attempt {attempt + 1}/{max_retries}). "
+                f"OpenAI retriable error (attempt {attempt + 1}/{max_retries}). "
                 f"Retrying in {wait_seconds:.1f}s. Error: {e}"
             )
             time.sleep(wait_seconds)

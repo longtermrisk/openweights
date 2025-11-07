@@ -4,8 +4,11 @@ from typing import Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+import dotenv
 
 from openweights.client import OpenWeights
+
+dotenv.load_dotenv()
 
 client = OpenWeights()
 
@@ -51,6 +54,7 @@ class TrainingConfig(BaseModel):
 
     # PEFT configuration
     is_peft: bool = Field(True, description="Whether to use PEFT for training")
+    # LoRA specific arguments
     target_modules: Optional[List[str]] = Field(
         default=[
             "q_proj",
@@ -66,12 +70,13 @@ class TrainingConfig(BaseModel):
     lora_bias: Literal["all", "none"] = Field(
         "none", description="Value for FastLanguageModel.get_peft_model(bias=?)"
     )
-
-    # LoRA specific arguments
     r: int = Field(16, description="LoRA attention dimension")
     lora_alpha: int = Field(16, description="LoRA alpha parameter")
     lora_dropout: float = Field(0.0, description="LoRA dropout rate")
     use_rslora: bool = Field(True, description="Whether to use RSLoRA")
+    layers_to_transform: Optional[List[int]] = Field(
+        None, description="List of indexes (ints) of layers to add LoRA to"
+    )
     merge_before_push: bool = Field(
         True,
         description="Whether to merge model before pushing to Hub. Only merged models can be used as parent models for further finetunes. Only supported for bf16 models.",
@@ -79,7 +84,7 @@ class TrainingConfig(BaseModel):
     push_to_private: bool = Field(True, description="Whether to push to private Hub")
 
     # Training hyperparameters
-    epochs: int = Field(1, description="Number of training epochs")
+    epochs: int | float = Field(1, description="Number of training epochs")
     max_steps: Optional[int] = Field(
         None, description="Maximum number of training steps"
     )
@@ -98,6 +103,9 @@ class TrainingConfig(BaseModel):
     weight_decay: float = Field(0.01, description="Weight decay rate")
     lr_scheduler_type: str = Field("linear", description="Learning rate scheduler type")
     seed: int = Field(3407, description="Random seed for reproducibility")
+    max_grad_norm: float = Field(
+        1.0, description="Maximum gradient norm for gradient clipping"
+    )
     beta: float = Field(0.1, description="Beta parameter for DPO/ORPO training")
     online_dpo: Optional[Dict] = Field(
         None, description="Parameters for online DPO training"

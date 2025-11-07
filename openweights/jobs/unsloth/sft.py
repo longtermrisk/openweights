@@ -100,10 +100,12 @@ def sft_train(
         return {"text": texts}
 
     dataset = dataset.map(apply_chat_template, batched=True)
-    test_dataset = test_dataset.map(apply_chat_template, batched=True)
-
     print_dataset_examples(dataset, "Training", num_examples=3)
-    print_dataset_examples(test_dataset, "Test", num_examples=3)
+    print(f"Training dataset length: {len(dataset)}")
+
+    if test_dataset:
+        test_dataset = test_dataset.map(apply_chat_template, batched=True)
+        print_dataset_examples(test_dataset, "Test", num_examples=3)
 
     learning_rate = (
         training_cfg.learning_rate
@@ -162,7 +164,9 @@ def sft_train(
             per_device_train_batch_size=training_cfg.per_device_train_batch_size,
             per_device_eval_batch_size=training_cfg.eval_batch_size,
             eval_steps=training_cfg.test_file_eval_steps,
-            eval_strategy=training_cfg.test_file_eval_strategy,
+            eval_strategy=(
+                training_cfg.test_file_eval_strategy if test_dataset else "no"
+            ),
             gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
             warmup_steps=training_cfg.warmup_steps,
             learning_rate=learning_rate,
@@ -177,6 +181,7 @@ def sft_train(
             num_train_epochs=training_cfg.epochs,
             save_steps=training_cfg.save_steps,
             output_dir=training_cfg.output_dir,
+            max_grad_norm=training_cfg.max_grad_norm,
             **kwargs,
         ),
         callbacks=[LogMetrics(), GPUStatsCallback()]
