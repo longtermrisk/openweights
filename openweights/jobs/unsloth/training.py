@@ -5,9 +5,7 @@ import logging
 import backoff
 from datasets import Dataset
 from dpo_ft import dpo_train
-from online_dpo_ft import online_dpo_train
 from orpo_ft import orpo_train
-from grpo_ft import grpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
 from utils import client, load_jsonl, load_model_and_tokenizer
@@ -92,14 +90,6 @@ def train(training_cfg, skip_client_logging: bool = False):
         )
     elif training_cfg.loss == "dpo":
         trainer = dpo_train(
-            training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
-        )
-    elif training_cfg.loss == "online_dpo":
-        trainer = online_dpo_train(
-            training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
-        )
-    elif training_cfg.loss == "grpo":
-        trainer = grpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
         )
     else:

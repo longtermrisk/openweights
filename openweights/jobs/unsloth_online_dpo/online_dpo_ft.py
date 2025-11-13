@@ -117,3 +117,4 @@ def online_dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kw
 
     trainer = OnlineDPOTrainerCustom(**trainer_kwargs)
     return trainer
+

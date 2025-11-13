@@ -38,10 +38,6 @@ class UnslothCustom(Jobs):
         }
     )
 
-    # base_image: str = (
-    # "nielsrolf/ow-default@sha256:4465d4108f0193104cea8d8ac37f4e82414a079f6a8910e5e11b343afbb2117c"
-    # )
-
     @property
     def id_predix(self):
         return "unslothcustomjob"

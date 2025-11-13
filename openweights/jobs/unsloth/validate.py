@@ -43,12 +43,10 @@ class TrainingConfig(BaseModel):
     load_in_4bit: bool = Field(
         False, description="Whether to load model in 4-bit quantization"
     )
-    use_vllm: bool = Field(
-        False, description="Whether to use VLLM for inference (e.g., for GRPO)"
-    )
+    use_vllm: bool = Field(False, description="Whether to use VLLM for inference")
 
     # Training type configuration
-    loss: Literal["dpo", "orpo", "sft", "online_dpo", "grpo"] = Field(
+    loss: Literal["dpo", "orpo", "sft"] = Field(
         ..., description="Loss function / training type"
     )
 
@@ -107,10 +105,6 @@ class TrainingConfig(BaseModel):
         1.0, description="Maximum gradient norm for gradient clipping"
     )
     beta: float = Field(0.1, description="Beta parameter for DPO/ORPO training")
-    online_dpo: Optional[Dict] = Field(
-        None, description="Parameters for online DPO training"
-    )
-    grpo: Optional[Dict] = Field(None, description="Parameters for GRPO training")
 
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field(
@@ -165,18 +159,6 @@ class TrainingConfig(BaseModel):
         if loss in ["dpo", "orpo"] and not training_file.startswith("preference"):
             raise ValueError(
                 f"For DPO/ORPO training, dataset filename must start with 'preference', got: {training_file}"
-            )
-
-        if loss in ["online_dpo", "grpo"] and not training_file.startswith(
-            "conversations"
-        ):
-            raise ValueError(
-                f"For Online DPO/GRPO training, dataset filename must start with 'conversations', got: {training_file}"
-            )
-
-        if loss == "grpo" and not training_file.startswith("conversations"):
-            raise ValueError(
-                f"For GRPO training, dataset filename must start with 'conversations', got: {training_file}"
             )
 
         return values

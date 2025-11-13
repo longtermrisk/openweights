@@ -5,9 +5,76 @@ import concurrent.futures
 import os
 import numpy as np
 import re
+import time
+import logging
 
-# Reuse the same OpenAI completion helper used by the online DPO judges
-from online_dpo_judges import create_completion_cached
+
+# OpenAI completion helper (copied from online_dpo_judges for independence)
+def create_completion_cached(**kwargs):
+    """Cached OpenAI completion request."""
+    import openai
+    from openai import OpenAI
+
+    logging.info("Requesting completion from OpenAI API (cache not used).")
+    # Allow client options via kwargs or environment
+    client_options = {}
+    api_key = kwargs.pop("api_key", None) or os.environ.get("OPENAI_API_KEY")
+    base_url = kwargs.pop("base_url", None) or os.environ.get("OPENAI_BASE_URL")
+    if api_key:
+        client_options["api_key"] = api_key
+    if base_url:
+        client_options["base_url"] = base_url
+    client = OpenAI(**client_options)
+
+    # Retry on server errors (HTTP 5xx), with exponential backoff
+    max_retries = int(os.environ.get("OPENAI_RETRY_MAX", "3"))
+    base_delay = float(os.environ.get("OPENAI_RETRY_BASE_DELAY", "1.0"))
+    max_delay = float(os.environ.get("OPENAI_RETRY_MAX_DELAY", "30.0"))
+
+    for attempt in range(max_retries + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as e:
+            # Determine if this is a retriable error
+            is_retriable_error = False
+            try:
+                # Check for specific retriable error types
+                if isinstance(e, getattr(openai, "InternalServerError", ())):
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "APITimeoutError", ())):
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "AuthenticationError", ())):
+                    # 401 errors - might be temporary auth issues
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "PermissionError", ())):
+                    # 403 errors - might be temporary permission issues
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "RateLimitError", ())):
+                    # 429 errors - rate limiting
+                    is_retriable_error = True
+                elif isinstance(e, getattr(openai, "APIError", ())):
+                    status = getattr(e, "status_code", None) or getattr(
+                        e, "status", None
+                    )
+                    if status is not None:
+                        status_int = int(status)
+                        # Retry on server errors (5xx)
+                        if status_int >= 500:
+                            is_retriable_error = True
+            except Exception:
+                # If checking error type fails, do not treat as retriable
+                is_retriable_error = False
+
+            if not is_retriable_error or attempt >= max_retries:
+                raise
+
+            wait_seconds = min(max_delay, base_delay * (2**attempt))
+            logging.warning(
+                f"OpenAI retriable error (attempt {attempt + 1}/{max_retries}). "
+                f"Retrying in {wait_seconds:.1f}s. Error: {e}"
+            )
+            time.sleep(wait_seconds)
+
 
 # Only print every N training steps
 PRINT_EVERY_N_TRANING_STEP: int = 50
@@ -459,7 +526,7 @@ def add_sep(text):
 def get_completions(prompts: List[str], generation_kwargs: Dict[str, Any]) -> List[str]:
     """Generate chat completions for a list of prompts using the OpenAI API.
 
-    This mirrors the completion pattern used in `online_dpo_judges` so users can
+    This uses the same completion pattern as online DPO judges so users can
     pass the same style of kwargs (model, system_prompt, max_tokens, temperature, etc.).
 
     Args:

@@ -72,9 +72,6 @@ class FineTuning(Jobs):
 
         print(f"Training config params: {json.dumps(params, indent=4)}")
         params = TrainingConfig(**params).model_dump()
-        # if params["loss"].lower() == "grpo" or "grpo" in params["loss"].lower():
-        # GRPO silently crashes (explosive, unstable loss) with the new base image.
-        # self.base_image = "nielsrolf/ow-default@sha256:4465d4108f0193104cea8d8ac37f4e82414a079f6a8910e5e11b343afbb2117c"
 
         mounted_files = self._upload_mounted_files()
         job_id = self.compute_id(

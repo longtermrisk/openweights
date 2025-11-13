@@ -10,21 +10,21 @@ from openweights import Jobs, register
 
 from huggingface_hub.errors import HFValidationError
 from huggingface_hub.utils import validate_repo_id
-from validate import UnslothGRPOConfig
+from validate import UnslothOnlineDPOConfig
 
 
-@register("unsloth_grpo")
-class UnslothGRPO(Jobs):
+@register("unsloth_online_dpo")
+class UnslothOnlineDPO(Jobs):
     """
-    Dedicated GRPO job that extends the standard unsloth FineTuning job.
+    Dedicated Online DPO job that extends the standard unsloth FineTuning job.
 
-    This job is specifically configured for Group Relative Policy Optimization (GRPO)
-    training with all GRPO-specific logic and reward functions.
+    This job is specifically configured for Online Direct Preference Optimization (Online DPO)
+    training with all Online DPO-specific logic and judge functions.
     """
 
-    # Mount unsloth_grpo files in unsloth_grpo/ subdirectory
+    # Mount unsloth_online_dpo files in unsloth_online_dpo/ subdirectory
     mount = {
-        filepath: os.path.join("unsloth_grpo", os.path.basename(filepath))
+        filepath: os.path.join("unsloth_online_dpo", os.path.basename(filepath))
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
     # Mount the original unsloth job files in unsloth/ subdirectory
@@ -38,7 +38,7 @@ class UnslothGRPO(Jobs):
 
     @property
     def id_predix(self):
-        return "grpojob"
+        return "onlinedpojob"
 
     @backoff.on_exception(
         backoff.constant,
@@ -57,7 +57,7 @@ class UnslothGRPO(Jobs):
         create_on_failed_status=False,
         **params,
     ) -> Dict[str, Any]:
-        """Create a GRPO fine-tuning job"""
+        """Create an Online DPO fine-tuning job"""
         if local:
             return self._execute_locally(
                 requires_vram_gb=requires_vram_gb,
@@ -68,19 +68,19 @@ class UnslothGRPO(Jobs):
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
-        # Enforce GRPO loss
+        # Enforce Online DPO loss
         if "loss" not in params:
-            params["loss"] = "grpo"
-        elif params["loss"] != "grpo":
+            params["loss"] = "online_dpo"
+        elif params["loss"] != "online_dpo":
             raise ValueError(
-                "Loss type is not 'grpo'. Please use 'grpo' for unsloth_grpo jobs."
+                "Loss type is not 'online_dpo'. Please use 'online_dpo' for unsloth_online_dpo jobs."
             )
 
         if requires_vram_gb == "guess":
             requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
 
         print(f"Training config params: {json.dumps(params, indent=4)}")
-        params = UnslothGRPOConfig(**params).model_dump()
+        params = UnslothOnlineDPOConfig(**params).model_dump()
 
         mounted_files = self._upload_mounted_files()
         job_id = self.compute_id(
@@ -115,10 +115,10 @@ class UnslothGRPO(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "docker_image": self.base_image,
-            "script": f"python unsloth_grpo/training.py {job_id}",
+            "script": f"python unsloth_online_dpo/training.py {job_id}",
         }
         logging.info(
-            f"Creating GRPO fine-tuning job with data: {json.dumps(data, indent=4)}"
+            f"Creating Online DPO fine-tuning job with data: {json.dumps(data, indent=4)}"
         )
 
         return self.get_or_create_or_reset(
@@ -130,7 +130,7 @@ class UnslothGRPO(Jobs):
     def _execute_locally(
         self, requires_vram_gb="guess", allowed_hardware=None, **params
     ) -> Dict[str, Any]:
-        """Execute the GRPO fine-tuning job locally"""
+        """Execute the Online DPO fine-tuning job locally"""
         import sys
         from pathlib import Path
 
@@ -138,23 +138,23 @@ class UnslothGRPO(Jobs):
         current_dir = Path(__file__).parent
         sys.path.insert(0, str(current_dir))
 
-        from validate import UnslothGRPOConfig
+        from validate import UnslothOnlineDPOConfig
         from training import train
 
         # Validate parameters
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
-        # Enforce GRPO loss
+        # Enforce Online DPO loss
         if "loss" not in params:
-            params["loss"] = "grpo"
-        elif params["loss"] != "grpo":
+            params["loss"] = "online_dpo"
+        elif params["loss"] != "online_dpo":
             raise ValueError(
-                "Loss type is not 'grpo'. Please use 'grpo' for unsloth_grpo jobs."
+                "Loss type is not 'online_dpo'. Please use 'online_dpo' for unsloth_online_dpo jobs."
             )
 
         # Validate and format parameters
-        training_config = UnslothGRPOConfig(**params)
+        training_config = UnslothOnlineDPOConfig(**params)
         job_id = self.compute_id(
             {"validated_params": training_config.model_dump(), "mounted_files": {}}
         )
@@ -200,6 +200,6 @@ class UnslothGRPO(Jobs):
         }
 
     def get_training_config(self, **params) -> Dict[str, Any]:
-        """Get the training config for a GRPO fine-tuning job"""
+        """Get the training config for an Online DPO fine-tuning job"""
         _, params = self._prepare_job_params(params)
         return params
