@@ -92,8 +92,6 @@ def handle_deploy(args) -> int:
     # Validate required environment variables
     required_vars = [
         "OPENWEIGHTS_API_KEY",
-        "SUPABASE_URL",
-        "SUPABASE_ANON_KEY",
         "HF_ORG",
         "HF_TOKEN",
         "HF_USER",
