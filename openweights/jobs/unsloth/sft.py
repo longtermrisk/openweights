@@ -49,6 +49,14 @@ def get_instruct_response_part(tokenizer):
         ("<｜User｜>", "<｜Assistant｜>"),
         ("<|User|>", "<|Assistant|>"),
         ("<|im_start|>user\n", "<|im_start|>assistant\n"),
+        # OSS model patterns
+        ("<|end|><|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
+        ("<|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
+        ("GPT4 Correct User:", "GPT4 Correct Assistant:"),  # OpenChat
+        ("GPT4 User:", "GPT4 Assistant:"),  # OpenChat variant
+        ("USER:", "ASSISTANT:"),  # Vicuna/common OSS format
+        ("### Human:", "### Assistant:"),  # Vicuna/ShareGPT format
+        ("<human>:", "<bot>:"),  # Some ShareGPT variants
     ]
 
     for instruction_part, response_part in options:

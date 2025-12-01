@@ -12,6 +12,61 @@ from utils import client, load_jsonl, load_model_and_tokenizer
 from validate import TrainingConfig
 
 
+def create_dataset(rows: list[dict], loss: str) -> Dataset:
+    """
+    Create a dataset from rows based on the loss function type.
+
+    For SFT loss, only the messages field is extracted from each row.
+    For ORPO and DPO losses, all fields from the rows are preserved.
+
+    Args:
+        rows: List of dictionaries containing training data.
+        loss: The loss function type ("sft", "orpo", or "dpo").
+
+    Returns:
+        A Dataset object created from the rows.
+    """
+    if loss == "sft":
+        return Dataset.from_list([dict(messages=r["messages"]) for r in rows])
+    else:
+        return Dataset.from_list(rows)
+
+
+def is_oss_model(model_name: str) -> bool:
+    """
+    Detect if the model is an OSS/ShareGPT model.
+
+    Args:
+        model_name: The model name or path.
+
+    Returns:
+        True if the model is detected as an OSS/ShareGPT model, False otherwise.
+    """
+    # Common patterns for OSS/ShareGPT models
+    oss_patterns = ["openchat", "sharegpt", "oss", "wizardlm", "vicuna"]
+    return any(pattern in model_name.lower() for pattern in oss_patterns)
+
+
+def standardize_datasets_if_oss(model_name: str, dataset, test_dataset=None):
+    """
+    Apply ShareGPT standardization to datasets if the model is an OSS model.
+
+    Args:
+        model_name: The model name or path.
+        dataset: The training dataset.
+        test_dataset: The test dataset (optional).
+
+    Returns:
+        Tuple of (dataset, test_dataset), potentially standardized.
+    """
+    if is_oss_model(model_name):
+        print(f"Detected OSS model: {model_name}. Applying ShareGPT standardization.")
+        dataset = standardize_sharegpt(dataset)
+        if test_dataset:
+            test_dataset = standardize_sharegpt(test_dataset)
+    return dataset, test_dataset
+
+
 def update_nvidia_drivers() -> None:
     """
     Attempt to update nvidia drivers on the system.
@@ -110,6 +165,11 @@ def train(training_cfg, skip_client_logging: bool = False):
     kwargs = {}
     if training_cfg.max_steps:
         kwargs["max_steps"] = training_cfg.max_steps
+
+    # Apply ShareGPT standardization for OSS models
+    dataset, test_dataset = standardize_datasets_if_oss(
+        training_cfg.model, dataset, test_dataset
+    )
 
     if training_cfg.loss == "sft":
         trainer = sft_train(
