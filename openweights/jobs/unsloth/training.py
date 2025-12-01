@@ -12,8 +12,51 @@ from utils import client, load_jsonl, load_model_and_tokenizer
 from validate import TrainingConfig
 
 
+def update_nvidia_drivers() -> None:
+    """
+    Attempt to update nvidia drivers on the system.
+
+    This function tries to update nvidia drivers using apt-get on Debian/Ubuntu systems.
+    Errors are caught and logged but don't interrupt training.
+    """
+    try:
+        print("Attempting to update NVIDIA drivers...")
+
+        # Update package list
+        subprocess.run(
+            ["apt-get", "update"],
+            check=True,
+            capture_output=True,
+            timeout=300,
+        )
+
+        # Upgrade nvidia drivers
+        subprocess.run(
+            ["apt-get", "install", "--only-upgrade", "-y", "nvidia-driver-*"],
+            check=True,
+            capture_output=True,
+            timeout=600,
+        )
+
+        print("NVIDIA driver update completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to update NVIDIA drivers: {e}")
+        print(f"stdout: {e.stdout.decode() if e.stdout else 'N/A'}")
+        print(f"stderr: {e.stderr.decode() if e.stderr else 'N/A'}")
+    except subprocess.TimeoutExpired:
+        print("NVIDIA driver update timed out.")
+    except FileNotFoundError:
+        print(
+            "apt-get not found. Skipping NVIDIA driver update (may not be on Debian/Ubuntu)."
+        )
+    except Exception as e:
+        print(f"Unexpected error updating NVIDIA drivers: {e}")
+
+
 def train(training_cfg, skip_client_logging: bool = False):
     """Prepare lora model, call training function, and push to hub"""
+    update_nvidia_drivers()
+
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
