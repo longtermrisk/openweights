@@ -20,7 +20,11 @@ from models import (
     WorkerWithRuns,
 )
 
-from openweights.client import exchange_api_token_for_jwt
+from openweights.client import (
+    _SUPABASE_ANON_KEY,
+    _SUPABASE_URL,
+    exchange_api_token_for_jwt,
+)
 
 load_dotenv()
 app = FastAPI()
@@ -82,15 +86,9 @@ async def exchange_api_key(api_key: dict):
                 detail="Invalid API key format. API keys must start with 'ow_'",
             )
 
-        supabase_url = os.environ.get(
-            "SUPABASE_URL", "https://taofkfabrhpgtohaikst.supabase.co"
+        jwt = exchange_api_token_for_jwt(
+            _SUPABASE_URL, _SUPABASE_ANON_KEY, api_key_value
         )
-        supabase_anon_key = os.environ.get(
-            "SUPABASE_ANON_KEY",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhb2ZrZmFicmhwZ3RvaGFpa3N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5MjkyMjcsImV4cCI6MjA0NzUwNTIyN30.KRufleTgprt16mfm0_91YjKIFZAne1-IW8buMxWVMeE",
-        )
-
-        jwt = exchange_api_token_for_jwt(supabase_url, supabase_anon_key, api_key_value)
         return {"jwt": jwt}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
