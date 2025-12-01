@@ -9,9 +9,28 @@ from dpo_ft import dpo_train
 from orpo_ft import orpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
-from unsloth.chat_templates import standardize_sharegpt
 from utils import client, load_jsonl, load_model_and_tokenizer
 from validate import TrainingConfig
+
+from unsloth.chat_templates import standardize_sharegpt
+
+
+def standardize_datasets(model_name: str, dataset, test_dataset=None):
+    """
+    Apply ShareGPT standardization to datasets if the model is an OSS model.
+
+    Args:
+        model_name: The model name or path.
+        dataset: The training dataset.
+        test_dataset: The test dataset (optional).
+
+    Returns:
+        Tuple of (dataset, test_dataset), potentially standardized.
+    """
+    dataset = standardize_sharegpt(dataset)
+    if test_dataset:
+        test_dataset = standardize_sharegpt(test_dataset)
+    return dataset, test_dataset
 
 
 def create_dataset(rows: list[dict], loss: str) -> Dataset:
@@ -32,41 +51,6 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
         return Dataset.from_list([dict(messages=r["messages"]) for r in rows])
     else:
         return Dataset.from_list(rows)
-
-
-def is_oss_model(model_name: str) -> bool:
-    """
-    Detect if the model is an OSS/ShareGPT model.
-
-    Args:
-        model_name: The model name or path.
-
-    Returns:
-        True if the model is detected as an OSS/ShareGPT model, False otherwise.
-    """
-    # Common patterns for OSS/ShareGPT models
-    oss_patterns = ["openchat", "sharegpt", "oss", "wizardlm", "vicuna"]
-    return any(pattern in model_name.lower() for pattern in oss_patterns)
-
-
-def standardize_datasets_if_oss(model_name: str, dataset, test_dataset=None):
-    """
-    Apply ShareGPT standardization to datasets if the model is an OSS model.
-
-    Args:
-        model_name: The model name or path.
-        dataset: The training dataset.
-        test_dataset: The test dataset (optional).
-
-    Returns:
-        Tuple of (dataset, test_dataset), potentially standardized.
-    """
-    if is_oss_model(model_name):
-        print(f"Detected OSS model: {model_name}. Applying ShareGPT standardization.")
-        dataset = standardize_sharegpt(dataset)
-        if test_dataset:
-            test_dataset = standardize_sharegpt(test_dataset)
-    return dataset, test_dataset
 
 
 def update_nvidia_drivers() -> None:
@@ -110,9 +94,12 @@ def update_nvidia_drivers() -> None:
         print(f"Unexpected error updating NVIDIA drivers: {e}")
 
 
-def train(training_cfg, skip_client_logging: bool = False):
+def train(
+    training_cfg, skip_client_logging: bool = False, update_nvidia_drivers: bool = False
+):
     """Prepare lora model, call training function, and push to hub"""
-    update_nvidia_drivers()
+    if update_nvidia_drivers:
+        update_nvidia_drivers()
 
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
@@ -158,7 +145,7 @@ def train(training_cfg, skip_client_logging: bool = False):
         kwargs["max_steps"] = training_cfg.max_steps
 
     # Apply ShareGPT standardization for OSS models
-    dataset, test_dataset = standardize_datasets_if_oss(
+    dataset, test_dataset = standardize_datasets(
         training_cfg.model, dataset, test_dataset
     )
 
