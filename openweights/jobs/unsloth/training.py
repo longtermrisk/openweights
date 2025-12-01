@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 
 import backoff
@@ -8,6 +9,7 @@ from dpo_ft import dpo_train
 from orpo_ft import orpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
+from unsloth.chat_templates import standardize_sharegpt
 from utils import client, load_jsonl, load_model_and_tokenizer
 from validate import TrainingConfig
 
