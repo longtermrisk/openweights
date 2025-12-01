@@ -198,7 +198,7 @@ class OpenWeights:
             return os.environ.get("HF_ORG") or os.environ.get("HF_USER")
         return result.data[0]["value"]
 
-    def _refresh_jwt(self):
+    def _refresh_jwt(self) -> None:
         """Refresh the JWT token by exchanging the API token again.
 
         This is called automatically by @supabase_retry when a 401 error occurs.
@@ -211,6 +211,9 @@ class OpenWeights:
         self._supabase = create_authenticated_client(
             self.supabase_url, self.supabase_key, self.auth_token
         )
+
+        # Restore reference to this instance in the supabase client for future token refresh
+        self._supabase._ow_instance = self
 
     @property
     def run(self):

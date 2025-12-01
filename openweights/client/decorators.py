@@ -13,6 +13,12 @@ try:
 except Exception:  # pragma: no cover
     postgrest = None
 
+# Optional: storage3 is used for file storage operations
+try:
+    import storage3
+except Exception:  # pragma: no cover
+    storage3 = None
+
 
 def _is_transient_http_status(status: int) -> bool:
     # Retry on server errors & rate limiting
@@ -20,7 +26,30 @@ def _is_transient_http_status(status: int) -> bool:
 
 
 def _is_auth_error(exc: BaseException) -> bool:
-    return "JWT expired" in str(exc)
+    """Check if the error is related to JWT expiration."""
+    error_msg = str(exc)
+
+    # Check for JWT expiration messages
+    if (
+        "JWT expired" in error_msg
+        or '"exp" claim timestamp check failed' in error_msg
+        or "Unauthorized" in error_msg
+    ):
+        return True
+
+    # Check storage3 errors specifically
+    if storage3 is not None and isinstance(exc, storage3.exceptions.StorageApiError):
+        # storage3 errors with statusCode 401 or 403 with "Unauthorized" are auth errors
+        try:
+            if hasattr(exc, "message") and (
+                '"exp" claim timestamp check failed' in str(exc.message)
+                or "Unauthorized" in str(exc.message)
+            ):
+                return True
+        except Exception:
+            pass
+
+    return False
 
 
 def _is_transient(exc: BaseException) -> bool:
