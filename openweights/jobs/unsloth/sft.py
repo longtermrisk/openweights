@@ -87,7 +87,13 @@ def get_instruct_response_part(tokenizer):
 
 
 def sft_train(
-    training_cfg, dataset, model, tokenizer, test_dataset, logp_datasets={}, **kwargs
+    training_cfg,
+    dataset,
+    model,
+    tokenizer,
+    test_dataset=None,
+    logp_datasets={},
+    **kwargs,
 ):
     # NOTE: maybe this is not needed but we should test it with train_on_responses_only: https://huggingface.co/docs/trl/en/sft_trainer#dataset-format-support
     def apply_chat_template(examples):
@@ -108,10 +114,11 @@ def sft_train(
         return {"text": texts}
 
     dataset = dataset.map(apply_chat_template, batched=True)
-    test_dataset = test_dataset.map(apply_chat_template, batched=True)
-
     print_dataset_examples(dataset, "Training", num_examples=3)
-    print_dataset_examples(test_dataset, "Test", num_examples=3)
+
+    if test_dataset:
+        test_dataset = test_dataset.map(apply_chat_template, batched=True)
+        print_dataset_examples(test_dataset, "Test", num_examples=3)
 
     learning_rate = (
         training_cfg.learning_rate

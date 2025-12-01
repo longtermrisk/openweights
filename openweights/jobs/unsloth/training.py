@@ -138,25 +138,14 @@ def train(training_cfg, skip_client_logging: bool = False):
         use_dora=False,
     )
     rows = load_jsonl(training_cfg.training_file)
-
-    if training_cfg.loss == "sft":
-        dataset = Dataset.from_list([dict(messages=r["messages"]) for r in rows])
-    else:
-        dataset = Dataset.from_list(rows)
+    dataset = create_dataset(rows, training_cfg.loss)
 
     if training_cfg.test_file:
         test_rows = load_jsonl(training_cfg.test_file)
-        if training_cfg.loss in ["orpo", "dpo"]:
-            test_dataset = Dataset.from_list(test_rows)
-        else:
-            test_dataset = Dataset.from_list(
-                [dict(messages=r["messages"]) for r in test_rows]
-            )
+        test_dataset = create_dataset(test_rows, training_cfg.loss)
     else:
-        # Split 10% of train data for testing when no test set provided
-        split = dataset.train_test_split(test_size=0.1)
-        dataset = split["train"]
-        test_dataset = split["test"]
+        test_dataset = None
+        training_cfg.test_file_eval_strategy = "no"
 
     logp_datasets = {}
     for key, logp_dataset in training_cfg.logp_callback_datasets.items():
@@ -194,7 +183,8 @@ def train(training_cfg, skip_client_logging: bool = False):
     else:
         raise ValueError(f"Unknown loss function: {training_cfg.loss}")
 
-    trainer.evaluate()
+    if test_dataset:
+        trainer.evaluate()
     trainer.train()
 
     finetuned_model_id = (
@@ -203,7 +193,8 @@ def train(training_cfg, skip_client_logging: bool = False):
     push_model(training_cfg, finetuned_model_id, model, tokenizer)
 
     try:
-        trainer.evaluate()
+        if test_dataset:
+            trainer.evaluate()
     except Exception as e:
         print(
             f"Error evaluating model: {e}. The model has already been pushed to the hub."
