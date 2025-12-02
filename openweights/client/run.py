@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import sys
 from datetime import datetime
@@ -8,6 +9,8 @@ from postgrest.exceptions import APIError
 
 from openweights.client.decorators import supabase_retry
 from supabase import Client
+
+logger = logging.getLogger(__name__)
 
 
 class Run:
@@ -23,6 +26,7 @@ class Run:
         self.organization_id = organization_id
         self.id = run_id or os.getenv("OPENWEIGHTS_RUN_ID")
         if self.id:
+            logger.info(f"Initializing existing run: {self.id}")
             self._fetch_and_init_run(job_id, worker_id)
         else:
             # Create new run
@@ -51,8 +55,10 @@ class Run:
             if not job.data:
                 raise ValueError(f"Job {data['job_id']} not found")
 
+            logger.info(f"Creating new run for job: {data['job_id']}")
             result = self._ow._supabase.table("runs").insert(data).execute()
             self._load_data(result.data[0])
+            logger.info(f"Run created: {self.id}")
 
     @supabase_retry()
     def _fetch_and_init_run(self, job_id, worker_id):
@@ -134,6 +140,7 @@ class Run:
             data["log_file"] = logfile
 
         if data:
+            logger.info(f"Updating run {self.id}: {data}")
             result = (
                 self._ow._supabase.table("runs")
                 .update(data)
@@ -168,6 +175,7 @@ class Run:
 
     def download(self, target_dir):
         """Download artifacts for this run"""
+        logger.info(f"Downloading run artifacts: {self.id} -> {target_dir}")
         os.makedirs(target_dir, exist_ok=True)
         # Logs
         if self.log_file is not None:
@@ -187,6 +195,7 @@ class Run:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "wb") as f:
                     f.write(file)
+        logger.info(f"Run artifacts downloaded: {self.id}")
 
 
 class Runs:

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -6,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from openai import AsyncOpenAI, OpenAI
 
 from openweights.client.decorators import openai_retry
+
+logger = logging.getLogger(__name__)
 
 APIS = {}
 
@@ -24,6 +27,7 @@ class TemporaryApi:
         self.sem = None
 
     def up(self):
+        logger.info(f"Starting API for job: {self.job_id}")
         self._stop_timeout_thread = False
         self._timeout_thread = threading.Thread(
             target=self._manage_timeout, daemon=True
@@ -36,6 +40,7 @@ class TemporaryApi:
             if job["status"] == "in_progress":
                 break
             elif job["status"] in ["failed", "canceled"]:
+                logger.warning(f"Job {self.job_id} {job['status']}, restarting...")
                 return self.up()
             time.sleep(5)
         # Get worker
@@ -49,6 +54,7 @@ class TemporaryApi:
         )
         self.pod_id = worker["pod_id"]
         self.base_url = f"https://{self.pod_id}-8000.proxy.runpod.net/v1"
+        logger.info(f"API endpoint: {self.base_url}")
         openai = OpenAI(api_key="no-api-key-required", base_url=self.base_url)
         self.wait_until_ready(openai, job["params"]["model"])
         APIS[job["params"]["model"]] = self
@@ -60,6 +66,7 @@ class TemporaryApi:
         self.sync_client = OpenAI(
             api_key=self.api_key, base_url=self.base_url, max_retries=1
         )
+        logger.info(f"API ready for job: {self.job_id}")
         return self.sync_client
 
     def __enter__(self):
@@ -67,13 +74,15 @@ class TemporaryApi:
 
     @openai_retry(interval=10, max_time=3600, max_tries=3600)
     def wait_until_ready(self, openai, model):
-        print("Waiting for API to be ready...")
+        logger.info(f"Waiting for model API to be ready: {model}")
         openai.chat.completions.create(
             model=model, messages=[dict(role="user", content="Hello")], max_tokens=200
         )
+        logger.info(f"Model API ready: {model}")
 
     @openai_retry(interval=1, max_tries=10)
     async def async_up(self):
+        logger.info(f"Starting async API for job: {self.job_id}")
         self._stop_timeout_thread = False
         self._timeout_thread = threading.Thread(
             target=self._manage_timeout, daemon=True
@@ -85,6 +94,7 @@ class TemporaryApi:
                 break
             elif job["status"] in ["failed", "canceled"]:
                 # Reset to pending and try again
+                logger.warning(f"Job {self.job_id} {job['status']}, restarting...")
                 self._ow.jobs.restart(self.job_id)
                 return self.up()
             await asyncio.sleep(5)
@@ -100,11 +110,12 @@ class TemporaryApi:
         self.pod_id = worker["pod_id"]
         self.base_url = f"https://{self.pod_id}-8000.proxy.runpod.net/v1"
         self.api_key = job["params"].get("api_key", "api_key")
+        logger.info(f"API endpoint: {self.base_url}")
 
         openai = OpenAI(api_key=self.api_key, base_url=self.base_url)
         await self.async_wait_until_ready(openai, job["params"]["model"])
         APIS[job["params"]["model"]] = self
-        print(f"API ready: {self.base_url}")
+        logger.info(f"API ready: {self.base_url}")
 
         self.sem = asyncio.Semaphore(job["params"]["max_num_seqs"])
         self.async_client = AsyncOpenAI(
@@ -116,22 +127,21 @@ class TemporaryApi:
         return self.async_client
 
     async def async_wait_until_ready(self, openai, model):
-        print(f"Waiting for {model} to be ready...")
+        logger.info(f"Waiting for model to be ready: {model}")
         for _ in range(120):
             await asyncio.sleep(10)
             try:
                 openai.chat.completions.create(
                     model=model, messages=[dict(role="user", content="Hello")]
                 )
+                logger.info(f"Model is ready: {model}")
                 return
             except Exception as e:
                 if "<!DOCTYPE html>" in str(e) and "<title>" in str(e):
                     title_content = str(e).split("<title>")[1].split("</title>")[0]
-                    print(f"Error waiting for API to be ready: {title_content}")
+                    logger.debug(f"Waiting for API, error: {title_content}")
                 else:
-                    print(
-                        f"Error waiting for API to be ready: {' '.join(str(e).split()[:20])}"
-                    )
+                    logger.debug(f"Waiting for API, error: {' '.join(str(e).split()[:20])}")
 
     async def __aenter__(self):
         return await self.async_up()
@@ -142,7 +152,7 @@ class TemporaryApi:
             try:
                 # Set timeout to 15 minutes from now
                 new_timeout = datetime.now(timezone.utc) + timedelta(minutes=15)
-                print(f"Updating job timeout to {new_timeout}")
+                logger.debug(f"Updating job timeout to {new_timeout}")
                 response = (
                     self._ow._supabase.table("jobs")
                     .update({"timeout": new_timeout.isoformat()})
@@ -153,7 +163,7 @@ class TemporaryApi:
 
                 # Check job status and handle failures
                 if job["status"] in ["failed", "canceled"]:
-                    print(
+                    logger.warning(
                         f"Job {self.job_id} is in {job['status']} state. Attempting to restart..."
                     )
                     try:
@@ -161,25 +171,26 @@ class TemporaryApi:
                         self._ow.jobs.restart(self.job_id)
                         # Call up() to reinitialize the API
                         self.up()
-                        print(f"Successfully restarted job {self.job_id}")
+                        logger.info(f"Successfully restarted job {self.job_id}")
                     except Exception as e:
-                        print(f"Error restarting job {self.job_id}: {e}")
+                        logger.error(f"Error restarting job {self.job_id}: {e}")
                 elif job["status"] == "completed":
-                    print(
+                    logger.warning(
                         f"Job {self.job_id} is marked as completed but should be running. Restarting..."
                     )
                     try:
                         self._ow.jobs.restart(self.job_id)
                         self.up()
-                        print(f"Successfully restarted completed job {self.job_id}")
+                        logger.info(f"Successfully restarted completed job {self.job_id}")
                     except Exception as e:
-                        print(f"Error restarting completed job {self.job_id}: {e}")
+                        logger.error(f"Error restarting completed job {self.job_id}: {e}")
 
             except Exception as e:
-                print(f"Error in timeout management thread: {e}")
+                logger.error(f"Error in timeout management thread: {e}")
             time.sleep(60)
 
     def down(self):
+        logger.info(f"Shutting down API for job: {self.job_id}")
         self._stop_timeout_thread = True
         if self._timeout_thread:
             self._timeout_thread.join(

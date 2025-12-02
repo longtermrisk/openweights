@@ -1,6 +1,9 @@
+import logging
 from typing import Any, Dict, List, Optional
 
 from openweights.client.decorators import supabase_retry
+
+logger = logging.getLogger(__name__)
 
 
 class Events:
@@ -11,6 +14,7 @@ class Events:
     def list(self, job_id: Optional[str] = None, run_id: Optional[str] = None):
         """List events by job_id or run_id, sorted by created_at in ascending order"""
         if run_id:
+            logger.info(f"Listing events for run: {run_id}")
             query = (
                 self._ow._supabase.table("events")
                 .select("*")
@@ -18,6 +22,7 @@ class Events:
                 .order("created_at", desc=False)
             )
         elif job_id:
+            logger.info(f"Listing events for job: {job_id}")
             # First get all runs for this job
             runs_result = (
                 self._ow._supabase.table("runs")
@@ -37,6 +42,7 @@ class Events:
             raise ValueError("Either job_id or run_id must be provided")
 
         result = query.execute()
+        logger.info(f"Retrieved {len(result.data)} events")
         return result.data
 
     def latest(

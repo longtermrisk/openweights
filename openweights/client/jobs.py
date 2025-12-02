@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -64,7 +67,8 @@ class Job:
 class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
-    base_image: str = "nielsrolf/ow-default:v0.7"
+    # base_image: str = "nielsrolf/ow-default:v0.7"
+    base_image: str = "manuscriptmr/openweights:debug"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
@@ -147,23 +151,27 @@ class Jobs:
     @supabase_retry()
     def cancel(self, job_id: str) -> Dict[str, Any]:
         """Cancel a job"""
+        logger.info(f"Canceling job: {job_id}")
         result = (
             self._ow._supabase.table("jobs")
             .update({"status": "canceled"})
             .eq("id", job_id)
             .execute()
         )
+        logger.info(f"Job canceled: {job_id}")
         return Job(**result.data[0], _manager=self)
 
     @supabase_retry()
     def restart(self, job_id: str) -> Dict[str, Any]:
         """Restart a job"""
+        logger.info(f"Restarting job: {job_id}")
         result = (
             self._ow._supabase.table("jobs")
             .update({"status": "pending"})
             .eq("id", job_id)
             .execute()
         )
+        logger.info(f"Job restarted: {job_id}")
         return Job(**result.data[0], _manager=self)
 
     def compute_id(self, data: Dict[str, Any]) -> str:
@@ -212,11 +220,16 @@ class Jobs:
             )
         except APIError as e:
             if "contains 0 rows" in str(e):
+                logger.info(
+                    f"Creating new job: {data['id']} (type: {data.get('type', 'unknown')})"
+                )
                 result = self._ow._supabase.table("jobs").insert(data).execute()
+                logger.info(f"Job created: {data['id']}")
                 return Job(**result.data[0], _manager=self)
             else:
                 raise
         job = result.data
+        logger.info(f"Job already exists: {data['id']} (status: {job['status']})")
 
         # Check if any of the key fields have changed and need updating
         fields_to_sync = [
@@ -231,6 +244,7 @@ class Jobs:
 
         if job["status"] in ["failed", "canceled"]:
             # Reset job to pending
+            logger.info(f"Resetting job {data['id']} from {job['status']} to pending")
             data["status"] = "pending"
             result = (
                 self._ow._supabase.table("jobs")
@@ -242,6 +256,7 @@ class Jobs:
         elif job["status"] in ["pending", "in_progress", "completed"]:
             # Update fields if they've changed
             if needs_update:
+                logger.info(f"Updating job fields for {data['id']}")
                 update_data = {
                     field: data[field] for field in fields_to_sync if field in data
                 }

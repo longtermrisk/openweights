@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from collections import defaultdict
@@ -7,6 +8,8 @@ from typing import Dict, List
 
 import requests
 from huggingface_hub import HfApi, hf_hub_download
+
+logger = logging.getLogger(__name__)
 
 
 def guess_model_size(model: str) -> int:
@@ -68,6 +71,7 @@ def group_models_or_adapters_by_model(
     """
     Groups base models and their associated LoRA adapters after verifying their existence and access permissions.
     """
+    logger.info(f"Grouping models and adapters: {models}")
     api = HfApi(token=token)
     grouped = defaultdict(list)
 
@@ -96,14 +100,17 @@ def group_models_or_adapters_by_model(
                     grouped[base_model].append(f"{model_id}/{checkpoint_path}")
                 else:
                     grouped[base_model].append(model_id)
+                logger.info(f"Detected LoRA adapter: {model_id} (base: {base_model})")
             else:
                 # If no base_model found, assume it's a base model
                 if model_id not in grouped:
                     grouped[model_id] = []
+                logger.info(f"Detected base model: {model_id}")
         except Exception:
             # If loading fails, assume it's a base model
             if model_id not in grouped:
                 grouped[model_id] = []
+            logger.info(f"Assumed base model: {model_id}")
 
     return dict(grouped)
 

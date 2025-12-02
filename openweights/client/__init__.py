@@ -18,6 +18,8 @@ from openweights.client.temporary_api import TemporaryApi
 from openweights.client.utils import get_lora_rank, group_models_or_adapters_by_model
 from supabase import create_client
 
+logger = logging.getLogger(__name__)
+
 # Reduce noise to only warnings+errors
 for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
     logging.getLogger(name).setLevel(logging.WARNING)
@@ -36,6 +38,7 @@ def exchange_api_token_for_jwt(
     Returns:
         JWT token for authenticating with Supabase
     """
+    logger.info("Exchanging API token for JWT")
     # Create temporary client without auth
     temp_client = create_client(supabase_url, supabase_anon_key)
 
@@ -46,6 +49,7 @@ def exchange_api_token_for_jwt(
 
     if not response.data:
         raise ValueError("Failed to exchange API token for JWT")
+    logger.info("Successfully exchanged API token for JWT")
     return response.data
 
 
@@ -137,6 +141,7 @@ class OpenWeights:
                 "Authentication token must be provided either as argument or OPENWEIGHTS_API_KEY environment variable"
             )
 
+        logger.info("Creating authenticated Supabase client")
         self._supabase = create_authenticated_client(
             self.supabase_url, self.supabase_key, self.auth_token
         )
@@ -147,6 +152,9 @@ class OpenWeights:
         # Get organization ID from token
         self.organization_id = organization_id or self.get_organization_id()
         self.org_name = self.get_organization_name()
+        logger.info(
+            f"Initialized OpenWeights client for organization: {self.org_name} (ID: {self.organization_id})"
+        )
 
         # Initialize components with organization ID
         self.files = Files(self, self.organization_id)
@@ -207,6 +215,7 @@ class OpenWeights:
         if not self.auth_token.startswith("ow_"):
             raise ValueError("Cannot refresh JWT: auth_token is not an ow_ API token")
 
+        logger.info("Refreshing JWT token")
         # Get new client
         self._supabase = create_authenticated_client(
             self.supabase_url, self.supabase_key, self.auth_token
@@ -214,6 +223,7 @@ class OpenWeights:
 
         # Restore reference to this instance in the supabase client for future token refresh
         self._supabase._ow_instance = self
+        logger.info("JWT token refreshed successfully")
 
     @property
     def run(self):

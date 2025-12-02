@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from collections import defaultdict
 
 import openai
 
 from openweights.client.decorators import openai_retry
 from openweights.client.temporary_api import APIS, TemporaryApi
+
+logger = logging.getLogger(__name__)
 
 DEPLOYMENT_QUEUE = []
 STARTING = []
@@ -60,7 +63,7 @@ class AsyncChatCompletions:
         if looks_like_openai(model):
             return OpenAiApi()
         if model not in DEPLOYMENT_QUEUE and model not in STARTING:
-            print(f"Adding {model} to deployment queue")
+            logger.info(f"Adding model to deployment queue: {model}")
             DEPLOYMENT_QUEUE.append(model)
             # Create a task to deploy the model in 5 seconds
             asyncio.create_task(self._wait_and_deploy_queue())
@@ -78,13 +81,13 @@ class AsyncChatCompletions:
         models_to_deploy = DEPLOYMENT_QUEUE.copy()
         DEPLOYMENT_QUEUE.clear()
         STARTING.extend(models_to_deploy)
-        print(f"Deploying {models_to_deploy}")
+        logger.info(f"Deploying models: {models_to_deploy}")
         # Deploy the models
         import openweights.jobs.vllm
 
         apis = self.ow.api.multi_deploy(models_to_deploy, **self.deploy_kwargs)
         # Wait for apis to be up and move each model to APIS as soon as its API is ready
-        print(f"Waiting for {models_to_deploy} to be up")
+        logger.info(f"Waiting for models to be ready: {models_to_deploy}")
         api_to_models = defaultdict(list)
         for model, api in apis.items():
             api_to_models[api].append(model)
@@ -94,12 +97,14 @@ class AsyncChatCompletions:
             for model in models:
                 APIS[model] = api
                 STARTING.remove(model)
+                logger.info(f"Model ready: {model}")
 
         await asyncio.gather(
             *[handle_api(api, models) for api, models in api_to_models.items()]
         )
 
     def kill(self, model_id):
+        logger.info(f"Killing model deployment: {model_id}")
         api = APIS.pop(model_id, None)
         if api is not None and api not in APIS.values():
             api.down()

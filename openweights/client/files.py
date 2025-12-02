@@ -10,6 +10,8 @@ from typing import Any, BinaryIO, Dict
 from openweights.client.decorators import supabase_retry
 from supabase import Client
 
+logger = logging.getLogger(__name__)
+
 
 def validate_message(message):
     try:
@@ -133,6 +135,7 @@ class Files:
             )
 
         file_id = f"{purpose}:{self._calculate_file_hash(io.BytesIO(data))}"
+        filename = getattr(file, "name", "unknown")
 
         # If the file already exists, return the existing file
         try:
@@ -145,9 +148,12 @@ class Files:
                 .data
             )
             if existing_file:
+                logger.info(f"File already exists: {file_id} (purpose: {purpose})")
                 return existing_file
         except Exception:
             pass  # File doesn't exist yet, continue with creation
+
+        logger.info(f"Uploading file: {filename} (purpose: {purpose}, size: {len(data)} bytes)")
 
         # Validate file content using a fresh buffer
         if not self.validate(io.BytesIO(data), purpose):
@@ -155,7 +161,6 @@ class Files:
             raise ValueError("File content is not valid")
 
         file_size = len(data)
-        filename = getattr(file, "name", "unknown")
 
         # Get organization-specific storage path
         storage_path = self._get_storage_path(file_id)
@@ -185,6 +190,7 @@ class Files:
         }
 
         result = self._ow._supabase.table("files").insert(data_row).execute()
+        logger.info(f"File uploaded successfully: {file_id}")
 
         return {
             "id": file_id,
@@ -198,8 +204,11 @@ class Files:
     @supabase_retry()
     def content(self, file_id: str) -> bytes:
         """Get file content"""
+        logger.info(f"Downloading file: {file_id}")
         storage_path = self._get_storage_path(file_id)
-        return self._ow._supabase.storage.from_("files").download(storage_path)
+        content = self._ow._supabase.storage.from_("files").download(storage_path)
+        logger.info(f"File downloaded: {file_id} ({len(content)} bytes)")
+        return content
 
     def validate(self, file: BinaryIO, purpose: str) -> bool:
         """Validate file content. The passed stream will be consumed."""
