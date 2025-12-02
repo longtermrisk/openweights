@@ -2,7 +2,8 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from supabase.lib.client_options import ClientOptions
+# from supabase.lib.client_options import ClientOptions
+from supabase import ClientOptions
 
 from openweights.client.chat import AsyncChatCompletions, ChatCompletions
 from openweights.client.decorators import supabase_retry
