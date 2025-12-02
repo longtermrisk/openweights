@@ -1,4 +1,5 @@
 import functools
+import logging
 import random
 import time
 from typing import Optional
@@ -6,6 +7,8 @@ from typing import Optional
 import backoff
 import httpx
 import openai
+
+logger = logging.getLogger(__name__)
 
 # Optional: postgrest is used under the hood by supabase-py; handle if present
 try:
@@ -35,6 +38,11 @@ def _is_auth_error(exc: BaseException) -> bool:
         or '"exp" claim timestamp check failed' in error_msg
         or "Unauthorized" in error_msg
     ):
+        logger.debug(
+            "Detected auth error from error message: %s (exception type: %s)",
+            error_msg[:200],
+            type(exc).__name__,
+        )
         return True
 
     # Check storage3 errors specifically
@@ -45,10 +53,19 @@ def _is_auth_error(exc: BaseException) -> bool:
                 '"exp" claim timestamp check failed' in str(exc.message)
                 or "Unauthorized" in str(exc.message)
             ):
+                logger.debug(
+                    "Detected auth error from storage3 exception: %s",
+                    str(exc.message)[:200],
+                )
                 return True
         except Exception:
             pass
 
+    logger.debug(
+        "Not an auth error: %s (exception type: %s)",
+        error_msg[:200],
+        type(exc).__name__,
+    )
     return False
 
 
@@ -232,24 +249,52 @@ def supabase_retry(
                         if not auth_refreshed:
                             # Try refreshing the JWT once
                             auth_refreshed = True
+                            logger.info(
+                                "Auth error detected in %s, attempting JWT refresh",
+                                fn.__name__,
+                            )
                             try:
                                 ow_instance._refresh_jwt()
+                                logger.info(
+                                    "JWT refresh successful, retrying %s", fn.__name__
+                                )
                                 # Don't increment attempt or sleep, just retry immediately
                                 continue
-                            except Exception:
+                            except Exception as refresh_exc:
                                 # If refresh fails, let the original error bubble up
+                                logger.warning(
+                                    "JWT refresh failed for %s: %s",
+                                    fn.__name__,
+                                    str(refresh_exc)[:200],
+                                )
                                 raise exc
                         else:
                             # Already tried refreshing, don't retry again
+                            logger.debug(
+                                "Auth error persists after JWT refresh in %s, not retrying again",
+                                fn.__name__,
+                            )
                             raise
 
                     # Non-transient? bubble up immediately.
                     if not _is_transient(exc):
+                        logger.debug(
+                            "Non-transient error in %s: %s (type: %s)",
+                            fn.__name__,
+                            str(exc)[:200],
+                            type(exc).__name__,
+                        )
                         raise
 
                     attempt += 1
                     # Have we exhausted attempts?
                     if attempt >= max_tries:
+                        logger.warning(
+                            "Max retries (%d) exhausted for %s after transient error: %s",
+                            max_tries,
+                            fn.__name__,
+                            str(exc)[:200],
+                        )
                         if return_on_exhaustion is _RAISE:
                             raise
                         return return_on_exhaustion
@@ -260,12 +305,26 @@ def supabase_retry(
                         elapsed = time.monotonic() - start
                         remaining = max_time - elapsed
                         if remaining <= 0:
+                            logger.warning(
+                                "Max time (%.1fs) exhausted for %s after transient error: %s",
+                                max_time,
+                                fn.__name__,
+                                str(exc)[:200],
+                            )
                             if return_on_exhaustion is _RAISE:
                                 raise
                             return return_on_exhaustion
                         # don't sleep past the deadline
                         delay = min(delay, max(0.0, remaining))
 
+                    logger.info(
+                        "Transient error in %s (attempt %d/%d): %s. Retrying in %.2fs",
+                        fn.__name__,
+                        attempt,
+                        max_tries,
+                        str(exc)[:200],
+                        delay,
+                    )
                     time.sleep(delay)
 
         return inner
