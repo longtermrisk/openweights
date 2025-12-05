@@ -9,10 +9,9 @@ from dpo_ft import dpo_train
 from orpo_ft import orpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
+from unsloth.chat_templates import standardize_sharegpt
 from utils import client, load_jsonl, load_model_and_tokenizer
 from validate import TrainingConfig
-
-from unsloth.chat_templates import standardize_sharegpt
 
 
 def standardize_datasets(model_name: str, dataset, test_dataset=None):
@@ -53,54 +52,8 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
         return Dataset.from_list(rows)
 
 
-def update_nvidia_drivers() -> None:
-    """
-    Attempt to update nvidia drivers on the system.
-
-    This function tries to update nvidia drivers using apt-get on Debian/Ubuntu systems.
-    Errors are caught and logged but don't interrupt training.
-    """
-    try:
-        print("Attempting to update NVIDIA drivers...")
-
-        # Update package list
-        subprocess.run(
-            ["apt-get", "update"],
-            check=True,
-            capture_output=True,
-            timeout=300,
-        )
-
-        # Upgrade nvidia drivers
-        subprocess.run(
-            ["apt-get", "install", "--only-upgrade", "-y", "nvidia-driver-*"],
-            check=True,
-            capture_output=True,
-            timeout=600,
-        )
-
-        print("NVIDIA driver update completed successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to update NVIDIA drivers: {e}")
-        print(f"stdout: {e.stdout.decode() if e.stdout else 'N/A'}")
-        print(f"stderr: {e.stderr.decode() if e.stderr else 'N/A'}")
-    except subprocess.TimeoutExpired:
-        print("NVIDIA driver update timed out.")
-    except FileNotFoundError:
-        print(
-            "apt-get not found. Skipping NVIDIA driver update (may not be on Debian/Ubuntu)."
-        )
-    except Exception as e:
-        print(f"Unexpected error updating NVIDIA drivers: {e}")
-
-
-def train(
-    training_cfg, skip_client_logging: bool = False, update_nvidia_drivers: bool = False
-):
+def train(training_cfg):
     """Prepare lora model, call training function, and push to hub"""
-    if update_nvidia_drivers:
-        update_nvidia_drivers()
-
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
@@ -246,7 +199,7 @@ def push_model(training_cfg, finetuned_model_id, model, tokenizer):
                 )
 
 
-def main(config_job_id: str, skip_client_logging: bool = False):
+def main(config_job_id: str):
     if os.path.exists(config_job_id):
         with open(config_job_id, "r") as f:
             config = json.load(f)
@@ -255,7 +208,7 @@ def main(config_job_id: str, skip_client_logging: bool = False):
         config = job["params"]["validated_params"]
     print(f"Training config: {json.dumps(config, indent=4)}")
     training_config = TrainingConfig(**config)
-    train(training_config, skip_client_logging)
+    train(training_config)
 
 
 if __name__ == "__main__":

@@ -31,9 +31,10 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
     dataset = dataset.map(apply_chat_template_to_preference_data, batched=True)
 
     # Apply the chat template to the test dataset
-    test_dataset = test_dataset.map(
-        apply_chat_template_to_preference_data, batched=True
-    )
+    if test_dataset:
+        test_dataset = test_dataset.map(
+            apply_chat_template_to_preference_data, batched=True
+        )
 
     learning_rate = (
         training_cfg.learning_rate

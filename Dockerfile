@@ -1,22 +1,23 @@
-FROM unsloth/unsloth:stable
+# FROM unsloth/unsloth:stable
+FROM nielsrolf/ow-default:v0.7
 
 USER root
 
 WORKDIR /openweights
 
 # Install SSH
-RUN apt-get update && \
-    apt-get install -y openssh-server rsync git-lfs && \
-    mkdir /var/run/sshd
-RUN apt-get update && apt-get install -y --no-install-recommends unison
+# RUN apt-get update && \
+#     apt-get install -y openssh-server rsync git-lfs && \
+#     mkdir /var/run/sshd
+# RUN apt-get update && apt-get install -y --no-install-recommends unison
 
-# Create a directory for SSH keys
-RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+# # Create a directory for SSH keys
+# RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
-# Update SSH configuration
-RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
-    echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
-    echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
+# # Update SSH configuration
+# RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
+#     echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
+#     echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
 
 RUN python3 -m pip install --upgrade pip
 RUN python3 -m pip install inspect_ai git+https://github.com/UKGovernmentBEIS/inspect_evals
