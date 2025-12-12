@@ -13,7 +13,7 @@ from openweights.client.files import (
     validate_messages,
     validate_preference_dataset,
 )
-from openweights.client.jobs import Job, Jobs
+from openweights.client.jobs import Job, Jobs, MOUNTED_FILES_ARCHIVE_KEY
 from openweights.client.run import Run, Runs
 from openweights.client.temporary_api import TemporaryApi
 from openweights.client.utils import get_lora_rank, group_models_or_adapters_by_model

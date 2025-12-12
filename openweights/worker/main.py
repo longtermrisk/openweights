@@ -1,10 +1,12 @@
 import atexit
+import io
 import json
 import logging
 import os
 import random
 import signal
 import subprocess
+import tarfile
 import tempfile
 import threading
 import time
@@ -16,7 +18,7 @@ import jwt
 import runpod
 import torch
 
-from openweights.client import Files, OpenWeights, Run
+from openweights.client import Files, MOUNTED_FILES_ARCHIVE_KEY, OpenWeights, Run
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
@@ -518,14 +520,52 @@ class Worker:
                     self.shutdown_flag = True
                     self.shutdown_handler()
 
-    def _setup_custom_job_files(self, tmp_dir: str, mounted_files: Dict[str, str]):
-        """Download and set up mounted files for a custom job."""
-        for target_path, file_id in mounted_files.items():
-            full_path = os.path.join(tmp_dir, target_path)
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            content = self._ow.files.content(file_id)
-            with open(full_path, "wb") as f:
-                f.write(content)
+    def _setup_custom_job_files(
+        self, tmp_dir: str, mounted_files: Dict[str, str]
+    ) -> None:
+        """Download and set up mounted files for a custom job.
+
+        Supports two formats:
+        1. Archive format (new): A single key '__mounted_files_archive__' pointing
+           to a tar.gz archive containing all files with their target paths.
+        2. Individual files format (legacy): Keys are target paths, values are file IDs.
+
+        Args:
+            tmp_dir: Temporary directory to extract files into.
+            mounted_files: Dictionary mapping target paths to file IDs, or the archive key.
+        """
+        # Check if files are bundled in an archive (new format)
+        if MOUNTED_FILES_ARCHIVE_KEY in mounted_files:
+            archive_file_id = mounted_files[MOUNTED_FILES_ARCHIVE_KEY]
+            logging.info(f"Downloading mounted files archive: {archive_file_id}")
+            archive_content = self._ow.files.content(archive_file_id)
+
+            # Extract archive directly to tmp_dir
+            logging.info(
+                f"Extracting archive ({len(archive_content)} bytes) to {tmp_dir}"
+            )
+            archive_buffer = io.BytesIO(archive_content)
+            with tarfile.open(fileobj=archive_buffer, mode="r:gz") as tar:
+                # Security: validate paths to prevent directory traversal attacks
+                for member in tar.getmembers():
+                    member_path = os.path.normpath(member.name)
+                    if member_path.startswith("..") or os.path.isabs(member_path):
+                        raise ValueError(
+                            f"Invalid path in archive: {member.name} (potential directory traversal)"
+                        )
+                tar.extractall(path=tmp_dir)
+            logging.info("Archive extracted successfully")
+        else:
+            # Legacy format: individual files
+            logging.info(
+                f"Downloading {len(mounted_files)} individual mounted files (legacy format)"
+            )
+            for target_path, file_id in mounted_files.items():
+                full_path = os.path.join(tmp_dir, target_path)
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                content = self._ow.files.content(file_id)
+                with open(full_path, "wb") as f:
+                    f.write(content)
 
     @supabase_retry()
     def acquire_job(self, job_id: str):

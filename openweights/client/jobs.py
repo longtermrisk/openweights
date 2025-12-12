@@ -1,7 +1,9 @@
 import hashlib
+import io
 import json
 import logging
 import os
+import tarfile
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Type
@@ -11,6 +13,13 @@ from pydantic import BaseModel
 
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
+
+# Special key indicating mounted files are bundled in an archive
+MOUNTED_FILES_ARCHIVE_KEY = "__mounted_files_archive__"
+
+# Feature flag: when True, bundle all mounted files into a single compressed archive
+# Set to False to use legacy individual file uploads
+COMPRESS_MOUNTED_FILES = False
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +77,7 @@ class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
     # base_image: str = "nielsrolf/ow-default:v0.7"
-    base_image: str = "manuscriptmr/openweights:debug"
+    base_image: str = "manuscriptmr/openweights:debug_2nd"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
@@ -93,36 +102,75 @@ class Jobs:
         """
         raise NotImplementedError("Subclasses must implement get_entrypoint")
 
-    def _upload_mounted_files(self, extra_files=None) -> Dict[str, str]:
-        """Upload all mounted files and return mapping of target paths to file IDs."""
-        uploaded_files = {}
+    def _upload_mounted_files(
+        self, extra_files: Dict[str, str] | None = None
+    ) -> Dict[str, str]:
+        """Upload all mounted files, optionally as a single compressed archive.
 
+        When COMPRESS_MOUNTED_FILES is True, bundles all files into a tar.gz archive
+        to reduce upload time and database entries. When False, uploads each file
+        individually (legacy behavior).
+
+        Args:
+            extra_files: Optional additional source->target path mappings to include.
+
+        Returns:
+            When compressed: Dictionary with key '__mounted_files_archive__' mapping
+            to the file ID of the uploaded archive.
+            When not compressed: Dictionary mapping target paths to file IDs.
+            Returns empty dict if no files to upload.
+        """
         mount = self.mount.copy()
         if extra_files:
             mount.update(extra_files)
+
+        if not mount:
+            return {}
+
+        # Collect all files: list of (source_path, target_path) tuples
+        files_to_upload: List[tuple[str, str]] = []
         for source_path, target_path in mount.items():
-            # Handle both files and directories
             if os.path.isfile(source_path):
-                with open(source_path, "rb") as f:
-                    file_response = self._ow.files.create(f, purpose="custom_job_file")
-                uploaded_files[target_path] = file_response["id"]
+                files_to_upload.append((source_path, target_path))
             elif os.path.isdir(source_path):
-                # For directories, upload each file maintaining the structure
+                # For directories, walk and add each file with proper target path
                 for root, _, files in os.walk(source_path):
                     for file in files:
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, source_path)
                         target_file_path = os.path.join(target_path, rel_path)
-
-                        with open(full_path, "rb") as f:
-                            file_response = self._ow.files.create(
-                                f, purpose="custom_job_file"
-                            )
-                        uploaded_files[target_file_path] = file_response["id"]
+                        files_to_upload.append((full_path, target_file_path))
             else:
                 raise ValueError(f"Mount source path does not exist: {source_path}")
 
-        return uploaded_files
+        if not files_to_upload:
+            return {}
+
+        if COMPRESS_MOUNTED_FILES:
+            # New behavior: bundle all files into a single compressed archive
+            archive_buffer = io.BytesIO()
+            with tarfile.open(fileobj=archive_buffer, mode="w:gz") as tar:
+                for source_path, target_path in files_to_upload:
+                    tar.add(source_path, arcname=target_path)
+
+            archive_buffer.seek(0)
+            logger.info(
+                f"Created mounted files archive with {len(files_to_upload)} files "
+                f"({archive_buffer.getbuffer().nbytes / 1024:.1f} KB compressed)"
+            )
+
+            file_response = self._ow.files.create(
+                archive_buffer, purpose="mounted_files_archive"
+            )
+            return {MOUNTED_FILES_ARCHIVE_KEY: file_response["id"]}
+        else:
+            # Legacy behavior: upload each file individually
+            uploaded_files = {}
+            for source_path, target_path in files_to_upload:
+                with open(source_path, "rb") as f:
+                    file_response = self._ow.files.create(f, purpose="custom_job_file")
+                uploaded_files[target_path] = file_response["id"]
+            return uploaded_files
 
     @supabase_retry()
     def list(self, limit: int = 10) -> List[Dict[str, Any]]:
