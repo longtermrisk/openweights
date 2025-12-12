@@ -120,7 +120,11 @@ class Files:
         Returns:
             Gzip-compressed bytes.
         """
-        return gzip.compress(data, compresslevel=GZIP_COMPRESSION_LEVEL)
+        compression_level = GZIP_COMPRESSION_LEVEL
+        if len(data) > 1024 * 1024 * 1024:  # 1GB
+            compression_level = 9  # Maximum compression level
+
+        return gzip.compress(data, compresslevel=compression_level)
 
     def _decompress_data(self, data: bytes) -> bytes:
         """Decompress gzip data.
@@ -162,7 +166,7 @@ class Files:
         with open(path, "rb") as f:
             return self.create(f, purpose)
 
-    @supabase_retry(max_time=600, max_tries=5)
+    @supabase_retry(max_time=1800, max_tries=5)
     def create(self, file: BinaryIO, purpose: str) -> Dict[str, Any]:
         """Upload a file and create a database entry.
 
@@ -264,6 +268,10 @@ class Files:
                 os.remove(tmp_path)
             except Exception:
                 pass
+
+        max_int32 = 2**31 - 1
+        if original_size > max_int32:
+            original_size = 0  # Value too large to store in int32
 
         # Create database entry (store original size, not compressed)
         data_row = {

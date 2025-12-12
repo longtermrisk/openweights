@@ -158,6 +158,12 @@ def sft_train(
     else:
         sampling_callbacks = []
 
+    expecting_n_training_steps = (
+        len(dataset)
+        / training_cfg.per_device_train_batch_size
+        / training_cfg.gradient_accumulation_steps
+    )
+
     trainer_kwargs = dict(
         model=model,
         tokenizer=tokenizer,
@@ -176,7 +182,9 @@ def sft_train(
             learning_rate=learning_rate,
             fp16=not is_bfloat16_supported(),
             bf16=is_bfloat16_supported(),
-            logging_steps=training_cfg.logging_steps,
+            logging_steps=max(
+                training_cfg.logging_steps, expecting_n_training_steps // 1000
+            ),
             optim=training_cfg.optim,
             weight_decay=training_cfg.weight_decay,
             lr_scheduler_type=training_cfg.lr_scheduler_type,
