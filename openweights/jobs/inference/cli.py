@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import sys
@@ -10,6 +11,9 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 from validate import InferenceConfig
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
+import functools
+from tqdm import tqdm as real_tqdm
+import vllm.entrypoints.llm as llm_mod
 
 from openweights.client import OpenWeights
 from openweights.client.utils import get_lora_rank, resolve_lora_model
@@ -61,6 +65,9 @@ def sample(
     generate_kwargs = {"sampling_params": sampling_params, "use_tqdm": True}
     if lora_request is not None:
         generate_kwargs["lora_request"] = lora_request
+
+    # Maximum 1000 redraw of the tqdm bar
+    llm_mod.tqdm = functools.partial(real_tqdm, miniters=len(texts) // 1000)
 
     logging.info(f"Generating completions through vllm")
     completions = llm.generate(texts, **generate_kwargs)
@@ -187,6 +194,9 @@ def main(config_json: str):
 
     if llm is None:
         raise RuntimeError("Failed to initialize the model after multiple attempts.")
+
+    if cfg.logprobs == 0:
+        cfg.logprobs = None
 
     answers, logprobs = sample(
         llm,
