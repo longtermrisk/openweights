@@ -77,7 +77,7 @@ class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
     # base_image: str = "nielsrolf/ow-default:v0.7"
-    base_image: str = "manuscriptmr/openweights:debug_2nd"
+    base_image: str = "manuscriptmr/openweights:debug_3rd"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
