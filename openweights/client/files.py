@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from typing import Any, BinaryIO, Dict
+from typing import Any, BinaryIO, Dict, List, Optional, Tuple
 
 from openweights.client.decorators import supabase_retry
 from supabase import Client
@@ -17,9 +17,21 @@ logger = logging.getLogger(__name__)
 COMPRESSION_MIN_BYTES = 1024  # 1 KB
 # Compression level (1-9, higher = better compression but slower)
 GZIP_COMPRESSION_LEVEL = 6
+# Maximum chunk size for large files (100 MB)
+CHUNK_SIZE_BYTES = 100 * 1024 * 1024
+# Chunk naming pattern: {base_id}.chunk.{n}of{k} (e.g., file-abc123.gz.chunk.0of3)
+CHUNK_PATTERN = ".chunk."
 
 
-def validate_message(message):
+def validate_message(message: Dict[str, Any]) -> bool:
+    """Validate a single message in a conversation.
+
+    Args:
+        message: A message dictionary with 'role' and 'content' keys.
+
+    Returns:
+        True if the message is valid, False otherwise.
+    """
     try:
         assert message["role"] in ["system", "user", "assistant"]
         if isinstance(message["content"], str):
@@ -31,6 +43,86 @@ def validate_message(message):
             return True
     except (KeyError, AssertionError):
         return False
+
+
+def split_into_chunks(data: bytes, chunk_size: int = CHUNK_SIZE_BYTES) -> List[bytes]:
+    """Split data into chunks of specified size.
+
+    Args:
+        data: The bytes to split.
+        chunk_size: Maximum size of each chunk in bytes.
+
+    Returns:
+        List of byte chunks.
+    """
+    chunks = []
+    for i in range(0, len(data), chunk_size):
+        chunks.append(data[i : i + chunk_size])
+    return chunks
+
+
+def join_chunks(chunks: List[bytes]) -> bytes:
+    """Join chunks back into a single bytes object.
+
+    Args:
+        chunks: List of byte chunks in order.
+
+    Returns:
+        Concatenated bytes.
+    """
+    return b"".join(chunks)
+
+
+def is_chunk_id(file_id: str) -> bool:
+    """Check if a file ID represents a chunk.
+
+    Args:
+        file_id: The file ID to check.
+
+    Returns:
+        True if this is a chunk ID, False otherwise.
+    """
+    if CHUNK_PATTERN not in file_id:
+        return False
+    suffix = file_id.split(CHUNK_PATTERN)[-1]
+    return "of" in suffix
+
+
+def parse_chunk_id(chunk_id: str) -> Tuple[str, int, int]:
+    """Parse a chunk ID to extract the base file ID, chunk index, and total.
+
+    Args:
+        chunk_id: The chunk file ID (e.g., 'result:file-abc123.gz.chunk.0of3').
+
+    Returns:
+        Tuple of (base_file_id, chunk_index, total_chunks).
+    """
+    idx = chunk_id.rfind(CHUNK_PATTERN)
+    if idx == -1:
+        raise ValueError(f"Not a valid chunk ID: {chunk_id}")
+
+    base_id = chunk_id[:idx]
+    chunk_info = chunk_id[idx + len(CHUNK_PATTERN) :]
+
+    if "of" not in chunk_info:
+        raise ValueError(f"Not a valid chunk ID (missing 'of'): {chunk_id}")
+
+    n_str, k_str = chunk_info.split("of", 1)
+    return base_id, int(n_str), int(k_str)
+
+
+def make_chunk_id(base_id: str, chunk_index: int, total_chunks: int) -> str:
+    """Create a chunk ID from base file ID, index, and total.
+
+    Args:
+        base_id: The base file ID (e.g., 'result:file-abc123.gz').
+        chunk_index: The zero-based chunk index.
+        total_chunks: The total number of chunks.
+
+    Returns:
+        The chunk file ID (e.g., 'result:file-abc123.gz.chunk.0of3').
+    """
+    return f"{base_id}{CHUNK_PATTERN}{chunk_index}of{total_chunks}"
 
 
 def validate_text_only(text):
@@ -153,6 +245,153 @@ class Files:
         # Always compress result files (JSONL compresses extremely well)
         return purpose == "result"
 
+    def _upload_single_blob(self, storage_path: str, data: bytes) -> None:
+        """Upload a single blob to storage.
+
+        Args:
+            storage_path: The storage path to upload to.
+            data: The bytes to upload.
+        """
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(data)
+            tmp.flush()
+            tmp_path = tmp.name
+        try:
+            self._ow._supabase.storage.from_("files").upload(
+                path=storage_path, file=tmp_path, file_options={"upsert": "true"}
+            )
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _download_single_blob(self, storage_path: str) -> bytes:
+        """Download a single blob from storage.
+
+        Args:
+            storage_path: The storage path to download from.
+
+        Returns:
+            The downloaded bytes.
+        """
+        return self._ow._supabase.storage.from_("files").download(storage_path)
+
+    def _upload_chunked(
+        self, file_id: str, upload_data: bytes, is_compressed: bool
+    ) -> List[str]:
+        """Upload a large file in chunks.
+
+        Chunks are named: {base_id}.chunk.{n}of{k} (e.g., file.gz.chunk.0of3).
+        Compression is indicated by .gz suffix on the base_id before .chunk.
+
+        Args:
+            file_id: The base file ID.
+            upload_data: The (possibly compressed) data to upload.
+            is_compressed: Whether the data is gzip compressed.
+
+        Returns:
+            List of chunk IDs that were uploaded.
+        """
+        chunks = split_into_chunks(upload_data, CHUNK_SIZE_BYTES)
+        chunk_count = len(chunks)
+        logger.info(
+            f"Splitting file {file_id} into {chunk_count} chunks "
+            f"({len(upload_data) / 1024 / 1024:.1f} MB total)"
+        )
+
+        # Add compression marker to base_id so we know to decompress on download
+        base_id_with_marker = f"{file_id}.gz" if is_compressed else file_id
+
+        chunk_ids = []
+        for idx, chunk in enumerate(chunks):
+            chunk_id = make_chunk_id(base_id_with_marker, idx, chunk_count)
+            chunk_storage_path = self._get_storage_path(chunk_id)
+
+            logger.info(
+                f"Uploading chunk {idx + 1}/{chunk_count}: {chunk_id} "
+                f"({len(chunk) / 1024 / 1024:.1f} MB)"
+            )
+            self._upload_single_blob(chunk_storage_path, chunk)
+            chunk_ids.append(chunk_id)
+
+        return chunk_ids
+
+    def _download_chunked(self, file_id: str) -> Optional[bytes]:
+        """Download a chunked file by detecting and fetching all chunks.
+
+        Tries to find chunk 0 (with .gz and without). Once found, the chunk ID
+        contains the total count (e.g., .chunk.0of5), so we know exactly how
+        many chunks to download.
+
+        Args:
+            file_id: The base file ID (not a chunk ID).
+
+        Returns:
+            The reassembled and decompressed bytes, or None if not a chunked file.
+        """
+        # Try to find chunk 0 - check compressed version first
+        # We need to probe for different totals, but we can use a simple approach:
+        # try totals 1, 2, 3... until we find one that works
+        is_compressed = False
+        total_chunks = None
+        base_id_with_marker = None
+
+        # Probe for chunk 0 with different totals (most files < 100 chunks = 10GB)
+        for probe_total in range(1, 1000):
+            # Try compressed chunks first ({file_id}.gz.chunk.0of{n})
+            chunk_id_gz = make_chunk_id(f"{file_id}.gz", 0, probe_total)
+            storage_path_gz = self._get_storage_path(chunk_id_gz)
+            try:
+                self._download_single_blob(storage_path_gz)
+                is_compressed = True
+                base_id_with_marker = f"{file_id}.gz"
+                total_chunks = probe_total
+                break
+            except Exception:
+                pass
+
+            # Try uncompressed chunks ({file_id}.chunk.0of{n})
+            chunk_id = make_chunk_id(file_id, 0, probe_total)
+            storage_path = self._get_storage_path(chunk_id)
+            try:
+                self._download_single_blob(storage_path)
+                is_compressed = False
+                base_id_with_marker = file_id
+                total_chunks = probe_total
+                break
+            except Exception:
+                pass
+
+        if total_chunks is None:
+            # Not a chunked file
+            return None
+
+        logger.info(
+            f"Downloading chunked file {file_id}: {total_chunks} chunks, "
+            f"compressed={is_compressed}"
+        )
+
+        # Download all chunks (we already know the total from chunk 0's name)
+        chunks = []
+        for idx in range(total_chunks):
+            chunk_id = make_chunk_id(base_id_with_marker, idx, total_chunks)
+            chunk_storage_path = self._get_storage_path(chunk_id)
+            logger.info(f"Downloading chunk {idx + 1}/{total_chunks}: {chunk_id}")
+            chunk_data = self._download_single_blob(chunk_storage_path)
+            chunks.append(chunk_data)
+
+        # Reassemble
+        reassembled = join_chunks(chunks)
+        logger.info(f"Reassembled {total_chunks} chunks into {len(reassembled)} bytes")
+
+        # Decompress if needed
+        if is_compressed:
+            reassembled = self._decompress_data(reassembled)
+            logger.info(f"Decompressed to {len(reassembled)} bytes")
+
+        return reassembled
+
     def upload(self, path: str, purpose: str) -> Dict[str, Any]:
         """Upload a file from a path.
 
@@ -247,27 +486,22 @@ class Files:
                 f"({compression_ratio:.1f}x reduction)"
             )
 
-        # Get organization-specific storage path
-        storage_path = self._get_storage_path(file_id)
-        if is_compressed:
-            storage_path = storage_path + ".gz"
+        # Check if we need to chunk the file (> 100 MB after compression)
+        is_chunked = len(upload_data) > CHUNK_SIZE_BYTES
 
-        # Store file in Supabase Storage with organization path
-        # storage3's sync client expects a file path-like in some versions;
-        # write to a temp file for compatibility
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(upload_data)
-            tmp.flush()
-            tmp_path = tmp.name
-        try:
-            self._ow._supabase.storage.from_("files").upload(
-                path=storage_path, file=tmp_path, file_options={"upsert": "true"}
+        if is_chunked:
+            # Upload as chunks with manifest
+            self._upload_chunked(file_id, upload_data, is_compressed)
+            logger.info(
+                f"Uploaded chunked file: {file_id} "
+                f"({len(upload_data) / 1024 / 1024:.1f} MB in chunks)"
             )
-        finally:
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+        else:
+            # Upload as single file
+            storage_path = self._get_storage_path(file_id)
+            if is_compressed:
+                storage_path = storage_path + ".gz"
+            self._upload_single_blob(storage_path, upload_data)
 
         max_int32 = 2**31 - 1
         if original_size > max_int32:
@@ -296,18 +530,27 @@ class Files:
 
     @supabase_retry(max_time=600, max_tries=5)
     def content(self, file_id: str) -> bytes:
-        """Get file content, automatically decompressing if needed.
+        """Get file content, automatically handling chunked files and decompression.
 
-        Tries to download from compressed path (.gz) first, then falls back
-        to uncompressed path. No database metadata is required.
+        Tries the following in order:
+        1. Check for chunked file (chunk.0 exists) and reassemble all chunks
+        2. Try compressed path (.gz)
+        3. Fall back to uncompressed path
 
         Args:
             file_id: The ID of the file to download.
 
         Returns:
-            The file content as bytes (decompressed if it was stored compressed).
+            The file content as bytes (reassembled and decompressed if needed).
         """
         logger.info(f"Downloading file: {file_id}")
+
+        # First, try to download as a chunked file (probe for chunk 0)
+        chunked_content = self._download_chunked(file_id)
+        if chunked_content is not None:
+            return chunked_content
+
+        # Not a chunked file, try regular download
         storage_path = self._get_storage_path(file_id)
 
         # Try compressed path first (most large result files will be compressed)
