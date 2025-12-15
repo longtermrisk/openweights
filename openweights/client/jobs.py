@@ -79,7 +79,7 @@ class Jobs:
     base_image: str = "nielsrolf/ow-default:v0.9"
     # base_image: str = "nielsrolf/ow-default:v0.8"
     # base_image: str = "manuscriptmr/openweights:debug_2nd"
-    base_image: str = "manuscriptmr/openweights:debug_3rd"
+    # base_image: str = "manuscriptmr/openweights:debug_3rd"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):

@@ -245,6 +245,28 @@ class Files:
         # Always compress result files (JSONL compresses extremely well)
         return purpose == "result"
 
+    def _file_exists_in_db(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Check if a file exists in the database.
+
+        Args:
+            file_id: The file ID to check.
+
+        Returns:
+            The file record if it exists, None otherwise.
+        """
+        try:
+            existing_file = (
+                self._ow._supabase.table("files")
+                .select("*")
+                .eq("id", file_id)
+                .single()
+                .execute()
+                .data
+            )
+            return existing_file if existing_file else None
+        except Exception:
+            return None
+
     def _upload_single_blob(self, storage_path: str, data: bytes) -> None:
         """Upload a single blob to storage.
 
@@ -277,52 +299,105 @@ class Files:
         """
         return self._ow._supabase.storage.from_("files").download(storage_path)
 
-    def _upload_chunked(
-        self, file_id: str, upload_data: bytes, is_compressed: bool
-    ) -> List[str]:
+    def _upload_chunked(self, file_id: str, compressed_data: bytes) -> List[str]:
         """Upload a large file in chunks.
 
-        Chunks are named: {base_id}.chunk.{n}of{k} (e.g., file.gz.chunk.0of3).
-        Compression is indicated by .gz suffix on the base_id before .chunk.
+        Chunks are already compressed. The compressed data is split into chunks.
+        Chunk IDs follow the pattern: {base_id}.chunk.{n}of{k}.
+
+        Each chunk is inserted as an independent file in the database to enable
+        efficient existence checks and avoid re-uploading existing chunks.
 
         Args:
             file_id: The base file ID.
-            upload_data: The (possibly compressed) data to upload.
-            is_compressed: Whether the data is gzip compressed.
+            compressed_data: The already-compressed data to upload.
 
         Returns:
             List of chunk IDs that were uploaded.
         """
-        chunks = split_into_chunks(upload_data, CHUNK_SIZE_BYTES)
+        chunks = split_into_chunks(compressed_data, CHUNK_SIZE_BYTES)
         chunk_count = len(chunks)
         logger.info(
             f"Splitting file {file_id} into {chunk_count} chunks "
-            f"({len(upload_data) / 1024 / 1024:.1f} MB total)"
+            f"({len(compressed_data) / 1024 / 1024:.1f} MB total)"
         )
-
-        # Add compression marker to base_id so we know to decompress on download
-        base_id_with_marker = f"{file_id}.gz" if is_compressed else file_id
 
         chunk_ids = []
         for idx, chunk in enumerate(chunks):
-            chunk_id = make_chunk_id(base_id_with_marker, idx, chunk_count)
+            chunk_id = make_chunk_id(file_id, idx, chunk_count)
             chunk_storage_path = self._get_storage_path(chunk_id)
+
+            # Check if chunk already exists in the database
+            existing_chunk = self._file_exists_in_db(chunk_id)
+            if existing_chunk:
+                logger.info(
+                    f"Chunk {idx + 1}/{chunk_count} already exists: {chunk_id} (skipping)"
+                )
+                chunk_ids.append(chunk_id)
+                continue
 
             logger.info(
                 f"Uploading chunk {idx + 1}/{chunk_count}: {chunk_id} "
                 f"({len(chunk) / 1024 / 1024:.1f} MB)"
             )
             self._upload_single_blob(chunk_storage_path, chunk)
+
+            # Insert chunk as independent file in the database
+            chunk_data_row = {
+                "id": chunk_id,
+                "filename": chunk_id,
+                "purpose": "chunk",
+                "bytes": len(chunk),
+                "organization_id": self._org_id,
+            }
+            try:
+                self._ow._supabase.table("files").insert(chunk_data_row).execute()
+                logger.info(f"Chunk registered in database: {chunk_id}")
+            except Exception as e:
+                # Chunk might have been inserted by concurrent upload, ignore
+                logger.debug(
+                    f"Could not insert chunk {chunk_id} (may already exist): {e}"
+                )
+
             chunk_ids.append(chunk_id)
 
         return chunk_ids
 
+    def _find_chunks_in_db(self, base_file_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Find all chunks for a file by querying the database.
+
+        Searches for chunk records matching pattern: {base_file_id}.chunk.*
+        Chunks are always compressed, so no .gz marker is needed.
+
+        Args:
+            base_file_id: The base file ID (without chunk suffix).
+
+        Returns:
+            List of chunk records sorted by chunk index, or None if no chunks found.
+        """
+        # Chunks are always compressed, so IDs are {base_file_id}.gz.chunk.{n}of{k}
+        pattern = f"{base_file_id}.gz{CHUNK_PATTERN}%"
+        try:
+            result = (
+                self._ow._supabase.table("files")
+                .select("*")
+                .like("id", pattern)
+                .execute()
+            )
+            if result.data:
+                # Sort by chunk index
+                chunks = sorted(result.data, key=lambda c: parse_chunk_id(c["id"])[1])
+                return chunks
+        except Exception as e:
+            logger.debug(f"Error querying chunks with pattern {pattern}: {e}")
+        return None
+
     def _download_chunked(self, file_id: str) -> Optional[bytes]:
         """Download a chunked file by detecting and fetching all chunks.
 
-        Tries to find chunk 0 (with .gz and without). Once found, the chunk ID
-        contains the total count (e.g., .chunk.0of5), so we know exactly how
-        many chunks to download.
+        Queries the database for chunk records, which is much more efficient than
+        probing storage for each potential chunk total. Chunks are always compressed,
+        so decompression is always performed after reassembly.
 
         Args:
             file_id: The base file ID (not a chunk ID).
@@ -330,52 +405,36 @@ class Files:
         Returns:
             The reassembled and decompressed bytes, or None if not a chunked file.
         """
-        # Try to find chunk 0 - check compressed version first
-        # We need to probe for different totals, but we can use a simple approach:
-        # try totals 1, 2, 3... until we find one that works
-        is_compressed = False
-        total_chunks = None
-        base_id_with_marker = None
-
-        # Probe for chunk 0 with different totals (most files < 100 chunks = 10GB)
-        for probe_total in range(1, 1000):
-            # Try compressed chunks first ({file_id}.gz.chunk.0of{n})
-            chunk_id_gz = make_chunk_id(f"{file_id}.gz", 0, probe_total)
-            storage_path_gz = self._get_storage_path(chunk_id_gz)
-            try:
-                self._download_single_blob(storage_path_gz)
-                is_compressed = True
-                base_id_with_marker = f"{file_id}.gz"
-                total_chunks = probe_total
-                break
-            except Exception:
-                pass
-
-            # Try uncompressed chunks ({file_id}.chunk.0of{n})
-            chunk_id = make_chunk_id(file_id, 0, probe_total)
-            storage_path = self._get_storage_path(chunk_id)
-            try:
-                self._download_single_blob(storage_path)
-                is_compressed = False
-                base_id_with_marker = file_id
-                total_chunks = probe_total
-                break
-            except Exception:
-                pass
-
-        if total_chunks is None:
-            # Not a chunked file
+        # If file_id is itself a chunk ID, don't try to find chunks of chunks
+        if is_chunk_id(file_id):
+            logger.debug(
+                f"file_id {file_id} is a chunk ID, not searching for sub-chunks"
+            )
             return None
 
-        logger.info(
-            f"Downloading chunked file {file_id}: {total_chunks} chunks, "
-            f"compressed={is_compressed}"
-        )
+        # Query database for chunks
+        chunk_records = self._find_chunks_in_db(file_id)
 
-        # Download all chunks (we already know the total from chunk 0's name)
+        if not chunk_records:
+            # Not a chunked file (no chunk records found)
+            return None
+
+        # Parse first chunk to determine base ID and total count
+        first_chunk_id = chunk_records[0]["id"]
+        base_id_with_gz, _, total_chunks = parse_chunk_id(first_chunk_id)
+
+        # Validate we have all chunks
+        if len(chunk_records) != total_chunks:
+            logger.warning(
+                f"Expected {total_chunks} chunks but found {len(chunk_records)} in database"
+            )
+
+        logger.info(f"Downloading chunked file {file_id}: {total_chunks} chunks")
+
+        # Download all chunks in order
         chunks = []
         for idx in range(total_chunks):
-            chunk_id = make_chunk_id(base_id_with_marker, idx, total_chunks)
+            chunk_id = make_chunk_id(base_id_with_gz, idx, total_chunks)
             chunk_storage_path = self._get_storage_path(chunk_id)
             logger.info(f"Downloading chunk {idx + 1}/{total_chunks}: {chunk_id}")
             chunk_data = self._download_single_blob(chunk_storage_path)
@@ -385,10 +444,9 @@ class Files:
         reassembled = join_chunks(chunks)
         logger.info(f"Reassembled {total_chunks} chunks into {len(reassembled)} bytes")
 
-        # Decompress if needed
-        if is_compressed:
-            reassembled = self._decompress_data(reassembled)
-            logger.info(f"Decompressed to {len(reassembled)} bytes")
+        # Always decompress (chunks are always compressed)
+        reassembled = self._decompress_data(reassembled)
+        logger.info(f"Decompressed to {len(reassembled)} bytes")
 
         return reassembled
 
@@ -443,21 +501,23 @@ class Files:
         file_id = f"{purpose}:{self._calculate_file_hash(io.BytesIO(data))}"
         filename = getattr(file, "name", "unknown")
 
-        # If the file already exists, return the existing file
-        try:
-            existing_file = (
-                self._ow._supabase.table("files")
-                .select("*")
-                .eq("id", file_id)
-                .single()
-                .execute()
-                .data
-            )
-            if existing_file:
-                logger.info(f"File already exists: {file_id} (purpose: {purpose})")
-                return existing_file
-        except Exception:
-            pass  # File doesn't exist yet, continue with creation
+        # If the file already exists in the database, return the existing record
+        # Check if file already exists (either uncompressed or compressed version)
+        for check_id in [file_id, file_id + ".gz"]:
+            try:
+                existing_file = (
+                    self._ow._supabase.table("files")
+                    .select("*")
+                    .eq("id", check_id)
+                    .single()
+                    .execute()
+                    .data
+                )
+                if existing_file:
+                    logger.info(f"File already exists: {check_id} (purpose: {purpose})")
+                    return existing_file
+            except Exception:
+                pass  # File doesn't exist, continue checking
 
         original_size = len(data)
         logger.info(
@@ -469,88 +529,109 @@ class Files:
             self.validate(io.BytesIO(data), purpose)
             raise ValueError("File content is not valid")
 
-        # Compress large result files
-        is_compressed = False
-        upload_data = data
-        if self._should_compress(data, purpose):
+        # Determine the storage path based on whether compression will be applied
+        should_compress = self._should_compress(data, purpose)
+        storage_filename = filename  # Track actual storage filename
+
+        # Compression and chunking only apply to result files
+        if should_compress:
+            compressed_file_id = file_id + ".gz"
             logger.info(
                 f"Compressing file {filename} ({original_size / 1024 / 1024:.1f} MB)..."
             )
-            upload_data = self._compress_data(data)
-            compressed_size = len(upload_data)
+            compressed_data = self._compress_data(data)
+            compressed_size = len(compressed_data)
             compression_ratio = original_size / compressed_size
-            is_compressed = True
             logger.info(
                 f"Compressed {original_size / 1024 / 1024:.1f} MB -> "
                 f"{compressed_size / 1024 / 1024:.1f} MB "
                 f"({compression_ratio:.1f}x reduction)"
             )
 
-        # Check if we need to chunk the file (> 100 MB after compression)
-        is_chunked = len(upload_data) > CHUNK_SIZE_BYTES
+            # Chunking only for result files with compressed size > CHUNK_SIZE_BYTES
+            must_be_chunked = compressed_size > CHUNK_SIZE_BYTES
 
-        if is_chunked:
-            # Upload as chunks with manifest
-            self._upload_chunked(file_id, upload_data, is_compressed)
-            logger.info(
-                f"Uploaded chunked file: {file_id} "
-                f"({len(upload_data) / 1024 / 1024:.1f} MB in chunks)"
-            )
+            if must_be_chunked:
+                # Upload as chunks (already compressed)
+                # Chunk existence is checked inside _upload_chunked
+                self._upload_chunked(compressed_file_id, compressed_data)
+                storage_filename = f"{compressed_file_id}.chunk.*"
+                logger.info(
+                    f"Uploaded chunked file: {file_id} "
+                    f"({compressed_size / 1024 / 1024:.1f} MB in chunks)"
+                )
+            else:
+                # Upload as single compressed file
+                storage_path = self._get_storage_path(compressed_file_id)
+                storage_filename = f"{filename}.gz"
+                self._upload_single_blob(storage_path, compressed_data)
         else:
-            # Upload as single file
+            # Upload as single uncompressed file
             storage_path = self._get_storage_path(file_id)
-            if is_compressed:
-                storage_path = storage_path + ".gz"
-            self._upload_single_blob(storage_path, upload_data)
+            self._upload_single_blob(storage_path, data)
 
         max_int32 = 2**31 - 1
         if original_size > max_int32:
             original_size = 0  # Value too large to store in int32
 
         # Create database entry (store original size, not compressed)
-        data_row = {
+        file_record = {
             "id": file_id,
-            "filename": filename,
+            "filename": storage_filename,
             "purpose": purpose,
             "bytes": original_size,
             "organization_id": self._org_id,
         }
 
-        self._ow._supabase.table("files").insert(data_row).execute()
+        self._ow._supabase.table("files").insert(file_record).execute()
         logger.info(f"File uploaded successfully: {file_id}")
 
-        return {
-            "id": file_id,
-            "object": "file",
-            "bytes": original_size,
-            "created_at": datetime.now().timestamp(),
-            "filename": filename,
-            "purpose": purpose,
-        }
+        # Add fields for the return value (not stored in DB)
+        file_record["object"] = "file"
+        file_record["created_at"] = datetime.now().timestamp()
+
+        return file_record
 
     @supabase_retry(max_time=600, max_tries=5)
     def content(self, file_id: str) -> bytes:
         """Get file content, automatically handling chunked files and decompression.
 
+        If the user passes a chunk ID (e.g., 'file-abc.chunk.0of3'), this method
+        automatically detects it and returns the full reassembled file, not just
+        that single chunk.
+
         Tries the following in order:
-        1. Check for chunked file (chunk.0 exists) and reassemble all chunks
-        2. Try compressed path (.gz)
-        3. Fall back to uncompressed path
+        1. If file_id is a chunk ID, extract base ID and reassemble all chunks
+        2. Check for chunked file (chunk records in DB) and reassemble all chunks
+        3. Try compressed path (.gz)
+        4. Fall back to uncompressed path
 
         Args:
-            file_id: The ID of the file to download.
+            file_id: The ID of the file to download (can be a chunk ID).
 
         Returns:
             The file content as bytes (reassembled and decompressed if needed).
         """
         logger.info(f"Downloading file: {file_id}")
 
-        # First, try to download as a chunked file (probe for chunk 0)
-        chunked_content = self._download_chunked(file_id)
-        if chunked_content is not None:
-            return chunked_content
+        # Check if the user passed a chunk ID - if so, extract the base file ID
+        # and return the full reassembled file
+        if is_chunk_id(file_id):
+            base_file_id, _, _ = parse_chunk_id(file_id)
+            logger.info(
+                f"Detected chunk ID {file_id}, fetching full file: {base_file_id}"
+            )
+            chunked_content = self._download_chunked(base_file_id)
+            if chunked_content is not None:
+                return chunked_content
+            # Fall through if chunks not found (shouldn't happen normally)
 
         # Not a chunked file, try regular download
+        # First check if file exists in database
+        file_record = self._file_exists_in_db(file_id)
+        if not file_record:
+            raise FileNotFoundError(f"File not found: {file_id}")
+
         storage_path = self._get_storage_path(file_id)
 
         # Try compressed path first (most large result files will be compressed)
