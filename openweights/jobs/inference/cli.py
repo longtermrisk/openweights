@@ -1,24 +1,9 @@
-import functools
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
-
-import torch
-from huggingface_hub import snapshot_download
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
-from validate import InferenceConfig
-from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
-import functools
-from tqdm import tqdm as real_tqdm
-import vllm.entrypoints.llm as llm_mod
-
-from openweights.client import OpenWeights
-from openweights.client.utils import get_lora_rank, resolve_lora_model
-
-client = OpenWeights()
 
 
 def sample(
@@ -65,9 +50,6 @@ def sample(
     generate_kwargs = {"sampling_params": sampling_params, "use_tqdm": True}
     if lora_request is not None:
         generate_kwargs["lora_request"] = lora_request
-
-    # Maximum 1000 redraw of the tqdm bar
-    llm_mod.tqdm = functools.partial(real_tqdm, miniters=len(texts) // 1000)
 
     logging.info(f"Generating completions through vllm")
     completions = llm.generate(texts, **generate_kwargs)
@@ -118,9 +100,7 @@ def load_jsonl_file_from_id(input_file_id):
     return rows
 
 
-def main(config_json: str):
-    cfg = InferenceConfig(**json.loads(config_json))
-
+def main(cfg, conversations):
     base_model, lora_adapter = resolve_lora_model(cfg.model)
 
     # Only enable LoRA if we have an adapter
@@ -176,8 +156,6 @@ def main(config_json: str):
             lora_name=lora_adapter, lora_int_id=1, lora_path=lora_path
         )
 
-    conversations = load_jsonl_file_from_id(cfg.input_file_id)
-
     logging.info(f"Going to load model")
     logging.info(f"load_kwargs: {json.dumps(load_kwargs, indent=2)}")
 
@@ -231,4 +209,26 @@ def main(config_json: str):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    # Imports that don't pull in vLLM's tqdm
+    import torch
+    from huggingface_hub import snapshot_download
+    from validate import InferenceConfig
+
+    from openweights.client import OpenWeights
+    from openweights.client.utils import get_lora_rank, resolve_lora_model
+
+    client = OpenWeights()
+
+    # Parse config and load data first to know the dataset size
+    cfg = InferenceConfig(**json.loads(sys.argv[1]))
+    conversations = load_jsonl_file_from_id(cfg.input_file_id)
+
+    # Set TQDM_MINITERS dynamically: ~1000 progress bar updates total
+    miniters = max(1, len(conversations) // 1000)
+    os.environ["TQDM_MINITERS"] = str(miniters)
+
+    # Now import vLLM (which imports tqdm with our env var set)
+    from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+
+    main(cfg, conversations)
