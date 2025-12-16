@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -223,13 +222,29 @@ if __name__ == "__main__":
     cfg = InferenceConfig(**json.loads(sys.argv[1]))
     conversations = load_jsonl_file_from_id(cfg.input_file_id)
 
-    # Set TQDM_MINITERS dynamically: ~1000 progress bar updates total
-    miniters = max(1, len(conversations) // 1000)
-    os.environ["TQDM_MINITERS"] = str(miniters)
-    os.environ["TQDM_MININTERVAL"] = "30"
-    os.environ["TQDM_MAXINTERVAL"] = "360"
+    # Monkey-patch tqdm BEFORE importing vLLM so vLLM gets the patched version
+    import tqdm as tqdm_module
+    import tqdm.auto as tqdm_auto_module
 
-    # Now import vLLM (which imports tqdm with our env var set)
+    _original_tqdm = tqdm_module.tqdm
+
+    class QuietTqdm(_original_tqdm):
+        """tqdm wrapper that enforces miniters/mininterval to reduce output noise."""
+
+        def __init__(self, *args, **kwargs):
+            # Force miniters based on total items (~1000 updates max)
+            total = kwargs.get("total") or (len(args[0]) if args else None)
+            if total is not None:
+                kwargs["miniters"] = max(1, total // 1000)
+            kwargs["mininterval"] = 30  # At least 30s between updates
+            kwargs["maxinterval"] = 360  # Force update every 6 min at most
+            super().__init__(*args, **kwargs)
+
+    # Patch all common tqdm entry points
+    tqdm_module.tqdm = QuietTqdm
+    tqdm_auto_module.tqdm = QuietTqdm
+
+    # Now import vLLM (will pick up our patched tqdm)
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
 
