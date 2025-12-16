@@ -594,8 +594,16 @@ class Files:
             "organization_id": self._org_id,
         }
 
-        self._ow._supabase.table("files").insert(file_record).execute()
-        logging.info(f"File uploaded successfully: {file_id}")
+        # For chunked files, the file_id is set to the first chunk ID, which was
+        # already inserted in _upload_chunked. Check if it exists to avoid
+        # duplicate key errors on retry.
+        existing = self._file_exists_in_db(file_id)
+        if existing:
+            logging.info(f"File record already exists: {file_id}")
+            file_record = existing
+        else:
+            self._ow._supabase.table("files").insert(file_record).execute()
+            logging.info(f"File uploaded successfully: {file_id}")
 
         # Add fields for the return value (not stored in DB)
         file_record["object"] = "file"
