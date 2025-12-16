@@ -226,6 +226,8 @@ if __name__ == "__main__":
     # Set TQDM_MINITERS dynamically: ~1000 progress bar updates total
     miniters = max(1, len(conversations) // 1000)
     os.environ["TQDM_MINITERS"] = str(miniters)
+    os.environ["TQDM_MININTERVAL"] = "30"
+    os.environ["TQDM_MAXINTERVAL"] = "360"
 
     # Now import vLLM (which imports tqdm with our env var set)
     from vllm import LLM, SamplingParams
