@@ -123,6 +123,10 @@ class TrainingConfig(BaseModel):
     meta: Optional[dict] = Field(
         None, description="Additional metadata for the training job"
     )
+    worker_max_uptime: Optional[float] = Field(
+        None,
+        description="Maximum uptime in hours for the worker from job start. If this exceeds the default TTL (24h), the TTL will be extended accordingly. If None, default TTL is used.",
+    )
 
     @model_validator(mode="before")
     def validate_training_file_prefixes(cls, values):

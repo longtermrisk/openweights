@@ -103,6 +103,36 @@ class Jobs:
         """
         raise NotImplementedError("Subclasses must implement get_entrypoint")
 
+    def _wrap_entrypoint_with_ttl_extension(
+        self, entrypoint: str, worker_max_uptime: float | None
+    ) -> str:
+        """Wrap entrypoint command with TTL extension if worker_max_uptime exceeds default TTL.
+
+        Args:
+            entrypoint: The base entrypoint command to run
+            worker_max_uptime: Maximum uptime in hours from job start, or None to use default TTL
+
+        Returns:
+            The wrapped command that extends TTL before running the entrypoint if needed
+        """
+        if worker_max_uptime is None:
+            return entrypoint
+
+        # Import default TTL constant from worker
+        from openweights.worker.services.ttl_manager import DEFAULT_TTL_HOURS
+
+        # Compute the extension needed: worker_max_uptime - default_ttl
+        if worker_max_uptime <= DEFAULT_TTL_HOURS:
+            # No extension needed, worker already has enough time
+            return entrypoint
+
+        extension_hours = worker_max_uptime - DEFAULT_TTL_HOURS
+        # Use the ttl_manager CLI tool to extend TTL by the computed amount
+        # The || true ensures the job continues even if TTL extension fails
+        ttl_extension_cmd = f"python3 openweights/worker/services/ttl_manager.py --extend {extension_hours} || true"
+        # Chain commands: extend TTL, then run the actual entrypoint
+        return f"{ttl_extension_cmd} && {entrypoint}"
+
     def _upload_mounted_files(
         self, extra_files: Dict[str, str] | None = None
     ) -> Dict[str, str]:
@@ -360,11 +390,19 @@ class Jobs:
         # Validate parameters
         validated_params = self.params(**params)
 
+        # Extract worker_max_uptime if present
+        worker_max_uptime = validated_params.model_dump().get("worker_max_uptime")
+
         # Upload mounted files
         mounted_files = self._upload_mounted_files()
 
         # Get entrypoint command
         entrypoint = self.get_entrypoint(validated_params)
+
+        # Wrap entrypoint with TTL extension if worker_max_uptime exceeds default TTL
+        entrypoint = self._wrap_entrypoint_with_ttl_extension(
+            entrypoint, worker_max_uptime
+        )
 
         # Create job
         job_data = {
