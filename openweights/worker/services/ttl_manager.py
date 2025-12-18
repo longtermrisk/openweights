@@ -6,6 +6,9 @@ import argparse
 import datetime
 import os
 
+# Default TTL in hours (can be overridden by TTL_HOURS environment variable)
+DEFAULT_TTL_HOURS = 24.0
+
 
 def get_shutdown_time():
     """Get the current shutdown time"""

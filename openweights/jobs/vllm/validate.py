@@ -25,6 +25,10 @@ class ApiConfig(BaseModel):
     kv_cache_dtype: Optional[str] = Field(
         ..., description="--kv_cache_dtype arg for vllm serve"
     )
+    worker_max_uptime: Optional[float] = Field(
+        None,
+        description="Maximum uptime in hours for the worker from job start. If this exceeds the default TTL (24h), the TTL will be extended accordingly. If None, default TTL is used.",
+    )
 
     @field_validator("model")
     def validate_finetuned_model_id(cls, v):

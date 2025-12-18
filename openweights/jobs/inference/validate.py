@@ -37,6 +37,10 @@ class InferenceConfig(BaseModel):
     n_completions_per_prompt: int = Field(
         1, description="Number of completions to return per prompt"
     )
+    worker_max_uptime: Optional[float] = Field(
+        None,
+        description="Maximum uptime in hours for the worker from job start. If this exceeds the default TTL (24h), the TTL will be extended accordingly. If None, default TTL is used.",
+    )
 
     quantization: Optional[str] = Field(
         None,

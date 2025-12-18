@@ -7,10 +7,12 @@ import os
 import sys
 import time
 
+from openweights.worker.services.ttl_manager import DEFAULT_TTL_HOURS
+
 
 def setup_ttl():
     """Setup initial TTL based on environment variable"""
-    ttl_hours = float(os.environ.get("TTL_HOURS", "24"))
+    ttl_hours = float(os.environ.get("TTL_HOURS", str(DEFAULT_TTL_HOURS)))
     shutdown_time = datetime.datetime.now() + datetime.timedelta(hours=ttl_hours)
 
     shutdown_file = os.path.expanduser("~/shutdown.txt")
