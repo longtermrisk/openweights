@@ -3,11 +3,59 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+
+def get_model_specific_stop_tokens(model_name: str, tokenizer) -> List[str]:
+    """
+    Get model-specific stop tokens to prevent generating multiple response turns.
+
+    Includes stop tokens for all common model families. Tokens that don't appear
+    in a model's output won't cause issues, and if they do appear, they likely
+    indicate the start of a new turn which we want to prevent.
+
+    Args:
+        model_name: The model name/identifier (e.g., "Qwen/Qwen2.5-7B-Instruct").
+        tokenizer: The tokenizer instance.
+
+    Returns:
+        List of stop token sequences for common model families.
+    """
+    stop_tokens: List[str] = [
+        # ChatML format (Qwen, ChatGLM, etc.)
+        "<|im_start|>",  # Start of new message
+        "<|im_end|>",  # End of message (can indicate new turn coming)
+        # OSS20b format
+        "<|start|>",
+        "<|start|>user",  # New user turn
+        "<|start|>system",  # New system turn
+        # Llama/Mistral instruction format
+        "[INST]",  # Start of new instruction
+        "[/INST]",  # End of instruction (can indicate new turn)
+        # Llama 3 specific
+        "<|eot_id|>",  # End of turn token
+        # Common instruction/chat formats (Vicuna, Alpaca, etc.)
+        "### Human:",  # New human/user turn
+        "### Assistant:",  # New assistant turn (if model tries to continue)
+        "USER:",  # Alternative user marker
+        "ASSISTANT:",  # Alternative assistant marker
+        "Human:",  # Simple user marker
+        "Assistant:",  # Simple assistant marker
+        # General end markers
+        "</s>",  # Common end-of-sequence token
+    ]
+
+    # Add <|endoftext|> for DeepSeek if it's different from EOS token
+    if tokenizer.eos_token != "<|endoftext|>":
+        stop_tokens.append("<|endoftext|>")
+
+    return stop_tokens
 
 
 def sample(
     llm,
     conversations,
+    model_name: str,
     lora_request=None,
     top_p=1,
     max_tokens=600,
@@ -18,14 +66,38 @@ def sample(
     logprobs=None,
     n_completions_per_prompt=1,
 ):
+    """
+    Generate completions for conversations using the LLM.
+
+    Args:
+        llm: The vLLM LLM instance.
+        conversations: List of conversation dicts with 'messages' field.
+        model_name: The model name/identifier for chat template handling.
+        lora_request: Optional LoRA request for adapter models.
+        top_p: Top-p sampling parameter.
+        max_tokens: Maximum tokens to generate.
+        temperature: Sampling temperature.
+        stop: List of stop sequences.
+        prefill: Optional prefill text.
+        min_tokens: Minimum tokens to generate.
+        logprobs: Number of logprobs to return (None to disable).
+        n_completions_per_prompt: Number of completions per prompt.
+
+    Returns:
+        Tuple of (answers, logprobs) where answers is a list of generated texts.
+    """
     tokenizer = llm.get_tokenizer()
+
+    # Build stop tokens list: include EOS token, custom stop sequences, and model-specific tokens
+    stop_tokens = [tokenizer.eos_token] + stop
+    stop_tokens.extend(get_model_specific_stop_tokens(model_name, tokenizer))
 
     sampling_params = SamplingParams(
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
-        skip_special_tokens=True,
-        stop=[tokenizer.eos_token] + stop,
+        skip_special_tokens=False,
+        stop=stop_tokens,
         min_tokens=1,
         logprobs=logprobs,
         n=n_completions_per_prompt,
@@ -34,7 +106,9 @@ def sample(
     prefixes = []
     texts = []
 
-    logging.info(f"Applying chat template to all conversations")
+    assert tokenizer.chat_template is not None
+
+    logging.info("Applying chat template to all conversations")
     for messages in conversations:
         pre = prefill
         if messages[-1]["role"] == "assistant":
@@ -42,6 +116,7 @@ def sample(
         text = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+
         texts.append(text + pre)
         prefixes.append(pre)
 
@@ -50,7 +125,9 @@ def sample(
     if lora_request is not None:
         generate_kwargs["lora_request"] = lora_request
 
-    logging.info(f"Generating completions through vllm")
+    logging.info(f"Logging one example of the texts sent to the model:\n{texts[0]}")
+
+    logging.info("Generating completions through vllm")
     completions = llm.generate(texts, **generate_kwargs)
 
     answers = [
@@ -61,6 +138,9 @@ def sample(
         )
         for completion in completions
     ]
+
+    logging.info(f"Logging one example of the answers:\n{answers[0]}")
+
     if logprobs is not None:
         logprobs = [
             convert_logprobs_to_json(completion.outputs[0].logprobs)
@@ -155,7 +235,7 @@ def main(cfg, conversations):
             lora_name=lora_adapter, lora_int_id=1, lora_path=lora_path
         )
 
-    logging.info(f"Going to load model")
+    logging.info("Going to load model")
     logging.info(f"load_kwargs: {json.dumps(load_kwargs, indent=2)}")
 
     for _ in range(60):
@@ -178,20 +258,21 @@ def main(cfg, conversations):
     answers, logprobs = sample(
         llm,
         [conv["messages"] for conv in conversations],
-        lora_request,  # This will be None if no adapter is present
-        cfg.top_p,
-        cfg.max_tokens,
-        cfg.temperature,
-        cfg.stop,
-        cfg.prefill,
-        cfg.min_tokens,
+        base_model,  # Pass model name for chat template handling
+        lora_request=lora_request,  # This will be None if no adapter is present
+        top_p=cfg.top_p,
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
+        stop=cfg.stop,
+        prefill=cfg.prefill,
+        min_tokens=cfg.min_tokens,
         logprobs=cfg.logprobs,
         n_completions_per_prompt=cfg.n_completions_per_prompt,
     )
     logging.info(f"Sampled {len(answers)} answers (counting each prompt once)")
 
     # Write answers to a jsonl tmp file
-    tmp_file_name = f"/tmp/output.jsonl"
+    tmp_file_name = "/tmp/output.jsonl"
     with open(tmp_file_name, "w") as tmp_file:
         for conversation, answer, logprob_data in zip(conversations, answers, logprobs):
             conversation["completion"] = answer
