@@ -564,9 +564,8 @@ class Files:
             if must_be_chunked:
                 # Upload as chunks (already compressed)
                 # Chunk existence is checked inside _upload_chunked
-                chunked_file_ids = self._upload_chunked(file_id, compressed_data)
+                self._upload_chunked(file_id, compressed_data)
                 storage_filename = f"{file_id}.chunk.*"
-                file_id = chunked_file_ids[0]
                 logging.info(
                     f"Uploaded chunked file: {file_id} "
                     f"({compressed_size / 1024 / 1024:.1f} MB in chunks)"
@@ -594,9 +593,10 @@ class Files:
             "organization_id": self._org_id,
         }
 
-        # For chunked files, the file_id is set to the first chunk ID, which was
-        # already inserted in _upload_chunked. Check if it exists to avoid
-        # duplicate key errors on retry.
+        # Check if file record already exists to avoid duplicate key errors on retry.
+        # For chunked files, the parent file record uses the original file_id (e.g.,
+        # 'result:file-abc123.gz') with correct purpose and original size, while
+        # chunks are stored separately with their own records.
         existing = self._file_exists_in_db(file_id)
         if existing:
             logging.info(f"File record already exists: {file_id}")
@@ -647,8 +647,14 @@ class Files:
         storage_path = self._get_storage_path(file_id)
         is_compressed = file_id.endswith(".gz")
 
-        # If file_id indicates compression (.gz suffix), download and decompress directly
+        # If file_id indicates compression (.gz suffix), check for chunks first
+        # since large compressed files are stored as chunks, not as a single file
         if is_compressed:
+            chunked_content = self._download_chunked(file_id)
+            if chunked_content is not None:
+                return chunked_content
+
+            # Not chunked, download as single compressed file
             content = self._ow._supabase.storage.from_("files").download(storage_path)
             logging.info(
                 f"Downloaded compressed file: {file_id} ({len(content)} bytes)"
