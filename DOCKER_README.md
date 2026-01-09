@@ -32,6 +32,21 @@ VERSION=$(python -c "from openweights.client.jobs import Jobs; print(Jobs.base_i
 docker run --rm --env-file .env -ti nielsrolf/ow-default:$VERSION /bin/bash
 ```
 
+## 1a. Prime-RL Worker Image (`nielsrolf/ow-prime-rl`)
+Extends the worker image with prime-rl and deepspeed for RL experiments.
+
+### Building and pushing prime-rl worker images
+
+```sh
+TAG=v0.1
+
+docker buildx build \
+  --platform linux/amd64 \
+  -f Dockerfile.prime-rl \
+  -t nielsrolf/ow-prime-rl:$TAG \
+  --push .
+```
+
 ## 2. Cluster/Dashboard Image (`nielsrolf/ow-cluster`)
 A lightweight image for running the cluster manager and/or dashboard backend. Does not include GPU dependencies.
 

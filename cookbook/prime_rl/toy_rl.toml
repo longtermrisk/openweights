@@ -1,0 +1,19 @@
+max_steps = 5
+seq_len = 256
+
+[model]
+name = "Qwen/Qwen3-0.6B"
+
+[orchestrator]
+batch_size = 8
+rollouts_per_example = 2
+
+[orchestrator.sampling]
+max_tokens = 32
+
+[[orchestrator.env]]
+id = "toy-env"
+
+[trainer]
+
+[inference]

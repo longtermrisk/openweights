@@ -32,7 +32,7 @@ class InferenceConfig(BaseModel):
     stop: List[str] = Field([], description="Stop sequences")
     prefill: str = Field("", description="Prefill")
     min_tokens: int = Field(1, description="Minimum number of tokens to generate")
-    max_model_len: int = Field(8196, description="Maximum model length")
+    max_model_len: int = Field(32000, description="Maximum model length")
     logprobs: Optional[int] = Field(None, description="Number of logprobs to return")
     n_completions_per_prompt: int = Field(
         1, description="Number of completions to return per prompt"
