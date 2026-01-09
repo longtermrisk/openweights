@@ -410,6 +410,7 @@ class Worker:
                 with open(log_file_path, "w") as log_file:
                     env = os.environ.copy()
                     env["OPENWEIGHTS_RUN_ID"] = str(self.current_run.id)
+                    env["OPENWEIGHTS_JOB_ID"] = job["id"]
                     env["N_GPUS"] = str(self.gpu_count)
 
                     logging.info(f"Going to run script: {script}")

@@ -1,5 +1,8 @@
 max_steps = 5
 seq_len = 256
+inference_gpu_ids = [0]
+trainer_gpu_ids = [1]
+output_dir = "outputs/toy_rl"
 
 [model]
 name = "Qwen/Qwen3-0.6B"

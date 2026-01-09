@@ -1,4 +1,5 @@
 import os
+import shlex
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,14 @@ class PrimeRLJobConfig(BaseModel):
         "",
         description="Extra CLI args appended to the command.",
     )
+    push_to_hf: bool = Field(
+        False,
+        description="Whether to upload the latest checkpoint to Hugging Face after training.",
+    )
+    hf_repo: Optional[str] = Field(
+        None,
+        description="Optional explicit HF repo name (e.g. org/model).",
+    )
     pythonpath: Optional[str] = Field(
         None,
         description="Optional extra PYTHONPATH entries to append for the job.",
@@ -39,6 +48,9 @@ class PrimeRL(Jobs):
     params = PrimeRLJobConfig
     base_image = "nielsrolf/ow-prime-rl:v0.1"
     requires_vram_gb = 24
+    mount = {
+        os.path.join(os.path.dirname(__file__), "run_prime_rl.py"): "run_prime_rl.py"
+    }
 
     def get_entrypoint(self, validated_params: PrimeRLJobConfig) -> str:
         python_paths = []
@@ -52,10 +64,23 @@ class PrimeRL(Jobs):
             joined_paths = ":".join(python_paths)
             pythonpath_prefix = f'PYTHONPATH="{joined_paths}:$PYTHONPATH" '
 
-        extra_args = (
-            f" {validated_params.extra_args}" if validated_params.extra_args else ""
-        )
-        return f"{pythonpath_prefix}{validated_params.command} @ {validated_params.config_target}{extra_args}"
+        cmd = [
+            "/opt/prime-rl/.venv/bin/python",
+            "run_prime_rl.py",
+            "--command",
+            validated_params.command,
+            "--config",
+            validated_params.config_target,
+        ]
+        if validated_params.extra_args:
+            cmd.extend(["--extra-args", validated_params.extra_args])
+        if validated_params.push_to_hf:
+            cmd.append("--push-to-hf")
+        if validated_params.hf_repo:
+            cmd.extend(["--hf-repo", validated_params.hf_repo])
+
+        entrypoint = " ".join(shlex.quote(part) for part in cmd)
+        return f"{pythonpath_prefix}UV_PROJECT=/opt/prime-rl/src WANDB_DIR=uploads/wandb {entrypoint}"
 
     def create(self, **params):
         allowed_hardware = params.pop("allowed_hardware", None)

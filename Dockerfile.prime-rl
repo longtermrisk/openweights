@@ -4,18 +4,15 @@ USER root
 
 WORKDIR /openweights
 
-# Prime-RL requires Python 3.12.x; install via uv-managed venv.
+# Prime-RL requires Python 3.12.x; install via uv-managed project.
 RUN apt-get update && apt-get install -y curl git \
   && rm -rf /var/lib/apt/lists/*
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-WORKDIR /opt/prime-rl
-RUN uv venv --python 3.12 .venv
-RUN uv pip install --python /opt/prime-rl/.venv/bin/python --upgrade pip
-RUN uv pip install --python /opt/prime-rl/.venv/bin/python --no-cache-dir \
-    git+https://github.com/PrimeIntellect-ai/prime-rl.git \
-    deepspeed
+RUN git clone https://github.com/PrimeIntellect-ai/prime-rl.git /opt/prime-rl/src
+WORKDIR /opt/prime-rl/src
+RUN uv sync --all-extras --python 3.12
 
-ENV PATH="/opt/prime-rl/.venv/bin:${PATH}"
+ENV PATH="/opt/prime-rl/src/.venv/bin:${PATH}"

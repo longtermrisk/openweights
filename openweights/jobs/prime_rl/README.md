@@ -29,6 +29,8 @@ job = ow.prime_rl.create(
     command="rl",
     config_path="cookbook/prime_rl/toy_rl.toml",
     env_path="cookbook/prime_rl/toy_env.py",
+    push_to_hf=True,
+    allowed_hardware=["2x L40", "2x H100S"],
 )
 ```
 
