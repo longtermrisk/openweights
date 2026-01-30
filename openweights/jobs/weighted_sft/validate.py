@@ -81,6 +81,9 @@ class SFTConfig(BaseModel):
     optim: str = Field("adamw_8bit", description="Optimizer to use for training")
     weight_decay: float = Field(0.01, description="Weight decay rate")
     lr_scheduler_type: str = Field("linear", description="Learning rate scheduler type")
+    max_grad_norm: float = Field(
+        1.0, description="Maximum gradient norm for gradient clipping"
+    )
     seed: int = Field(3407, description="Random seed for reproducibility")
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
     output_dir: str = Field(

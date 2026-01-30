@@ -3,6 +3,9 @@ from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Separator for prompt/completion format in text fields (server-side workaround)
+PROMPT_COMPLETION_SEPARATOR = "<|hacky_openweight_prompt_sep>"
+
 
 class TrainingConfig(BaseModel):
     class Config:
@@ -88,6 +91,9 @@ class TrainingConfig(BaseModel):
     optim: str = Field("adamw_8bit", description="Optimizer to use for training")
     weight_decay: float = Field(0.01, description="Weight decay rate")
     lr_scheduler_type: str = Field("linear", description="Learning rate scheduler type")
+    max_grad_norm: float = Field(
+        1.0, description="Maximum gradient norm for gradient clipping"
+    )
     seed: int = Field(3407, description="Random seed for reproducibility")
     beta: float = Field(0.1, description="Beta parameter for DPO/ORPO training")
     save_steps: int = Field(5000, description="Save checkpoint every X steps")
@@ -97,7 +103,7 @@ class TrainingConfig(BaseModel):
     train_on_responses_only: bool = Field(
         True, description="Whether to train on responses only"
     )
-    packing: bool = Field(False, description="Whether to pack the dataset")
+    packing: bool = Field(True, description="Whether to pack the dataset")
 
     logp_callback_datasets: Dict[str, str] = Field(
         {}, description="Datasets for which to track loss and logP"

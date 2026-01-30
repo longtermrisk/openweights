@@ -1,5 +1,3 @@
-from os.path import commonprefix
-
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
@@ -7,6 +5,7 @@ from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
+from validate import PROMPT_COMPLETION_SEPARATOR
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):
@@ -27,7 +26,61 @@ def print_dataset_examples(dataset, dataset_name, num_examples=3):
         pass
 
 
+def print_tokenized_examples(dataset, tokenizer, dataset_name, num_examples=3):
+    """Print tokenized examples with label masking visualization for debugging."""
+    if not dataset:
+        return
+
+    try:
+        print("=" * 80)
+        print(f"DEBUG: {dataset_name} tokenized examples (labels=-100 are masked):")
+        for i, example in enumerate(
+            dataset.select(range(min(num_examples, len(dataset))))
+        ):
+            input_ids = example["input_ids"]
+            labels = example["labels"]
+
+            print(f"\nExample {i+1}:")
+            print(f"  Length: {len(input_ids)} tokens")
+
+            # Separate masked (prompt) and trained (completion) token IDs
+            masked_ids = [tid for tid, lab in zip(input_ids, labels) if lab == -100]
+            trained_ids = [tid for tid, lab in zip(input_ids, labels) if lab != -100]
+
+            # Decode each part
+            masked_text = tokenizer.decode(masked_ids, skip_special_tokens=False)
+            trained_text = tokenizer.decode(trained_ids, skip_special_tokens=False)
+
+            print(f"  Masked (prompt, {len(masked_ids)} tokens):")
+            print(f"    {masked_text!r}")
+            print(f"  Trained (completion, {len(trained_ids)} tokens):")
+            print(f"    {trained_text!r}")
+
+        print("=" * 80 + "\n")
+    except Exception as e:
+        print(f"Warning: Could not print tokenized examples: {e}")
+
+
 def get_instruct_response_part(tokenizer):
+    """Determine instruction and response delimiters for train_on_responses_only.
+
+    Used for messages format with chat templates. For prompt/completion format,
+    offset-based label masking is used instead (see tokenize_prompt_completion).
+
+    Args:
+        tokenizer: The tokenizer to use for chat template detection.
+
+    Returns:
+        Tuple of (instruction_part, response_part) strings.
+    """
+    # Check if tokenizer has a chat template
+    if getattr(tokenizer, "chat_template", None) is None:
+        raise ValueError(
+            "Cannot determine instruction/response parts: tokenizer has no chat_template "
+            "and dataset is not in prompt/completion format. Either use an instruct model, "
+            "provide data with prompt/completion fields, or set train_on_responses_only=False."
+        )
+
     example_conversation = [
         dict(role="user", content="user-ignore"),
         dict(role="assistant", content="assistant-ignore"),
@@ -63,27 +116,55 @@ def get_instruct_response_part(tokenizer):
         if instruction_part in example_text and response_part in example_text:
             return instruction_part, response_part
 
-    print("Warning: guessing how to train on responses only")
+    raise ValueError(
+        f"Cannot determine instruction/response parts for train_on_responses_only. "
+        f"The tokenizer's chat template produced an unrecognized format. "
+        f"Either use a model with a supported chat template, use prompt/completion format, "
+        f"or set train_on_responses_only=False.\n\n"
+        f"Example chat template output:\n{example_text}"
+    )
 
-    def get_part(role):
-        user = dict(role=role, content="ignore")
 
-        conversation_a = [user, user, user]
-        conversation_b = [user, user, user, user]
+def _transform_text_to_prompt_completion(dataset, test_dataset=None):
+    """Transform text fields with separator into prompt/completion format.
 
-        text_a = tokenizer.apply_chat_template(
-            conversation_a, tokenize=False, add_generation_prompt=False
-        )
-        text_b = tokenizer.apply_chat_template(
-            conversation_b, tokenize=False, add_generation_prompt=False
-        )
+    This is a workaround to bypass server-side validation that doesn't support
+    prompt/completion format directly. Users can upload data as text with the
+    separator, and it will be transformed here before training.
 
-        prefix = commonprefix([text_a, text_b])
-        return text_b.replace(prefix, "").split("ignore")[0]
+    Args:
+        dataset: The training dataset to transform.
+        test_dataset: Optional test dataset to transform.
 
-    instruction_part = get_part("user")
-    response_part = get_part("assistant")
-    return instruction_part, response_part
+    Returns:
+        Tuple of (transformed_dataset, transformed_test_dataset).
+    """
+    if "text" not in dataset.column_names:
+        return dataset, test_dataset
+
+    # Check if any row contains the separator
+    sample = dataset[0]
+    if PROMPT_COMPLETION_SEPARATOR not in sample.get("text", ""):
+        return dataset, test_dataset
+
+    print(f"\n[INFO] Detected separator '{PROMPT_COMPLETION_SEPARATOR}' in text field.")
+    print("[INFO] Transforming text -> prompt/completion format.\n")
+
+    def split_text(example):
+        text = example["text"]
+        if PROMPT_COMPLETION_SEPARATOR in text:
+            parts = text.split(PROMPT_COMPLETION_SEPARATOR, 1)
+            return {"prompt": parts[0], "completion": parts[1]}
+        else:
+            raise ValueError(
+                f"Text does not contain separator '{PROMPT_COMPLETION_SEPARATOR}': {text}..."
+            )
+
+    dataset = dataset.map(split_text, remove_columns=["text"])
+    if test_dataset is not None and "text" in test_dataset.column_names:
+        test_dataset = test_dataset.map(split_text, remove_columns=["text"])
+
+    return dataset, test_dataset
 
 
 def sft_train(
@@ -95,30 +176,138 @@ def sft_train(
     logp_datasets={},
     **kwargs,
 ):
+    # Transform text with separator to prompt/completion format (server-side workaround)
+    dataset, test_dataset = _transform_text_to_prompt_completion(dataset, test_dataset)
+
+    # Detect dataset format and validate train_on_responses_only setting
+    is_prompt_completion_format = (
+        "prompt" in dataset.column_names and "completion" in dataset.column_names
+    )
+    is_text_format = "text" in dataset.column_names
+
+    if is_text_format:
+        if training_cfg.train_on_responses_only:
+            raise ValueError(
+                "Dataset uses 'text' format but train_on_responses_only=True. "
+                "With 'text' format, there's no way to identify prompt vs completion. "
+                "Use 'messages' or 'prompt'/'completion' format for completion-only training, "
+                "or set train_on_responses_only=False."
+            )
+
+    if is_prompt_completion_format:
+        if not training_cfg.train_on_responses_only:
+            raise ValueError(
+                "Dataset uses prompt/completion format but train_on_responses_only=False. "
+                "Set train_on_responses_only=True to train only on completions, "
+                "or convert your data to 'text' format if you want to train on everything."
+            )
+
+    def tokenize_prompt_completion(example: dict) -> dict:
+        """Tokenize prompt/completion format with labels masked for prompt tokens.
+
+        Uses offset_mapping to determine which tokens belong to the prompt,
+        then sets their labels to -100 so they don't contribute to the loss.
+        See: https://github.com/unslothai/unsloth/issues/3399
+        """
+        prompt = example["prompt"]
+        completion = example["completion"]
+
+        # Concatenate with EOS token
+        full_text = prompt + completion
+        if not full_text.strip().endswith(tokenizer.eos_token):
+            full_text += tokenizer.eos_token
+
+        # Tokenize with offset mapping to track character positions
+        tokenized = tokenizer(
+            full_text,
+            truncation=True,
+            max_length=training_cfg.max_seq_length,
+            return_offsets_mapping=True,
+            padding=False,
+            return_tensors=None,
+        )
+
+        input_ids = tokenized["input_ids"]
+        offsets = tokenized["offset_mapping"]
+        prompt_end_char = len(prompt)
+
+        # Mask prompt tokens with -100 (ignored by CrossEntropyLoss)
+        labels = [
+            -100 if start < prompt_end_char else token_id
+            for (start, _), token_id in zip(offsets, input_ids)
+        ]
+
+        return {
+            "input_ids": input_ids,
+            "labels": labels,
+            "attention_mask": tokenized["attention_mask"],
+        }
+
     # NOTE: maybe this is not needed but we should test it with train_on_responses_only: https://huggingface.co/docs/trl/en/sft_trainer#dataset-format-support
-    def apply_chat_template(examples):
+    def apply_chat_template(examples: dict) -> dict:
+        """Apply chat template to convert messages to text format.
+
+        Supports two formats:
+        - "text": used as-is
+        - "messages": chat format, uses tokenizer's chat_template (or simple concat for base models)
+
+        Note: prompt/completion format is handled separately via tokenize_prompt_completion.
+        """
         if "text" in examples:
             return examples
-        conversations = examples["messages"]
+
         texts = []
+
+        # Handle messages format
+        conversations = examples["messages"]
+
+        # Check if tokenizer has a chat template (base models typically don't)
+        has_chat_template = getattr(tokenizer, "chat_template", None) is not None
+
         for conversation in conversations:
-            text = tokenizer.apply_chat_template(
-                conversation,
-                add_generation_prompt=False,
-                return_tensors="pt",
-                tokenize=False,
-            )
+            if has_chat_template:
+                text = tokenizer.apply_chat_template(
+                    conversation,
+                    add_generation_prompt=False,
+                    return_tensors="pt",
+                    tokenize=False,
+                )
+            else:
+                # Fallback for base models: simple content concatenation
+                text = "\n".join(msg["content"] for msg in conversation)
+
             if not text.strip().endswith(tokenizer.eos_token):
                 text += tokenizer.eos_token
             texts.append(text)
+
         return {"text": texts}
 
-    dataset = dataset.map(apply_chat_template, batched=True)
-    print_dataset_examples(dataset, "Training", num_examples=3)
-
-    if test_dataset:
-        test_dataset = test_dataset.map(apply_chat_template, batched=True)
-        print_dataset_examples(test_dataset, "Test", num_examples=3)
+    # Process dataset based on format
+    if is_prompt_completion_format:
+        # Pre-tokenize with masked labels for completion-only training
+        print("\n" + "-" * 80)
+        print("DEBUG: Using offset-based masking for prompt/completion format")
+        print("Prompt tokens will have labels=-100 (masked from loss)")
+        print("-" * 80 + "\n")
+        dataset = dataset.map(
+            tokenize_prompt_completion,
+            remove_columns=["prompt", "completion"],
+            desc="Tokenizing prompt/completion with masked labels",
+        )
+        print_tokenized_examples(dataset, tokenizer, "Training", num_examples=3)
+        if test_dataset:
+            test_dataset = test_dataset.map(
+                tokenize_prompt_completion,
+                remove_columns=["prompt", "completion"],
+                desc="Tokenizing test prompt/completion with masked labels",
+            )
+            print_tokenized_examples(test_dataset, tokenizer, "Test", num_examples=3)
+    else:
+        dataset = dataset.map(apply_chat_template, batched=True)
+        print_dataset_examples(dataset, "Training", num_examples=3)
+        if test_dataset:
+            test_dataset = test_dataset.map(apply_chat_template, batched=True)
+            print_dataset_examples(test_dataset, "Test", num_examples=3)
 
     learning_rate = (
         training_cfg.learning_rate
@@ -164,58 +353,87 @@ def sft_train(
         / training_cfg.gradient_accumulation_steps
     )
 
-    trainer_kwargs = dict(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=training_cfg.max_seq_length,
-        dataset_num_proc=4,
-        packing=training_cfg.packing,
-        args=TrainingArguments(
-            per_device_train_batch_size=training_cfg.per_device_train_batch_size,
-            per_device_eval_batch_size=training_cfg.eval_batch_size,
-            eval_steps=training_cfg.test_file_eval_steps,
-            eval_strategy=training_cfg.test_file_eval_strategy,
-            gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
-            warmup_steps=training_cfg.warmup_steps,
-            learning_rate=learning_rate,
-            fp16=not is_bfloat16_supported(),
-            bf16=is_bfloat16_supported(),
-            logging_steps=max(
-                training_cfg.logging_steps, expecting_n_training_steps // 1000
-            ),
-            optim=training_cfg.optim,
-            weight_decay=training_cfg.weight_decay,
-            lr_scheduler_type=training_cfg.lr_scheduler_type,
-            seed=training_cfg.seed,
-            report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
-            num_train_epochs=training_cfg.epochs,
-            save_steps=training_cfg.save_steps,
-            output_dir=training_cfg.output_dir,
-            ddp_find_unused_parameters=False,
-            **kwargs,
+    training_args = TrainingArguments(
+        per_device_train_batch_size=training_cfg.per_device_train_batch_size,
+        per_device_eval_batch_size=training_cfg.eval_batch_size,
+        eval_steps=training_cfg.test_file_eval_steps,
+        eval_strategy=training_cfg.test_file_eval_strategy,
+        gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
+        warmup_steps=training_cfg.warmup_steps,
+        learning_rate=learning_rate,
+        fp16=not is_bfloat16_supported(),
+        bf16=is_bfloat16_supported(),
+        logging_steps=max(
+            training_cfg.logging_steps, expecting_n_training_steps // 1000
         ),
-        callbacks=[LogMetrics(), GPUStatsCallback()]
-        + logp_callbacks
-        + sampling_callbacks,
-        eval_dataset=test_dataset,
+        optim=training_cfg.optim,
+        weight_decay=training_cfg.weight_decay,
+        lr_scheduler_type=training_cfg.lr_scheduler_type,
+        max_grad_norm=training_cfg.max_grad_norm,
+        seed=training_cfg.seed,
+        report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
+        num_train_epochs=training_cfg.epochs,
+        save_steps=training_cfg.save_steps,
+        output_dir=training_cfg.output_dir,
+        ddp_find_unused_parameters=False,
+        **kwargs,
     )
-    # print(f"SFT trainer kwargs: {json.dumps(trainer_kwargs, indent=4)}")
 
-    if training_cfg.train_on_responses_only:
-        instruction_part, response_part = get_instruct_response_part(tokenizer)
-        print("\n" + "-" * 80)
-        print("DEBUG: train_on_responses_only parts:")
-        print(f"Instruction part: {instruction_part}")
-        print(f"Response part: {response_part}")
-        print("-" * 80 + "\n")
-        trainer_kwargs["data_collator"] = DataCollatorForSeq2Seq(tokenizer=tokenizer)
-        trainer = train_on_responses_only(
-            SFTTrainer(**trainer_kwargs),
-            instruction_part=instruction_part,
-            response_part=response_part,
+    callbacks = [LogMetrics(), GPUStatsCallback()] + logp_callbacks + sampling_callbacks
+
+    if is_prompt_completion_format:
+        # Data is pre-tokenized with masked labels - use simple data collator
+        # Packing is not supported with prompt/completion format
+        if training_cfg.packing:
+            print(
+                "\n[WARNING] Packing is not supported with prompt/completion format. "
+                "Automatically setting packing=False.\n"
+            )
+        trainer_kwargs = dict(
+            model=model,
+            tokenizer=tokenizer,
+            train_dataset=dataset,
+            max_seq_length=training_cfg.max_seq_length,
+            dataset_num_proc=4,
+            packing=False,  # Packing not supported with pre-tokenized data
+            args=training_args,
+            callbacks=callbacks,
+            eval_dataset=test_dataset,
+            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True),
         )
-    else:
         trainer = SFTTrainer(**trainer_kwargs)
+    else:
+        # Text-based data - use standard SFTTrainer processing
+        trainer_kwargs = dict(
+            model=model,
+            tokenizer=tokenizer,
+            train_dataset=dataset,
+            dataset_text_field="text",
+            max_seq_length=training_cfg.max_seq_length,
+            dataset_num_proc=4,
+            packing=training_cfg.packing,
+            args=training_args,
+            callbacks=callbacks,
+            eval_dataset=test_dataset,
+        )
+
+        if training_cfg.train_on_responses_only:
+            # Use unsloth's train_on_responses_only for messages format
+            instruction_part, response_part = get_instruct_response_part(tokenizer)
+            print("\n" + "-" * 80)
+            print("DEBUG: train_on_responses_only parts:")
+            print(f"Instruction part: {instruction_part}")
+            print(f"Response part: {response_part}")
+            print("-" * 80 + "\n")
+            trainer_kwargs["data_collator"] = DataCollatorForSeq2Seq(
+                tokenizer=tokenizer
+            )
+            trainer = train_on_responses_only(
+                SFTTrainer(**trainer_kwargs),
+                instruction_part=instruction_part,
+                response_part=response_part,
+            )
+        else:
+            trainer = SFTTrainer(**trainer_kwargs)
+
     return trainer

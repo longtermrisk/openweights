@@ -148,9 +148,20 @@ def validate_messages(content):
                 if not validate_text_only(row["text"]):
                     logging.error(f"Invalid text in conversations file: {row['text']}")
                     return False
+            elif "prompt" in row and "completion" in row:
+                if not isinstance(row["prompt"], str):
+                    logging.error(
+                        f"Invalid prompt in conversations file (must be string): {row['prompt']}"
+                    )
+                    return False
+                if not isinstance(row["completion"], str):
+                    logging.error(
+                        f"Invalid completion in conversations file (must be string): {row['completion']}"
+                    )
+                    return False
             else:
                 logging.error(
-                    f"Invalid row in conversations file (no 'messages' or 'text' key): {row}"
+                    f"Invalid row in conversations file (must have 'messages', 'text', or 'prompt'/'completion'): {row}"
                 )
                 return False
         return True

@@ -255,19 +255,22 @@ class Jobs:
 
     def compute_id(self, data: Dict[str, Any]) -> str:
         """Compute job ID from data"""
+        assert "validated_params" in data, "Validated parameters are required"
         job_id = f"{self.id_predix}-{hashlib.sha256(json.dumps(data).encode() + self._org_id.encode()).hexdigest()[:12]}"
         if (
-            data.get("validated_params", None) is not None
-            and data["validated_params"].get("job_id_suffix", None) is not None
-        ):
-            job_id += f"-{data['validated_params']['job_id_suffix']}"
-        elif (
-            data.get("params", None) is not None
-            and data["params"].get("validated_params", None) is not None
-            and data["params"]["validated_params"].get("job_id_suffix", None)
+            # data.get("validated_params", None) is not None
+            # and
+            data["validated_params"].get("job_id_suffix", None)
             is not None
         ):
-            job_id += f"-{data['params']['validated_params']['job_id_suffix']}"
+            job_id += f"-{data['validated_params']['job_id_suffix']}"
+        # elif (
+        #     data.get("params", None) is not None
+        #     and data["params"].get("validated_params", None) is not None
+        #     and data["params"]["validated_params"].get("job_id_suffix", None)
+        #     is not None
+        # ):
+        #     job_id += f"-{data['params']['validated_params']['job_id_suffix']}"
         return job_id
 
     @supabase_retry()
@@ -276,7 +279,10 @@ class Jobs:
         If job exists and is [failed, canceled] reset it to pending and return it.
         If job doesn't exist, create it and return it.
         """
-        data["id"] = data.get("id", self.compute_id(data))
+        # data["id"] = data.get("id", self.compute_id(data))
+        # assert "id" in data, "Job ID is required"
+        if "id" not in data:
+            data["id"] = self.compute_id(data["params"])
         data["organization_id"] = self._org_id
 
         # Validate allowed_hardware if provided

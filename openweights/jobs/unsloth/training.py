@@ -37,7 +37,10 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
     """
     Create a dataset from rows based on the loss function type.
 
-    For SFT loss, only the messages field is extracted from each row.
+    For SFT loss, extracts relevant fields based on data format:
+    - messages format: extracts 'messages' field
+    - text format: extracts 'text' field
+    - prompt/completion format: extracts 'prompt' and 'completion' fields
     For ORPO and DPO losses, all fields from the rows are preserved.
 
     Args:
@@ -48,7 +51,23 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
         A Dataset object created from the rows.
     """
     if loss == "sft":
-        return Dataset.from_list([dict(messages=r["messages"]) for r in rows])
+        if not rows:
+            return Dataset.from_list([])
+        # Detect format from first row
+        sample = rows[0]
+        if "messages" in sample:
+            return Dataset.from_list([dict(messages=r["messages"]) for r in rows])
+        elif "text" in sample:
+            return Dataset.from_list([dict(text=r["text"]) for r in rows])
+        elif "prompt" in sample and "completion" in sample:
+            return Dataset.from_list(
+                [dict(prompt=r["prompt"], completion=r["completion"]) for r in rows]
+            )
+        else:
+            raise ValueError(
+                f"Unknown SFT data format. Expected 'messages', 'text', or 'prompt'/'completion'. "
+                f"Got keys: {list(sample.keys())}"
+            )
     else:
         return Dataset.from_list(rows)
 

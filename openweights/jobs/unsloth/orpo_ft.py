@@ -51,6 +51,7 @@ def orpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         optim=training_cfg.optim,
         weight_decay=training_cfg.weight_decay,
         lr_scheduler_type=training_cfg.lr_scheduler_type,
+        max_grad_norm=training_cfg.max_grad_norm,
         seed=training_cfg.seed,
         report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
         num_train_epochs=training_cfg.epochs,
