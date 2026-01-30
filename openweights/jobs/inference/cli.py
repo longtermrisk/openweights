@@ -66,13 +66,14 @@ def sample(
     min_tokens=1,
     logprobs=None,
     n_completions_per_prompt=1,
+    use_text_format=False,
 ):
     """
     Generate completions for conversations using the LLM.
 
     Args:
         llm: The vLLM LLM instance.
-        conversations: List of conversation dicts with 'messages' field.
+        conversations: List of conversation dicts with 'messages' field or 'text' field.
         model_name: The model name/identifier for chat template handling.
         lora_request: Optional LoRA request for adapter models.
         top_p: Top-p sampling parameter.
@@ -83,6 +84,7 @@ def sample(
         min_tokens: Minimum tokens to generate.
         logprobs: Number of logprobs to return (None to disable).
         n_completions_per_prompt: Number of completions per prompt.
+        use_text_format: If True, use 'text' field directly without chat template.
 
     Returns:
         Tuple of (answers, logprobs) where answers is a list of generated texts.
@@ -107,19 +109,34 @@ def sample(
     prefixes = []
     texts = []
 
-    assert tokenizer.chat_template is not None
+    if use_text_format:
+        # Text format: use 'text' field directly without chat template
+        # Prefill is not supported for text format - user should include it in the text
+        if prefill:
+            raise ValueError(
+                "Prefill is not supported for text format. "
+                "Include the prefill content directly in the 'text' field."
+            )
+        logging.info("Using text format (no chat template)")
+        for item in conversations:
+            text = item  # item is already the text string
+            texts.append(text)
+            prefixes.append("")
+    else:
+        # Messages format: apply chat template
+        assert tokenizer.chat_template is not None
 
-    logging.info("Applying chat template to all conversations")
-    for messages in conversations:
-        pre = prefill
-        if messages[-1]["role"] == "assistant":
-            messages, pre = messages[:-1], messages[-1]["content"]
-        text = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        logging.info("Applying chat template to all conversations")
+        for messages in conversations:
+            pre = prefill
+            if messages[-1]["role"] == "assistant":
+                messages, pre = messages[:-1], messages[-1]["content"]
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
 
-        texts.append(text + pre)
-        prefixes.append(pre)
+            texts.append(text + pre)
+            prefixes.append(pre)
 
     # Only include lora_request if it's not None
     generate_kwargs = {"sampling_params": sampling_params, "use_tqdm": True}
@@ -261,9 +278,32 @@ def main(cfg, conversations):
     if cfg.logprobs == 0:
         cfg.logprobs = None
 
+    # Determine if we're using text format or messages format
+    # Text format: each row has 'text' field, Messages format: each row has 'messages' field
+    has_text = "text" in conversations[0]
+    has_messages = "messages" in conversations[0]
+
+    if has_text and has_messages:
+        raise ValueError(
+            "Each row must have either 'text' or 'messages', not both. "
+            f"First row has both: {list(conversations[0].keys())}"
+        )
+    if not has_text and not has_messages:
+        raise ValueError(
+            "Each row must have either 'text' or 'messages'. "
+            f"First row has neither: {list(conversations[0].keys())}"
+        )
+
+    use_text_format = has_text
+
+    if use_text_format:
+        input_data = [conv["text"] for conv in conversations]
+    else:
+        input_data = [conv["messages"] for conv in conversations]
+
     answers, logprobs = sample(
         llm,
-        [conv["messages"] for conv in conversations],
+        input_data,
         base_model,  # Pass model name for chat template handling
         lora_request=lora_request,  # This will be None if no adapter is present
         top_p=cfg.top_p,
@@ -274,6 +314,7 @@ def main(cfg, conversations):
         min_tokens=cfg.min_tokens,
         logprobs=cfg.logprobs,
         n_completions_per_prompt=cfg.n_completions_per_prompt,
+        use_text_format=use_text_format,
     )
     logging.info(f"Sampled {len(answers)} answers (counting each prompt once)")
 

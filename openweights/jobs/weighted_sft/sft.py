@@ -370,6 +370,7 @@ def sft_train(
             optim=training_cfg.optim,
             weight_decay=training_cfg.weight_decay,
             lr_scheduler_type=training_cfg.lr_scheduler_type,
+            max_grad_norm=training_cfg.max_grad_norm,
             seed=training_cfg.seed,
             report_to=[],
             num_train_epochs=training_cfg.epochs,

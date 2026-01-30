@@ -58,9 +58,11 @@ class InferenceConfig(BaseModel):
         ):  # Skip validation if dataset is not provided (test_dataset is optional)
             return v
         # Validate based on training type
-        if not v.startswith("conversations"):
+        # Support both 'conversations' (chat format) and 'text' (text format for base models)
+        valid_prefixes = ("conversations", "text")
+        if not v.startswith(valid_prefixes):
             raise ValueError(
-                f"Inference jobs require dataset type to be 'conversations', got: {v}"
+                f"Inference jobs require dataset type to be 'conversations' or 'text', got: {v}"
             )
         return v
 

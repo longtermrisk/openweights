@@ -84,6 +84,25 @@ class FineTuning(Jobs):
         _, params = self._prepare_job_params(params)
         return params
 
+    def filter_out_default_values_to_ignore_for_id_computation(
+        self, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Filter out default values from the data, to keep the job ID constant when adding new parameters."""
+        if (
+            data["validated_params"]["max_grad_norm"] == 1.0
+        ):  # Default value set by TrainingArguments
+            data["validated_params"].pop("max_grad_norm")
+
+        return data
+
+    def compute_id(self, data: Dict[str, Any]) -> str:
+        """Compute job ID from data"""
+        if "validated_params" not in data:
+            data = data["params"]
+            assert "validated_params" in data, "Validated parameters are required"
+        data = self.filter_out_default_values_to_ignore_for_id_computation(data)
+        return super().compute_id(data)
+
 
 @register("logprob")
 class LogProb(Jobs):
