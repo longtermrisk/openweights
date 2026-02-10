@@ -1,6 +1,7 @@
 import json
 import os
 from functools import wraps
+from typing import Optional
 
 import torch
 from transformers import AutoTokenizer, TrainerCallback
@@ -10,18 +11,36 @@ from openweights.client import OpenWeights
 client = OpenWeights()
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
-    from unsloth import FastLanguageModel, is_bfloat16_supported
+def load_model_and_tokenizer(
+    model_id: str,
+    load_in_4bit: bool = False,
+    max_seq_length: int = 2048,
+    lora_rank: Optional[int] = None,
+    seed: Optional[int] = None,
+) -> tuple:
+    """
+    Load an Unsloth FastLanguageModel and tokenizer.
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_id,
-        dtype=None,
-        load_in_4bit=load_in_4bit,
-        token=os.environ["HF_TOKEN"],
-        max_seq_length=max_seq_length,
-        device_map=None,  # important: no lazy/meta map
-        low_cpu_mem_usage=False,  # force real tensors
-    )
+    If lora_rank is set, max_lora_rank=lora_rank is passed to from_pretrained.
+    If seed is set, torch.manual_seed(seed) is called before loading for reproducibility.
+    """
+    from unsloth import FastLanguageModel
+
+    if seed is not None:
+        torch.manual_seed(seed)
+    load_kwargs: dict = {
+        "dtype": None,
+        "load_in_4bit": load_in_4bit,
+        "token": os.environ["HF_TOKEN"],
+        "max_seq_length": max_seq_length,
+        "device_map": None,  # important: no lazy/meta map
+        "low_cpu_mem_usage": False,  # force real tensors
+    }
+    if lora_rank is not None:
+        load_kwargs["max_lora_rank"] = lora_rank
+
+    model, tokenizer = FastLanguageModel.from_pretrained(model_id, **load_kwargs)
+
     if (
         not load_in_4bit
     ):  # we get an error otherwise, but the 4bit models are automatically placed on cuda

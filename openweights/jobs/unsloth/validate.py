@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -57,6 +57,9 @@ class TrainingConfig(BaseModel):
         ],
         description="Target modules for LoRA",
     )
+    layers_to_transform: Optional[List[int]] = Field(
+        None, description="Layers to transform for LoRA"
+    )
     lora_bias: Literal["all", "none"] = Field(
         "none", description="Value for FastLanguageModel.get_peft_model(bias=?)"
     )
@@ -66,8 +69,12 @@ class TrainingConfig(BaseModel):
     lora_alpha: int = Field(16, description="LoRA alpha parameter")
     lora_dropout: float = Field(0.0, description="LoRA dropout rate")
     use_rslora: bool = Field(True, description="Whether to use RSLoRA")
+    lora_extra_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra kwargs passed to FastLanguageModel.get_peft_model(); only used when is_peft=True.",
+    )
     merge_before_push: bool = Field(
-        True,
+        False,
         description="Whether to merge model before pushing to Hub. Only merged models can be used as parent models for further finetunes. Only supported for bf16 models.",
     )
     push_to_private: bool = Field(True, description="Whether to push to private Hub")
@@ -104,6 +111,10 @@ class TrainingConfig(BaseModel):
         True, description="Whether to train on responses only"
     )
     packing: bool = Field(True, description="Whether to pack the dataset")
+    training_extra_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra kwargs passed to TrainingArguments in SFT/ORPO/DPO train functions.",
+    )
 
     logp_callback_datasets: Dict[str, str] = Field(
         {}, description="Datasets for which to track loss and logP"
@@ -152,6 +163,12 @@ class TrainingConfig(BaseModel):
                 f"For DPO/ORPO training, dataset filename must start with 'preference', got: {training_file}"
             )
 
+        return values
+
+    @model_validator(mode="before")
+    def merge_before_push_requires_peft(cls, values):
+        if values.get("merge_before_push") and not values.get("is_peft", True):
+            raise ValueError("merge_before_push requires is_peft=True")
         return values
 
     @model_validator(mode="before")

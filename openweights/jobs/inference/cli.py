@@ -1,9 +1,24 @@
+import bisect
 import json
 import logging
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+# vLLM only supports these max_lora_rank values
+SUPPORTED_LORA_RANKS: List[int] = [1, 8, 16, 32, 64, 128, 256, 320, 512]
+
+
+def snap_lora_rank(rank: int) -> int:
+    """Return the smallest supported vLLM max_lora_rank >= the actual rank."""
+    idx = bisect.bisect_left(SUPPORTED_LORA_RANKS, rank)
+    if idx >= len(SUPPORTED_LORA_RANKS):
+        raise ValueError(
+            f"LoRA rank {rank} exceeds maximum supported rank "
+            f"{SUPPORTED_LORA_RANKS[-1]}"
+        )
+    return SUPPORTED_LORA_RANKS[idx]
 
 
 def get_model_specific_stop_tokens(model_name: str, tokenizer) -> List[str]:
@@ -234,7 +249,7 @@ def main(cfg, conversations):
         max_model_len=cfg.max_model_len,
     )
     if enable_lora:
-        load_kwargs["max_lora_rank"] = get_lora_rank(lora_adapter)
+        load_kwargs["max_lora_rank"] = snap_lora_rank(get_lora_rank(lora_adapter))
     if cfg.quantization is not None:
         load_kwargs["quantization"] = cfg.quantization
     if cfg.load_format is not None:

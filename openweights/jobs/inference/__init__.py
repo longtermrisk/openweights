@@ -49,8 +49,8 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             else:
                 return self.create_openai_inference_parallel_request(params)
 
-        base_model, lora_adapter = resolve_lora_model(params["model"])
         if requires_vram_gb == "guess":
+            base_model, lora_adapter = resolve_lora_model(params["model"])
             model_size = guess_model_size(base_model)
             weights_require = 2 * model_size
             if "8bit" in params["model"] and not "ftjob" in base_model:
