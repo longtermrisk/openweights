@@ -124,25 +124,29 @@ def train(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
         max_seq_length=training_cfg.max_seq_length,
+        lora_rank=training_cfg.r if training_cfg.is_peft else None,
+        seed=training_cfg.seed,
     )
     if training_cfg.chat_template != "default":
         tokenizer.chat_template = training_cfg.chat_template
 
-    print("Creating new LoRA adapter")
-    target_modules = training_cfg.target_modules
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=training_cfg.r,
-        target_modules=target_modules,
-        lora_alpha=training_cfg.lora_alpha,
-        lora_dropout=training_cfg.lora_dropout,
-        bias=training_cfg.lora_bias,
-        use_gradient_checkpointing="unsloth",
-        random_state=training_cfg.seed,
-        use_rslora=training_cfg.use_rslora,
-        loftq_config=None,
-        use_dora=False,
-    )
+    if training_cfg.is_peft:
+        peft_kwargs = {
+            "r": training_cfg.r,
+            "target_modules": training_cfg.target_modules,
+            "lora_alpha": training_cfg.lora_alpha,
+            "lora_dropout": training_cfg.lora_dropout,
+            "bias": training_cfg.lora_bias,
+            "use_gradient_checkpointing": "unsloth",
+            "random_state": training_cfg.seed,
+            "use_rslora": training_cfg.use_rslora,
+            "layers_to_transform": training_cfg.layers_to_transform,
+            "loftq_config": None,
+            "use_dora": False,
+            **training_cfg.lora_extra_kwargs,
+        }
+        print("Creating new LoRA adapter")
+        model = FastLanguageModel.get_peft_model(model, **peft_kwargs)
     rows = load_jsonl(training_cfg.training_file)
     dataset = create_dataset(rows, training_cfg.loss)
 
@@ -159,7 +163,7 @@ def train(
         logp_dataset = Dataset.from_list([dict(messages=r["messages"]) for r in rows])
         logp_datasets[key] = logp_dataset
 
-    kwargs = {}
+    kwargs = {**training_cfg.training_extra_kwargs}
     if training_cfg.max_steps:
         kwargs["max_steps"] = training_cfg.max_steps
 
@@ -209,7 +213,7 @@ def train(
 
 @backoff.on_exception(backoff.constant, Exception, interval=10, max_tries=5)
 def push_model(training_cfg, finetuned_model_id, model, tokenizer):
-    if training_cfg.merge_before_push:
+    if training_cfg.is_peft and training_cfg.merge_before_push:
         model.push_to_hub_merged(
             finetuned_model_id,
             tokenizer,
