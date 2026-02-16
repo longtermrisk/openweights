@@ -110,12 +110,16 @@ def handle_signup(args) -> int:
         session_token = auth_response.session.access_token
 
         # Create authenticated client for the user
-        from supabase.lib.client_options import ClientOptions
+        from supabase import ClientOptions
 
         user_client = create_client(
             _SUPABASE_URL,
             _SUPABASE_ANON_KEY,
-            options=ClientOptions(headers={"Authorization": f"Bearer {session_token}"}),
+            options=ClientOptions(
+                headers={"Authorization": f"Bearer {session_token}"},
+                auto_refresh_token=False,
+                persist_session=False,
+            ),
         )
 
         # Create organization
