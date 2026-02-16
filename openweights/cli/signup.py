@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL
 from supabase import Client, create_client
 
 
@@ -15,18 +16,6 @@ def add_signup_parser(parser):
         "--org-env",
         type=str,
         help="Path to .env file with organization secrets to import",
-    )
-    parser.add_argument(
-        "--supabase-url",
-        type=str,
-        default=os.getenv("SUPABASE_URL"),
-        help="Supabase project URL (or set SUPABASE_URL env var)",
-    )
-    parser.add_argument(
-        "--supabase-key",
-        type=str,
-        default=os.getenv("SUPABASE_ANON_KEY"),
-        help="Supabase anon key (or set SUPABASE_ANON_KEY env var)",
     )
     parser.add_argument(
         "--password",
@@ -76,18 +65,10 @@ def create_supabase_client(url: str, anon_key: str) -> Client:
 def handle_signup(args) -> int:
     """Handle the signup command."""
 
-    # Validate required environment
-    if not args.supabase_url or not args.supabase_key:
-        print("Error: SUPABASE_URL and SUPABASE_ANON_KEY must be set")
-        print(
-            "Either set them as environment variables or pass --supabase-url and --supabase-key"
-        )
-        return 1
-
     print(f"Creating user account for {args.email}...")
 
     # Create Supabase client with anon key
-    supabase = create_supabase_client(args.supabase_url, args.supabase_key)
+    supabase = create_supabase_client(_SUPABASE_URL, _SUPABASE_ANON_KEY)
 
     # Generate password if not provided
     password = args.password
@@ -132,8 +113,8 @@ def handle_signup(args) -> int:
         from supabase.lib.client_options import ClientOptions
 
         user_client = create_client(
-            args.supabase_url,
-            args.supabase_key,
+            _SUPABASE_URL,
+            _SUPABASE_ANON_KEY,
             options=ClientOptions(headers={"Authorization": f"Bearer {session_token}"}),
         )
 
