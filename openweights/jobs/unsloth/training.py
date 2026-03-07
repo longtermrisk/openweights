@@ -76,6 +76,7 @@ def train(training_cfg):
         use_rslora=training_cfg.use_rslora,
         loftq_config=None,
         use_dora=False,
+        layers_to_transform=training_cfg.layers_to_transform,
     )
     rows = load_jsonl(training_cfg.training_file)
     dataset = create_dataset(rows, training_cfg.loss)

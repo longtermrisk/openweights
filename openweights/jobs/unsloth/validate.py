@@ -63,6 +63,9 @@ class TrainingConfig(BaseModel):
     lora_alpha: int = Field(16, description="LoRA alpha parameter")
     lora_dropout: float = Field(0.0, description="LoRA dropout rate")
     use_rslora: bool = Field(True, description="Whether to use RSLoRA")
+    layers_to_transform: Optional[List[int]] = Field(
+        None, description="List of layer indices to apply LoRA to. If None, applies to all layers."
+    )
     merge_before_push: bool = Field(
         True,
         description="Whether to merge model before pushing to Hub. Only merged models can be used as parent models for further finetunes. Only supported for bf16 models.",
