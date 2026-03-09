@@ -15,7 +15,7 @@ COPY README.md .
 COPY pyproject.toml .
 COPY openweights openweights
 COPY entrypoint.sh .
-RUN python3 -m pip install -e .
+RUN python3 -m pip install -e ".[worker]"
 
 # Upgrade transformers, unsloth, and unsloth-zoo LAST to avoid being downgraded by earlier installs
 RUN python3 -m pip install --upgrade --no-deps "transformers>=5.0" && \
