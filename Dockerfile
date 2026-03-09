@@ -29,7 +29,7 @@ COPY README.md .
 COPY pyproject.toml .
 COPY openweights openweights
 COPY entrypoint.sh .
-RUN python3 -m pip install -e .
+RUN python3 -m pip install -e ".[worker]"
 
 # Add conda to PATH for interactive SSH sessions
 RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
