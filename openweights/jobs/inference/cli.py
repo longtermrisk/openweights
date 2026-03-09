@@ -217,8 +217,85 @@ def load_jsonl_file_from_id(input_file_id):
     return rows
 
 
+def _is_hf_repo_id(value: str) -> bool:
+    """Check whether *value* looks like a HuggingFace repo ID (not a filesystem path)."""
+    if not value or value.startswith(("/", "~", ".")):
+        return False
+    return len(value.split("/")) <= 2
+
+
+def _resolve_base_model(adapter_id: str, bad_path: str) -> str:
+    """Resolve the real HF base model ID when adapter_config.json contains a local path.
+
+    Resolution strategies (tried in order):
+    1. Read the adapter repo's ``config.json`` for ``_name_or_path``.
+    2. Query the HuggingFace API for the ``base_model`` field from the model card.
+
+    Args:
+        adapter_id: HuggingFace adapter repo ID (e.g. ``org/adapter-name``).
+        bad_path: The invalid local path from ``base_model_name_or_path``.
+
+    Returns:
+        Resolved HuggingFace repo ID.
+
+    Raises:
+        ValueError: If the base model cannot be resolved.
+    """
+    from huggingface_hub import HfApi, hf_hub_download as _hf_download
+
+    repo_id = adapter_id
+    subfolder = None
+    if len(adapter_id.split("/")) > 2:
+        repo_id = "/".join(adapter_id.split("/")[:2])
+        subfolder = "/".join(adapter_id.split("/")[2:])
+
+    # Strategy 1: adapter repo's config.json -> _name_or_path
+    filename = f"{subfolder}/config.json" if subfolder else "config.json"
+    try:
+        config_file = _hf_download(repo_id=repo_id, filename=filename)
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        name_or_path = config.get("_name_or_path")
+        if name_or_path and _is_hf_repo_id(name_or_path):
+            logging.info(
+                f"Resolved base model for '{adapter_id}' via config.json: "
+                f"'{bad_path}' -> '{name_or_path}'"
+            )
+            return name_or_path
+    except Exception:
+        pass
+
+    # Strategy 2: HF API model card metadata -> base_model
+    try:
+        info = HfApi().model_info(repo_id)
+        card_base_model = getattr(info, "card_data", None)
+        if card_base_model is not None:
+            base_model_value = getattr(card_base_model, "base_model", None)
+            if isinstance(base_model_value, str) and _is_hf_repo_id(base_model_value):
+                logging.info(
+                    f"Resolved base model for '{adapter_id}' via model card: "
+                    f"'{bad_path}' -> '{base_model_value}'"
+                )
+                return base_model_value
+    except Exception:
+        pass
+
+    raise ValueError(
+        f"Adapter '{adapter_id}' has an invalid base_model_name_or_path ('{bad_path}') "
+        f"and could not be resolved from config.json or the HuggingFace model card. "
+        f"Please update the adapter's adapter_config.json on HuggingFace."
+    )
+
+
 def main(cfg, conversations):
     base_model, lora_adapter = resolve_lora_model(cfg.model)
+
+    if not _is_hf_repo_id(base_model):
+        logging.warning(
+            f"base_model_name_or_path is a local path: '{base_model}'. "
+            f"Attempting to resolve the real HuggingFace model ID."
+        )
+        base_model = _resolve_base_model(cfg.model, base_model)
 
     # Only enable LoRA if we have an adapter
     enable_lora = lora_adapter is not None
@@ -245,7 +322,7 @@ def main(cfg, conversations):
             get_number_of_gpus() if cfg.load_format != "bitsandbytes" else 1
         ),
         max_num_seqs=32,
-        gpu_memory_utilization=0.95,
+        gpu_memory_utilization=0.90,
         max_model_len=cfg.max_model_len,
     )
     if enable_lora:
