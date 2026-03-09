@@ -64,7 +64,7 @@ def batch_tokenize(tokenizer, batch):
         texts,
         padding=True,
         truncation=True,
-        max_length=8196,
+        max_length=8192,
         add_special_tokens=False,
         return_tensors="pt",
     )["input_ids"]
