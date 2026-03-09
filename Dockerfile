@@ -20,7 +20,7 @@ RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
 
 RUN python3 -m pip install --upgrade pip
 RUN python3 -m pip install inspect_ai git+https://github.com/UKGovernmentBEIS/inspect_evals
-RUN python3 -m pip install vllm huggingface_hub[hf_transfer] hf_transfer supabase python-dotenv fire httpx>=0.24.0 runpod
+RUN python3 -m pip install "vllm>=0.17.0" huggingface_hub[hf_transfer] hf_transfer supabase python-dotenv fire httpx>=0.24.0 runpod
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
 
 RUN git lfs install
