@@ -34,7 +34,9 @@ RUN python3 -m pip install -e ".[worker]"
 # vLLM MUST be installed last — `.[worker]` pulls unsloth's torch+cu128 build,
 # which is ABI-incompatible with PyPI vllm wheels.  Force-reinstalling vllm+torch
 # together as the final step guarantees a matching ABI pair.
-RUN python3 -m pip install --no-cache-dir --force-reinstall "vllm>=0.17.0" torch torchvision torchaudio
+# Pin transformers>=5.0 here too so vllm can't downgrade it (Qwen3.5 tokenizer
+# requires the TokenizersBackend class introduced in transformers 5.x).
+RUN python3 -m pip install --no-cache-dir --force-reinstall "vllm>=0.17.0" "transformers>=5.0" torch torchvision torchaudio
 
 # Add conda to PATH for interactive SSH sessions
 RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
