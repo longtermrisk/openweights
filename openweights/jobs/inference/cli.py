@@ -324,6 +324,7 @@ def main(cfg, conversations):
         max_num_seqs=32,
         gpu_memory_utilization=0.90,
         max_model_len=cfg.max_model_len,
+        trust_remote_code=True,
     )
     if enable_lora:
         load_kwargs["max_lora_rank"] = snap_lora_rank(get_lora_rank(lora_adapter))
