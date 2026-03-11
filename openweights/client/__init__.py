@@ -2,9 +2,6 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-# from supabase.lib.client_options import ClientOptions
-from supabase import ClientOptions
-
 from openweights.client.chat import AsyncChatCompletions, ChatCompletions
 from openweights.client.decorators import supabase_retry
 from openweights.client.events import Events
@@ -17,11 +14,17 @@ from openweights.client.jobs import Job, Jobs
 from openweights.client.run import Run, Runs
 from openweights.client.temporary_api import TemporaryApi
 from openweights.client.utils import get_lora_rank, group_models_or_adapters_by_model
-from supabase import create_client
+
+# from supabase.lib.client_options import ClientOptions
+from supabase import ClientOptions, create_client
 
 logger = logging.getLogger(__name__)
 
-# Reduce noise to only warnings+errors
+# Library best practice: add NullHandler so no logs are emitted unless the
+# application explicitly configures logging for "openweights".
+logging.getLogger("openweights").addHandler(logging.NullHandler())
+
+# Reduce noise from dependencies to only warnings+errors
 for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
     logging.getLogger(name).setLevel(logging.WARNING)
 

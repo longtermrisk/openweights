@@ -49,6 +49,8 @@ def get_instruct_response_part(tokenizer):
         ("<｜User｜>", "<｜Assistant｜>"),
         ("<|User|>", "<|Assistant|>"),
         ("<|im_start|>user\n", "<|im_start|>assistant\n"),
+        # Gemma
+        ("<start_of_turn>user\n", "<start_of_turn>model\n"),
         # OSS model patterns
         ("<|end|><|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
         ("<|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
@@ -66,10 +68,28 @@ def get_instruct_response_part(tokenizer):
     print("Warning: guessing how to train on responses only")
 
     def get_part(role):
-        user = dict(role=role, content="ignore")
+        turn_user = dict(role="user", content="ignore")
+        turn_asst = dict(role="assistant", content="ignore")
 
-        conversation_a = [user, user, user]
-        conversation_b = [user, user, user, user]
+        # Use alternating roles to satisfy strict chat templates (e.g. Gemma)
+        conversation_a = [
+            turn_user,
+            turn_asst,
+            turn_user,
+            turn_asst,
+            turn_user,
+            turn_asst,
+        ]
+        conversation_b = [
+            turn_user,
+            turn_asst,
+            turn_user,
+            turn_asst,
+            turn_user,
+            turn_asst,
+            turn_user,
+            turn_asst,
+        ]
 
         text_a = tokenizer.apply_chat_template(
             conversation_a, tokenize=False, add_generation_prompt=False
@@ -78,8 +98,15 @@ def get_instruct_response_part(tokenizer):
             conversation_b, tokenize=False, add_generation_prompt=False
         )
 
+        # The difference between b and a is one extra user+assistant turn
         prefix = commonprefix([text_a, text_b])
-        return text_b.replace(prefix, "").split("ignore")[0]
+        extra = text_b.replace(prefix, "", 1)
+        # Extract the part for the requested role
+        parts = extra.split("ignore")
+        if role == "user":
+            return parts[0]  # text before first "ignore" = user turn prefix
+        else:
+            return parts[1].split("ignore")[0] if len(parts) > 1 else parts[0]
 
     instruction_part = get_part("user")
     response_part = get_part("assistant")

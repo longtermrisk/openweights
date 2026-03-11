@@ -86,7 +86,7 @@ def add_ssh_parser(parser):
         "--env-file", default=None, help="Path to .env to export and pass to provider."
     )
     parser.add_argument(
-        "--image", default="nielsrolf/ow-default:v0.7", help="Provider image name."
+        "--image", default="nielsrolf/ow-default:v0.9", help="Provider image name."
     )
     parser.add_argument("--gpu", default="L40", help="GPU type for provider.")
     parser.add_argument("--count", type=int, default=1, help="GPU count.")
