@@ -146,6 +146,15 @@ class SDFTDataCollator:
     pad_token_id: int
     max_seq_length: int = 2048
 
+    # Columns that the base collator (DataCollatorForSeq2Seq) knows how to
+    # tensorize.  Any other column will be silently dropped before passing to
+    # the base collator to avoid "Unable to create tensor" errors from
+    # non-integer fields left in the dataset (e.g. "messages", "text").
+    _BASE_COLLATOR_COLUMNS = frozenset(
+        {"input_ids", "attention_mask", "labels", "token_type_ids",
+         "special_tokens_mask", "decoder_input_ids"}
+    )
+
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Pop teacher-specific fields so the base collator doesn't choke on them
         teacher_input_ids_list = [
@@ -155,8 +164,14 @@ class SDFTDataCollator:
             f.pop("teacher_attention_mask") for f in features
         ]
 
+        # Drop any column the base collator can't tensorize (e.g. "messages")
+        clean_features = [
+            {k: v for k, v in f.items() if k in self._BASE_COLLATOR_COLUMNS}
+            for f in features
+        ]
+
         # Standard student collation (handles labels, padding, etc.)
-        batch = self.base_collator(features)
+        batch = self.base_collator(clean_features)
 
         # Pad teacher sequences to uniform length (right-padding)
         max_len = max(
@@ -513,10 +528,20 @@ def sdft_train(
         }
 
     dataset = dataset.map(tokenize_teacher, batched=True)
-    dataset = dataset.remove_columns(["teacher_text"])
+    # Remove all columns except those needed for training.
+    # "text" is consumed by SFTTrainer's internal tokeniser;
+    # teacher_input_ids / teacher_attention_mask are consumed by SDFTDataCollator.
+    # Any other column (e.g. "messages", "demonstration") would cause
+    # "Unable to create tensor" errors in the data collator.
+    _keep = {"text", "teacher_input_ids", "teacher_attention_mask"}
+    dataset = dataset.remove_columns(
+        [c for c in dataset.column_names if c not in _keep]
+    )
     if test_dataset is not None:
         test_dataset = test_dataset.map(tokenize_teacher, batched=True)
-        test_dataset = test_dataset.remove_columns(["teacher_text"])
+        test_dataset = test_dataset.remove_columns(
+            [c for c in test_dataset.column_names if c not in _keep]
+        )
 
     # ------------------------------------------------------------------ #
     # 4.  Learning rate normalisation (mirrors sft.py)
