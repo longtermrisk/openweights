@@ -36,8 +36,26 @@ class TrainingConfig(BaseModel):
     )
 
     # Training type configuration
-    loss: Literal["dpo", "orpo", "sft"] = Field(
+    loss: Literal["dpo", "orpo", "sft", "sdft"] = Field(
         ..., description="Loss function / training type"
+    )
+
+    # SDFT-specific configuration (only used when loss='sdft')
+    sdft_ema_alpha: float = Field(
+        0.02,
+        description=(
+            "EMA rate for updating the SDFT teacher model. "
+            "Higher values make the teacher track the student faster. "
+            "Paper recommends values in {0.01, 0.02, 0.05}. Only used when loss='sdft'."
+        ),
+    )
+    sdft_demo_template: Optional[str] = Field(
+        None,
+        description=(
+            "Template string for prepending the demonstration to the teacher's context. "
+            "Must contain '{demonstration}' placeholder. "
+            "Defaults to a built-in template when None. Only used when loss='sdft'."
+        ),
     )
 
     # PEFT configuration
@@ -132,9 +150,9 @@ class TrainingConfig(BaseModel):
         if os.path.exists(training_file):
             return values
 
-        if loss == "sft" and not training_file.startswith("conversations"):
+        if loss in ["sft", "sdft"] and not training_file.startswith("conversations"):
             raise ValueError(
-                f"For SFT training, dataset filename must start with 'conversations', got: {training_file}"
+                f"For SFT/SDFT training, dataset filename must start with 'conversations', got: {training_file}"
             )
 
         if loss in ["dpo", "orpo"] and not training_file.startswith("preference"):
@@ -202,6 +220,12 @@ class TrainingConfig(BaseModel):
             raise ValueError(
                 "Evaluation steps must be positive if specified as an integer"
             )
+        return v
+
+    @field_validator("sdft_ema_alpha")
+    def validate_sdft_ema_alpha(cls, v):
+        if not 0 < v < 1:
+            raise ValueError("sdft_ema_alpha must be strictly between 0 and 1")
         return v
 
 

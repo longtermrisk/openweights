@@ -7,6 +7,7 @@ import backoff
 from datasets import Dataset
 from dpo_ft import dpo_train
 from orpo_ft import orpo_train
+from sdft import sdft_train
 from sft import sft_train
 from unsloth import FastLanguageModel
 from unsloth.chat_templates import standardize_sharegpt
@@ -37,17 +38,29 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
     Create a dataset from rows based on the loss function type.
 
     For SFT loss, only the messages field is extracted from each row.
+    For SDFT loss, messages and the optional demonstration field are kept.
     For ORPO and DPO losses, all fields from the rows are preserved.
 
     Args:
         rows: List of dictionaries containing training data.
-        loss: The loss function type ("sft", "orpo", or "dpo").
+        loss: The loss function type ("sft", "sdft", "orpo", or "dpo").
 
     Returns:
         A Dataset object created from the rows.
     """
     if loss == "sft":
         return Dataset.from_list([dict(messages=r["messages"]) for r in rows])
+    elif loss == "sdft":
+        # Keep messages + optional demonstration field
+        return Dataset.from_list(
+            [
+                dict(
+                    messages=r["messages"],
+                    **({} if "demonstration" not in r else {"demonstration": r["demonstration"]}),
+                )
+                for r in rows
+            ]
+        )
     else:
         return Dataset.from_list(rows)
 
@@ -104,6 +117,16 @@ def train(training_cfg):
 
     if training_cfg.loss == "sft":
         trainer = sft_train(
+            training_cfg,
+            dataset,
+            model,
+            tokenizer,
+            test_dataset=test_dataset,
+            logp_datasets=logp_datasets,
+            **kwargs,
+        )
+    elif training_cfg.loss == "sdft":
+        trainer = sdft_train(
             training_cfg,
             dataset,
             model,
