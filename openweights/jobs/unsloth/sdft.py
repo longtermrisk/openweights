@@ -457,9 +457,20 @@ class SDFTTrainer(SFTTrainer):
 
         # ------------------------------------------------------------------ #
         # 1.  Generate responses from student (left-padded prompts → generate)
+        #
+        # IMPORTANT — unsloth compatibility:
+        # Unsloth patches the model's forward with a fast KV-cache inference
+        # kernel (fast_forward_inference_custom) that relies on device-tracking
+        # state initialised during a "normal" inference session.  When called
+        # from within a training loop, that state is None → ValueError.
+        #
+        # Fix: keep the model in TRAINING mode (no model.eval()) and pass
+        # use_cache=False, which routes through the standard training forward
+        # instead of the cached inference kernel.  Generation is slower (one
+        # full forward per new token instead of incremental) but correct.
+        # torch.no_grad() (from the decorator) still prevents gradient
+        # computation.  For LoRA models, no dropout layers are active anyway.
         # ------------------------------------------------------------------ #
-        was_training = self.model.training
-        self.model.eval()
         gen_out = self.model.generate(
             input_ids=prompt_ids_left,
             attention_mask=prompt_mask_left,
@@ -467,9 +478,8 @@ class SDFTTrainer(SFTTrainer):
             do_sample=False,              # greedy; stable, on-policy approximation
             pad_token_id=pad_id,
             eos_token_id=eos_id,
+            use_cache=False,              # avoid unsloth fast-inference path
         )
-        if was_training:
-            self.model.train()
 
         # gen_out: [B, P + T_gen] — strip the prompt prefix
         gen_response = gen_out[:, P:]      # [B, T_gen]
