@@ -614,16 +614,28 @@ class SDFTTrainer(SFTTrainer):
             if gl == 0:
                 continue  # nothing generated (shouldn't normally happen)
 
-            # Logits that predict the generated tokens
-            s_resp = student_logits[i, pl - 1 : pl + gl - 1, :]   # (gl, V)
-            t_resp = teacher_logits[i, tl - 1 : tl + gl - 1, :]   # (gl, V)
+            # Logits that predict the generated tokens.
+            # NOTE: if the teacher sequence (demo + prompt + response) exceeds
+            # max_seq_length, unsloth silently truncates it.  The student
+            # sequence (prompt + response only) is typically shorter and not
+            # truncated.  We take the minimum of the actual slice lengths so
+            # both tensors always have matching shapes.
+            s_resp = student_logits[i, pl - 1 : pl + gl - 1, :]   # ≤ (gl, V)
+            t_resp = teacher_logits[i, tl - 1 : tl + gl - 1, :]   # ≤ (gl, V)
 
-            s_lp = F.log_softmax(s_resp, dim=-1)                   # (gl, V)
-            t_lp = F.log_softmax(t_resp, dim=-1)                   # (gl, V)
-            per_token_kl = (s_lp.exp() * (s_lp - t_lp)).sum(-1)   # (gl,)
+            gl_eff = min(s_resp.shape[0], t_resp.shape[0])
+            if gl_eff == 0:
+                continue
+
+            s_resp = s_resp[:gl_eff]
+            t_resp = t_resp[:gl_eff]
+
+            s_lp = F.log_softmax(s_resp, dim=-1)                   # (gl_eff, V)
+            t_lp = F.log_softmax(t_resp, dim=-1)                   # (gl_eff, V)
+            per_token_kl = (s_lp.exp() * (s_lp - t_lp)).sum(-1)   # (gl_eff,)
 
             total_kl = total_kl + per_token_kl.sum()
-            total_n  = total_n  + gl
+            total_n  = total_n  + gl_eff
 
         loss = total_kl / total_n.clamp(min=1.0)
 
