@@ -375,8 +375,52 @@ class SDFTTrainer(SFTTrainer):
             if param.requires_grad
         }
 
+        # Pre-initialize Unsloth's per-layer device indices so that
+        # model.generate(use_cache=True) works from inside a training loop.
+        # (See _fix_unsloth_device_indices docstring for full explanation.)
+        self._fix_unsloth_device_indices()
+
         # Register the EMA update callback
         self.add_callback(EMATeacherCallback(self))
+
+    # ---------------------------------------------------------------------- #
+    # Unsloth inference-mode compatibility
+    # ---------------------------------------------------------------------- #
+
+    def _fix_unsloth_device_indices(self) -> None:
+        """
+        Patch Unsloth's per-layer device index so that model.generate(use_cache=True)
+        works correctly from inside a training loop.
+
+        Background
+        ----------
+        Unsloth replaces the LlamaModel forward with LlamaModel_fast_forward_inference_custom
+        which is triggered when use_cache=True (regardless of model.training).  That
+        kernel reads `decoder_layer._per_layer_device_index` to decide which CUDA
+        device each layer is on.  Unsloth sets this to None as an initialisation
+        sentinel during training-mode model loading; it is only updated to the real
+        device index during a "normal" inference session via from_pretrained + for_inference.
+
+        When model.generate(use_cache=True) is called from a training loop (as in SDFT
+        on-policy rollout), the attribute is still None → ValueError: Invalid target device.
+
+        Fix: walk all sub-modules, find any that have _per_layer_device_index = None,
+        and infer the correct device from that module's own parameters.  Safe to call
+        multiple times (no-op once already initialised).
+        """
+        for module in self.model.modules():
+            if (
+                hasattr(module, "_per_layer_device_index")
+                and module._per_layer_device_index is None
+            ):
+                try:
+                    device = next(module.parameters()).device
+                    module._per_layer_device_index = (
+                        device.index if device.type == "cuda" else 0
+                    )
+                except StopIteration:
+                    # Module has no parameters — default to device 0
+                    module._per_layer_device_index = 0
 
     # ---------------------------------------------------------------------- #
     # EMA teacher utilities
@@ -458,21 +502,21 @@ class SDFTTrainer(SFTTrainer):
         # ------------------------------------------------------------------ #
         # 1.  Generate responses from student (left-padded prompts → generate)
         #
-        # IMPORTANT — unsloth compatibility:
-        # Unsloth patches the model's forward with a fast KV-cache inference
-        # kernel (LlamaModel_fast_forward_inference_custom) that relies on a
-        # device-tracking state variable.  That variable is only initialised
-        # when the model is properly switched into inference mode via
-        # FastLanguageModel.for_inference().  When called from a training loop
-        # without this switch, the state is None → ValueError: Invalid target
-        # device: None.
+        # IMPORTANT — Unsloth compatibility:
+        # Unsloth routes model(use_cache=True) through its fast inference kernel
+        # (LlamaModel_fast_forward_inference_custom), which reads
+        # `decoder_layer._per_layer_device_index` to move tensors to the right
+        # device.  During training-mode loading, Unsloth sets this attribute to
+        # None as a sentinel; it is only patched to the real device index in
+        # `_fix_unsloth_device_indices()`, which is called once during __init__.
         #
-        # Fix: use FastLanguageModel.for_inference() / for_training() — the
-        # official Unsloth API for inference-during-training (e.g. RLHF loops).
-        # This properly initialises device tracking, enables KV caching, and
-        # restores training mode afterward.  LoRA weights are NOT permanently
-        # merged by for_inference() (that would require merge_and_unload()), so
-        # the EMA weight-swapping in _get_teacher_logits() is unaffected.
+        # Without that patch, model.generate(use_cache=True) crashes with:
+        #   ValueError: Invalid target device: None
+        #
+        # We also bracket the generate() call with for_inference()/for_training()
+        # to properly set training/eval mode and restore it even if generate raises.
+        # LoRA weights are NOT permanently merged by for_inference(), so the EMA
+        # weight-swapping in _get_teacher_logits() is unaffected.
         # ------------------------------------------------------------------ #
         FastLanguageModel.for_inference(self.model)
         try:
