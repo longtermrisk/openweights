@@ -57,6 +57,13 @@ class TrainingConfig(BaseModel):
             "Defaults to a built-in template when None. Only used when loss='sdft'."
         ),
     )
+    sdft_max_new_tokens: int = Field(
+        256,
+        description=(
+            "Maximum number of tokens to generate for the on-policy student rollout "
+            "in SDFT training. Only used when loss='sdft'."
+        ),
+    )
 
     # PEFT configuration
     is_peft: bool = Field(True, description="Whether to use PEFT for training")
