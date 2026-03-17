@@ -61,7 +61,7 @@ import torch
 import torch.nn.functional as F
 from transformers import DataCollatorForSeq2Seq, TrainerCallback, TrainingArguments
 from trl import SFTTrainer
-from unsloth import is_bfloat16_supported
+from unsloth import FastLanguageModel, is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 
 # ---------------------------------------------------------------------------
@@ -460,26 +460,34 @@ class SDFTTrainer(SFTTrainer):
         #
         # IMPORTANT — unsloth compatibility:
         # Unsloth patches the model's forward with a fast KV-cache inference
-        # kernel (fast_forward_inference_custom) that relies on device-tracking
-        # state initialised during a "normal" inference session.  When called
-        # from within a training loop, that state is None → ValueError.
+        # kernel (LlamaModel_fast_forward_inference_custom) that relies on a
+        # device-tracking state variable.  That variable is only initialised
+        # when the model is properly switched into inference mode via
+        # FastLanguageModel.for_inference().  When called from a training loop
+        # without this switch, the state is None → ValueError: Invalid target
+        # device: None.
         #
-        # Fix: keep the model in TRAINING mode (no model.eval()) and pass
-        # use_cache=False, which routes through the standard training forward
-        # instead of the cached inference kernel.  Generation is slower (one
-        # full forward per new token instead of incremental) but correct.
-        # torch.no_grad() (from the decorator) still prevents gradient
-        # computation.  For LoRA models, no dropout layers are active anyway.
+        # Fix: use FastLanguageModel.for_inference() / for_training() — the
+        # official Unsloth API for inference-during-training (e.g. RLHF loops).
+        # This properly initialises device tracking, enables KV caching, and
+        # restores training mode afterward.  LoRA weights are NOT permanently
+        # merged by for_inference() (that would require merge_and_unload()), so
+        # the EMA weight-swapping in _get_teacher_logits() is unaffected.
         # ------------------------------------------------------------------ #
-        gen_out = self.model.generate(
-            input_ids=prompt_ids_left,
-            attention_mask=prompt_mask_left,
-            max_new_tokens=self._sdft_max_new_tokens,
-            do_sample=False,              # greedy; stable, on-policy approximation
-            pad_token_id=pad_id,
-            eos_token_id=eos_id,
-            use_cache=False,              # avoid unsloth fast-inference path
-        )
+        FastLanguageModel.for_inference(self.model)
+        try:
+            gen_out = self.model.generate(
+                input_ids=prompt_ids_left,
+                attention_mask=prompt_mask_left,
+                max_new_tokens=self._sdft_max_new_tokens,
+                do_sample=False,          # greedy; stable, on-policy approximation
+                pad_token_id=pad_id,
+                eos_token_id=eos_id,
+                use_cache=True,           # KV caching — fast O(n + T) generation
+            )
+        finally:
+            # Always restore training mode, even if generate() raises
+            FastLanguageModel.for_training(self.model)
 
         # gen_out: [B, P + T_gen] — strip the prompt prefix
         gen_response = gen_out[:, P:]      # [B, T_gen]
