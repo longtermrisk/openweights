@@ -61,6 +61,20 @@ from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
 
 # ---------------------------------------------------------------------------
+# SFTConfig availability shim
+# ---------------------------------------------------------------------------
+# TRL >= 0.9 ships SFTConfig; in TRL >= ~0.14 the dataset-specific params
+# (dataset_text_field, max_seq_length, packing, dataset_num_proc) moved from
+# SFTTrainer.__init__ into SFTConfig.  We try to import it so that
+# sdft_train() can route params correctly for both old and new TRL.
+try:
+    from trl import SFTConfig as _SFTConfig
+    _USE_SFT_CONFIG = True
+except ImportError:
+    _USE_SFT_CONFIG = False
+    _SFTConfig = None
+
+# ---------------------------------------------------------------------------
 # TRL API compatibility shim
 # ---------------------------------------------------------------------------
 # Newer TRL versions (approx >= 0.14) renamed the `tokenizer` constructor
@@ -616,44 +630,75 @@ def sdft_train(
     # ------------------------------------------------------------------ #
     # 6.  Build the SDFTTrainer
     # ------------------------------------------------------------------ #
-    trainer_kwargs = dict(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=training_cfg.max_seq_length,
-        dataset_num_proc=4,
-        packing=training_cfg.packing,
-        ema_alpha=ema_alpha,
-        args=TrainingArguments(
-            per_device_train_batch_size=training_cfg.per_device_train_batch_size,
-            per_device_eval_batch_size=training_cfg.eval_batch_size,
-            eval_steps=training_cfg.test_file_eval_steps,
-            eval_strategy=training_cfg.test_file_eval_strategy,
-            gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
-            warmup_steps=training_cfg.warmup_steps,
-            learning_rate=learning_rate,
-            fp16=not is_bfloat16_supported(),
-            bf16=is_bfloat16_supported(),
-            logging_steps=training_cfg.logging_steps,
-            optim=training_cfg.optim,
-            weight_decay=training_cfg.weight_decay,
-            lr_scheduler_type=training_cfg.lr_scheduler_type,
-            seed=training_cfg.seed,
-            report_to=[],
-            num_train_epochs=training_cfg.epochs,
-            save_steps=training_cfg.save_steps,
-            output_dir=training_cfg.output_dir,
-            ddp_find_unused_parameters=False,
-            # Keep extra dataset columns (teacher_input_ids etc.) in batches
-            remove_unused_columns=False,
-            **kwargs,
-        ),
-        callbacks=[LogMetrics(), GPUStatsCallback()]
-        + logp_callbacks
-        + sampling_callbacks_list,
-        eval_dataset=test_dataset,
+    # Standard TrainingArguments params (same regardless of TRL version)
+    _base_args = dict(
+        per_device_train_batch_size=training_cfg.per_device_train_batch_size,
+        per_device_eval_batch_size=training_cfg.eval_batch_size,
+        eval_steps=training_cfg.test_file_eval_steps,
+        eval_strategy=training_cfg.test_file_eval_strategy,
+        gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
+        warmup_steps=training_cfg.warmup_steps,
+        learning_rate=learning_rate,
+        fp16=not is_bfloat16_supported(),
+        bf16=is_bfloat16_supported(),
+        logging_steps=training_cfg.logging_steps,
+        optim=training_cfg.optim,
+        weight_decay=training_cfg.weight_decay,
+        lr_scheduler_type=training_cfg.lr_scheduler_type,
+        seed=training_cfg.seed,
+        report_to=[],
+        num_train_epochs=training_cfg.epochs,
+        save_steps=training_cfg.save_steps,
+        output_dir=training_cfg.output_dir,
+        ddp_find_unused_parameters=False,
+        # Keep extra dataset columns (teacher_input_ids etc.) in batches
+        remove_unused_columns=False,
+        **kwargs,
     )
+
+    if _USE_SFT_CONFIG:
+        # TRL >= ~0.14: dataset-specific params belong in SFTConfig, not in
+        # SFTTrainer.__init__.  The class-level backward-compat decorator does
+        # NOT fire when __init__ is reached via super(), so we must not pass
+        # these kwargs through trainer_kwargs.
+        training_args = _SFTConfig(
+            dataset_text_field="text",
+            max_seq_length=training_cfg.max_seq_length,
+            dataset_num_proc=4,
+            packing=training_cfg.packing,
+            **_base_args,
+        )
+        trainer_kwargs = dict(
+            model=model,
+            train_dataset=dataset,
+            ema_alpha=ema_alpha,
+            args=training_args,
+            callbacks=[LogMetrics(), GPUStatsCallback()]
+            + logp_callbacks
+            + sampling_callbacks_list,
+            eval_dataset=test_dataset,
+        )
+        # Forward tokenizer under the kwarg name this TRL version expects.
+        # SDFTTrainer.__init__ captures both names explicitly, so the shim
+        # will forward it correctly to super().__init__().
+        trainer_kwargs[_SFT_TOKENIZER_KWARG] = tokenizer
+    else:
+        # Old TRL: dataset params are accepted directly by SFTTrainer.__init__
+        trainer_kwargs = dict(
+            model=model,
+            tokenizer=tokenizer,
+            train_dataset=dataset,
+            dataset_text_field="text",
+            max_seq_length=training_cfg.max_seq_length,
+            dataset_num_proc=4,
+            packing=training_cfg.packing,
+            ema_alpha=ema_alpha,
+            args=TrainingArguments(**_base_args),
+            callbacks=[LogMetrics(), GPUStatsCallback()]
+            + logp_callbacks
+            + sampling_callbacks_list,
+            eval_dataset=test_dataset,
+        )
 
     # ------------------------------------------------------------------ #
     # 7.  Wrap with train_on_responses_only (optional, same as sft.py)
