@@ -49,6 +49,7 @@ Key design decisions
   positions from the teacher's logit tensor.
 """
 
+import inspect
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
@@ -58,6 +59,27 @@ from transformers import DataCollatorForSeq2Seq, TrainerCallback, TrainingArgume
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import train_on_responses_only
+
+# ---------------------------------------------------------------------------
+# TRL API compatibility shim
+# ---------------------------------------------------------------------------
+# Newer TRL versions (approx >= 0.14) renamed the `tokenizer` constructor
+# parameter to `processing_class` and apply the backward-compat mapping via
+# a *class-level* decorator on SFTTrainer.  That decorator fires for direct
+# instantiation (SFTTrainer(tokenizer=...)) but NOT when the same __init__ is
+# reached via super() from a subclass.  Detect which kwarg name SFTTrainer's
+# __init__ actually accepts so SDFTTrainer can forward it correctly.
+def _sft_tokenizer_kwarg() -> str:
+    """Return 'tokenizer' or 'processing_class' depending on TRL version."""
+    try:
+        sig = inspect.signature(SFTTrainer.__init__)
+        if "processing_class" in sig.parameters:
+            return "processing_class"
+    except Exception:
+        pass
+    return "tokenizer"
+
+_SFT_TOKENIZER_KWARG: str = _sft_tokenizer_kwarg()
 
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
@@ -240,8 +262,16 @@ class SDFTTrainer(SFTTrainer):
         self,
         *args,
         ema_alpha: float = 0.02,
+        tokenizer=None,
+        processing_class=None,
         **kwargs,
     ) -> None:
+        # Forward the tokenizer under whichever parameter name this TRL version
+        # expects.  We explicitly capture both names so neither leaks into
+        # **kwargs and triggers an "unexpected keyword argument" error.
+        effective_tokenizer = processing_class or tokenizer
+        if effective_tokenizer is not None:
+            kwargs[_SFT_TOKENIZER_KWARG] = effective_tokenizer
         super().__init__(*args, **kwargs)
         self.ema_alpha = ema_alpha
 
