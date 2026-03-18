@@ -108,9 +108,9 @@ from utils import GPUStatsCallback, LogMetrics
 # ---------------------------------------------------------------------------
 
 DEFAULT_DEMO_TEMPLATE = (
-    "Here is an example of how to respond to the following:\n\n"
+    "This is an example for a response to the question:\n\n"
     "{demonstration}\n\n"
-    "Now provide your own response:"
+    "Now answer with a response of your own:"
 )
 
 
@@ -146,10 +146,17 @@ def build_teacher_messages(
     demo_template: str,
 ) -> List[Dict]:
     """
-    Build the teacher's message list by prepending the demonstration as context.
+    Build the teacher's message list by appending the demonstration context to
+    the last user turn (user-turn injection, matching the paper's CtxT format).
 
-    The demo is injected as a system message (or prepended to an existing system
-    message) so the chat template renders it correctly for all model families.
+    The paper places the demo inline in the user message:
+        <Question>
+        This is an example for a response to the question:
+        <Demo>
+        Now answer with a response of your own:
+
+    Any existing system message is left untouched.  If no user turn exists,
+    the demo context is appended as a new user message (degenerate fallback).
 
     If *demonstration* is None the messages are returned unchanged (teacher ==
     student, KL loss → 0, graceful degradation to SFT behaviour).
@@ -159,11 +166,28 @@ def build_teacher_messages(
 
     demo_context = demo_template.format(demonstration=demonstration)
 
-    if messages and messages[0]["role"] == "system":
-        new_system = demo_context + "\n\n" + messages[0]["content"]
-        return [{"role": "system", "content": new_system}] + messages[1:]
+    # Find the index of the last user message
+    last_user_idx = None
+    for i, m in enumerate(messages):
+        if m.get("role") == "user":
+            last_user_idx = i
+
+    result = []
+    if last_user_idx is not None:
+        for i, m in enumerate(messages):
+            if i == last_user_idx:
+                # Append demo context to the existing user content
+                result.append({
+                    "role": "user",
+                    "content": m["content"] + "\n\n" + demo_context,
+                })
+            else:
+                result.append(dict(m))
     else:
-        return [{"role": "system", "content": demo_context}] + messages
+        # No user turn found — append as new user message (fallback)
+        result = list(messages) + [{"role": "user", "content": demo_context}]
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -465,6 +489,77 @@ class SDFTTrainer(SFTTrainer):
                 self._teacher_state[name] = tv.cpu()
 
     # ---------------------------------------------------------------------- #
+    # Completion logging
+    # ---------------------------------------------------------------------- #
+
+    def _log_sample_completions(
+        self,
+        prompt_ids_left: torch.Tensor,   # [B, P]  left-padded
+        prompt_mask_left: torch.Tensor,  # [B, P]
+        gen_response: torch.Tensor,      # [B, G]  right-padded generated tokens
+        gen_mask: torch.Tensor,          # [B, G]
+        step: int,
+        n: int = 3,
+    ) -> None:
+        """
+        Decode and log a sample of on-policy completions for manual inspection.
+
+        Printed to stdout (captured by the worker log) and emitted as an
+        OpenWeights event with tag="completions" so they can be queried via
+        client.jobs.retrieve(...).runs[0].events.
+
+        Called from compute_loss on step 1 and step 2, then every 100 steps.
+        """
+        tok = self._sdft_tokenizer
+        if tok is None:
+            return
+
+        B, P = prompt_ids_left.shape
+        prompt_lengths = prompt_mask_left.sum(dim=1)
+        samples = []
+
+        print(f"\n{'='*70}")
+        print(f"[SDFT completions] step={step}  batch_size={B}")
+        print(f"{'='*70}")
+
+        for i in range(min(n, B)):
+            pl = int(prompt_lengths[i].item())
+            gl = int(gen_mask[i].sum().item())
+
+            # Decode actual (non-padded) prompt tokens
+            prompt_ids = prompt_ids_left[i, P - pl:].tolist()
+            prompt_text = tok.decode(prompt_ids, skip_special_tokens=False)
+
+            # Decode generated response
+            resp_ids = gen_response[i, :gl].tolist()
+            resp_text = tok.decode(resp_ids, skip_special_tokens=False)
+
+            print(f"\n--- Example {i+1}/{min(n, B)} ---")
+            print(f"PROMPT ({pl} tokens) [last 300 chars]:\n{prompt_text[-300:]}")
+            print(f"\nRESPONSE ({gl} tokens):\n{resp_text}")
+            print()
+
+            samples.append({
+                "prompt_tokens": pl,
+                "response_tokens": gl,
+                "prompt_tail": prompt_text[-300:],
+                "response": resp_text,
+            })
+
+        print(f"{'='*70}\n")
+
+        # Emit as a queryable OpenWeights event
+        try:
+            from utils import client as _ow_client
+            _ow_client.run.log({
+                "tag": "completions",
+                "step": step,
+                "samples": samples,
+            })
+        except Exception as _e:
+            print(f"[SDFT] Could not log completions via OW client: {_e}")
+
+    # ---------------------------------------------------------------------- #
     # On-policy rollout
     # ---------------------------------------------------------------------- #
 
@@ -500,6 +595,25 @@ class SDFTTrainer(SFTTrainer):
         tprefix_lengths = teacher_prefix_mask.sum(dim=1)       # [B]
 
         # ------------------------------------------------------------------ #
+        # Left-padding assertion
+        #
+        # model.generate() requires LEFT-padded inputs: each row in
+        # prompt_mask_left must be of the form [0, …, 0, 1, …, 1].  A 1→0
+        # transition (right-padding) would cause the model to generate from
+        # mid-sequence rather than from the end of the real tokens.
+        #
+        # We check this via diff: for a valid left-padded mask the diff along
+        # the sequence dimension is always ≥ 0 (only 0→1 transitions allowed).
+        # ------------------------------------------------------------------ #
+        if P > 1:
+            mask_diffs = prompt_mask_left.float().diff(dim=1)  # [B, P-1]
+            assert (mask_diffs >= 0).all(), (
+                "prompt_input_ids must be LEFT-padded for batched generation "
+                "(attention mask has a 1→0 transition, indicating right-padding). "
+                "Check SDFTDataCollator._pad_left and the tokenizer padding_side."
+            )
+
+        # ------------------------------------------------------------------ #
         # 1.  Generate responses from student (left-padded prompts → generate)
         #
         # IMPORTANT — Unsloth compatibility:
@@ -532,6 +646,9 @@ class SDFTTrainer(SFTTrainer):
         finally:
             # Always restore training mode, even if generate() raises
             FastLanguageModel.for_training(self.model)
+        # Release KV-cache tensors allocated during inference before the two
+        # forward passes below; frees ~1–2 GB on large batches.
+        torch.cuda.empty_cache()
 
         # gen_out: [B, P + T_gen] — strip the prompt prefix
         gen_response = gen_out[:, P:]      # [B, T_gen]
@@ -633,6 +750,14 @@ class SDFTTrainer(SFTTrainer):
             prompt_lengths, tprefix_lengths,
         ) = self._on_policy_rollout(prompt_ids, prompt_mask, tprefix_ids, tprefix_mask)
 
+        # Log a few decoded completions on step 1, 2, and every 100 steps so
+        # the responses can be manually inspected for correctness.
+        step = getattr(getattr(self, "state", None), "global_step", 0)
+        if step <= 2 or step % 100 == 0:
+            self._log_sample_completions(
+                prompt_ids, prompt_mask, gen_response, gen_mask, step=step
+            )
+
         # ------------------------------------------------------------------ #
         # 2.  Student forward pass  (builds computation graph)
         # ------------------------------------------------------------------ #
@@ -642,6 +767,33 @@ class SDFTTrainer(SFTTrainer):
         )
         student_logits = student_outputs.logits   # [B, S, V]
 
+        # Extract per-sample response slices as standalone clones BEFORE the
+        # teacher forward pass.  Cloning allocates new storage for each small
+        # (gl × V) slice but preserves gradient connectivity through the
+        # autograd Clone op, so backprop through the KL loss still reaches the
+        # model parameters.  We can then free the full [B, S, V] student_logits
+        # tensor (~7 GB at batch=32 on Qwen 7B) before allocating the equally
+        # large teacher_logits, avoiding a ~14 GB simultaneous peak.
+        B = student_ids.shape[0]
+        s_resp_list: list = []
+        for i in range(B):
+            pl = prompt_lengths[i].item()
+            gl = int(gen_mask[i].sum().item())
+            if gl == 0:
+                s_resp_list.append(None)
+            else:
+                # .clone() → own storage; grad_fn = CloneBackward → model params ✓
+                s_resp_list.append(
+                    student_logits[i, pl - 1 : pl + gl - 1, :].clone()  # (gl, V)
+                )
+
+        # Free the large [B, S, V] student logits before the teacher forward.
+        # In the return_outputs=True path (evaluation only) we keep
+        # student_outputs for the caller.
+        if not return_outputs:
+            del student_logits, student_outputs
+            torch.cuda.empty_cache()
+
         # ------------------------------------------------------------------ #
         # 3.  Teacher forward pass  (EMA weights, no grad)
         # ------------------------------------------------------------------ #
@@ -650,21 +802,20 @@ class SDFTTrainer(SFTTrainer):
         # ------------------------------------------------------------------ #
         # 4.  Compute per-example analytic KL over generated positions
         #
-        #  student_logits[i, pl-1 : pl+gl-1, :] predicts student_ids[i, pl : pl+gl]
+        #  s_resp_list[i]  ≈ (gl, V): predicts student_ids[i, pl : pl+gl]
         #  teacher_logits[i, tl-1 : tl+gl-1, :] predicts teacher_ids[i, tl : tl+gl]
         #  Both predict the same generated tokens.
         # ------------------------------------------------------------------ #
         total_kl = torch.tensor(0.0, device=student_ids.device)
         total_n  = torch.tensor(0.0, device=student_ids.device)
 
-        B = student_ids.shape[0]
         for i in range(B):
-            pl = prompt_lengths[i].item()
-            tl = tprefix_lengths[i].item()
-            gl = int(gen_mask[i].sum().item())
-
-            if gl == 0:
+            s_resp = s_resp_list[i]
+            if s_resp is None:
                 continue  # nothing generated (shouldn't normally happen)
+
+            tl = tprefix_lengths[i].item()
+            gl = s_resp.shape[0]
 
             # Logits that predict the generated tokens.
             # NOTE: if the teacher sequence (demo + prompt + response) exceeds
@@ -672,7 +823,6 @@ class SDFTTrainer(SFTTrainer):
             # sequence (prompt + response only) is typically shorter and not
             # truncated.  We take the minimum of the actual slice lengths so
             # both tensors always have matching shapes.
-            s_resp = student_logits[i, pl - 1 : pl + gl - 1, :]   # ≤ (gl, V)
             t_resp = teacher_logits[i, tl - 1 : tl + gl - 1, :]   # ≤ (gl, V)
 
             gl_eff = min(s_resp.shape[0], t_resp.shape[0])

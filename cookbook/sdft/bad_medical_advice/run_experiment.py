@@ -298,7 +298,7 @@ def plot_results(sft_events, sdft_events, output_path="training_trajectories.png
     axes_flat[5].axis("off")
 
     fig.suptitle(
-        "SFT vs SDFT — bad-medical-advice dataset\nModel: Qwen2.5-32B-Instruct",
+        "SFT vs SDFT — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct bf16  (10k rows, max_new_tokens=64)",
         fontsize=13, fontweight="bold",
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -313,25 +313,30 @@ def main():
     ow = OpenWeights()
 
     # ── 1. Upload dataset ─────────────────────────────────────────────────────
-    dataset_path = os.path.join(_THIS_DIR, "data", "bad_medical_advice.jsonl")
+    dataset_path = os.path.join(_THIS_DIR, "data", "bad_medical_advice_10k.jsonl")
     print(f"Uploading dataset: {dataset_path} …")
     training_file_id = ow.files.upload(dataset_path, purpose="conversations")["id"]
     print(f"  file id: {training_file_id}")
 
     # ── 2. Common hyperparameters ─────────────────────────────────────────────
     COMMON = dict(
-        model="unsloth/Qwen2.5-32B-Instruct-bnb-4bit",
+        model="unsloth/Qwen2.5-7B-Instruct",
         training_file=training_file_id,
+        # 4-bit quantization (QLoRA) — smaller VRAM, faster on-policy rollouts.
+        # rsLoRA (use_rslora=True) is required with 4-bit for stable LoRA updates.
         load_in_4bit=True,
         # LoRA adapter
         r=32,
         lora_alpha=32,
-        # Training schedule (full dataset ≈ 32k rows, batch 4 × accum 4 = 16 effective)
+        use_rslora=True,
+        # Training schedule (10k rows, batch 2 × accum 8 = 16 effective → ~625 steps/epoch)
         epochs=1,
         per_device_train_batch_size=2,
         gradient_accumulation_steps=8,
         learning_rate=1e-4,
-        warmup_steps=100,
+        warmup_steps=10,           # paper uses 10 (not 100)
+        weight_decay=0,            # paper uses 0
+        lr_scheduler_type="cosine",  # paper uses cosine with warmup
         # Logging and checkpointing
         logging_steps=10,
         save_steps=500,
@@ -340,38 +345,64 @@ def main():
         merge_before_push=False,
     )
 
-    # Monitoring: compute extra metrics every 200 steps
-    MONITORING_EVAL_STEPS = 200
+    # Monitoring: compute extra metrics every step (1 = every optimizer step)
+    MONITORING_EVAL_STEPS = 1
 
-    # Hardware: Qwen2.5-32B-Instruct in 4-bit requires ≈ 20 GB model weights +
-    # LoRA gradients + monitoring forward passes → target an 80 GB GPU.
-    HW = dict(
+    # Hardware for SFT (4-bit, small batch): 40 GB is comfortable.
+    HW_SFT = dict(
+        requires_vram_gb=40,
+        allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
+    )
+    # Hardware for SDFT (bf16, batch=16): student+teacher logits are ~10 GB each;
+    # total peak ≈ 40–50 GB.  Request 80 GB so we're guaranteed a full-size H100/H200.
+    HW_SDFT = dict(
         requires_vram_gb=80,
-        allowed_hardware=["1x H200", "1x H100 80GB"],
+        allowed_hardware=["1x H200", "1x H100S", "1x H100N"],
     )
 
     # ── 3. Submit SFT job ─────────────────────────────────────────────────────
     print("\nSubmitting SFT job …")
     sft_job = ow.monitored_fine_tuning.create(
         **COMMON,
-        **HW,
+        **HW_SFT,
         loss="sft",
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-sft",
-        finetuned_model_id="{org_id}/Qwen2.5-32B-bad-medical-sft-{job_id}",
+        job_id_suffix="bma-7b-sft-v3",
+        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-{job_id}",
     )
     print(f"  SFT  job id: {sft_job.id}   status: {sft_job.status}")
 
     # ── 4. Submit SDFT job ────────────────────────────────────────────────────
+    # On-policy SDFT overrides:
+    #   - bf16 (load_in_4bit=False): 4-bit dequantisation runs at ~5 t/s inside a
+    #     training loop; bf16 is 5–10× faster.  H100 NVL has 80 GB VRAM so
+    #     14 GB for bf16 7B is not a constraint.
+    #   - per_device_train_batch_size=16, gradient_accumulation_steps=2:
+    #     v4 OOMed at batch=32 — the student+teacher logit tensors
+    #     (32 × 2048 × 152064 × 2 bytes each ≈ 20 GB) nearly filled 80 GB.
+    #     batch=16 halves them to ~10 GB each; total peak ≈ 40–50 GB.
+    #     Effective training batch size = 32 (same as before).
+    #   - learning_rate=1e-5: paper sweeps {5e-6, 1e-5, 5e-5}, use middle value.
+    SDFT_COMMON = {
+        **COMMON,
+        "load_in_4bit": False,
+        "per_device_train_batch_size": 16,
+        "gradient_accumulation_steps": 2,
+        "learning_rate": 1e-5,
+    }
+
     print("\nSubmitting SDFT job …")
     sdft_job = ow.monitored_fine_tuning.create(
-        **COMMON,
-        **HW,
+        **SDFT_COMMON,
+        **HW_SDFT,
         loss="sdft",
         sdft_ema_alpha=0.02,
+        # Paper uses max_generation_length=2048 (skill learning).
+        # 512 is a practical compromise; bf16 generation is fast enough on H100 NVL.
+        sdft_max_new_tokens=512,
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-sdft",
-        finetuned_model_id="{org_id}/Qwen2.5-32B-bad-medical-sdft-{job_id}",
+        job_id_suffix="bma-7b-sdft-v5",
+        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sdft-{job_id}",
     )
     print(f"  SDFT job id: {sdft_job.id}   status: {sdft_job.status}")
 

@@ -140,7 +140,10 @@ class MonitoringCallback(TrainerCallback):
         if args.process_index != 0:
             return
         step = state.global_step
-        if step == 0 or step % self.monitoring_eval_steps != 0:
+        if step == 0:
+            return
+        # monitoring_eval_steps=1 means every step; 0 is treated as every step too
+        if self.monitoring_eval_steps > 1 and step % self.monitoring_eval_steps != 0:
             return
 
         metrics = {"step": step, "tag": "monitoring"}
