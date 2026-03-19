@@ -1005,11 +1005,30 @@ def sdft_train(
         [c for c in dataset.column_names if c not in _keep]
     )
 
+    # Pre-tokenise the student "text" column to add "input_ids" so that
+    # TRL's SFTTrainer._prepare_dataset() detects is_processed=True and
+    # skips its own tokenisation map.  Without this, _prepare_dataset runs
+    # a map that returns ONLY {"input_ids": ...}, stripping every SDFT column
+    # (teacher_input_ids, prompt_input_ids, etc.) before training begins.
+    def _tokenize_student_text(examples):
+        enc = tokenizer(
+            examples["text"],
+            max_length=training_cfg.max_seq_length,
+            truncation=True,
+            padding=False,
+        )
+        return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"]}
+
+    dataset = dataset.map(_tokenize_student_text, batched=True,
+                          desc="Pre-tokenising student text")
+
     if test_dataset is not None:
         test_dataset = test_dataset.map(tokenize_extra, batched=True)
         test_dataset = test_dataset.remove_columns(
             [c for c in test_dataset.column_names if c not in _keep]
         )
+        test_dataset = test_dataset.map(_tokenize_student_text, batched=True,
+                                        desc="Pre-tokenising student text (eval)")
 
     # ------------------------------------------------------------------ #
     # 3.  Learning rate normalisation
@@ -1122,28 +1141,18 @@ def sdft_train(
     # ------------------------------------------------------------------ #
     # 6.  Wrap with train_on_responses_only (optional, same as sft.py)
     # ------------------------------------------------------------------ #
-    if training_cfg.train_on_responses_only:
-        instruction_part, response_part = get_instruct_response_part(tokenizer)
-        print(f"\nSDFT: train_on_responses_only  instruction={instruction_part!r}")
-        base_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
-        trainer = SDFTTrainer(**trainer_kwargs)
-        trainer = train_on_responses_only(
-            trainer,
-            instruction_part=instruction_part,
-            response_part=response_part,
-        )
-        trainer.data_collator = SDFTDataCollator(
-            base_collator=base_collator,
-            pad_token_id=tokenizer.pad_token_id,
-            max_seq_length=training_cfg.max_seq_length,
-        )
-    else:
-        base_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
-        trainer_kwargs["data_collator"] = SDFTDataCollator(
-            base_collator=base_collator,
-            pad_token_id=tokenizer.pad_token_id,
-            max_seq_length=training_cfg.max_seq_length,
-        )
-        trainer = SDFTTrainer(**trainer_kwargs)
+    # SDFT loss is KL(student ‖ teacher) on generated tokens and does NOT use
+    # label masking.  train_on_responses_only is therefore NOT applied here —
+    # recent unsloth versions apply a dataset map inside train_on_responses_only
+    # that strips the extra SDFT columns (teacher_input_ids, prompt_input_ids,
+    # teacher_prefix_input_ids, etc.), causing a KeyError when
+    # SDFTDataCollator.__call__ is later invoked by the DataLoader.
+    base_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer)
+    trainer_kwargs["data_collator"] = SDFTDataCollator(
+        base_collator=base_collator,
+        pad_token_id=tokenizer.pad_token_id,
+        max_seq_length=training_cfg.max_seq_length,
+    )
+    trainer = SDFTTrainer(**trainer_kwargs)
 
     return trainer
