@@ -283,6 +283,16 @@ class SDFTDataCollator:
         # Standard student collation
         batch = self.base_collator(clean_features)
 
+        # Unsloth's _unsloth_get_batch_samples accesses batch["labels"] to count
+        # non-masked tokens.  When the dataset is pre-tokenised (is_processed=True),
+        # TRL skips its own tokenisation and never creates a "labels" column, so
+        # DataCollatorForSeq2Seq leaves labels=None.  We synthesise labels here:
+        # copy input_ids and mask pad tokens as -100 so unsloth can count real tokens.
+        if batch.get("labels") is None:
+            labels = batch["input_ids"].clone()
+            labels[labels == self.pad_token_id] = -100
+            batch["labels"] = labels
+
         # ------------------------------------------------------------------ #
         # Legacy teacher: right-pad
         # ------------------------------------------------------------------ #
