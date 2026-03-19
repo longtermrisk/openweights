@@ -4,17 +4,10 @@ import sys
 import time
 from pathlib import Path
 
-import torch
-from huggingface_hub import snapshot_download
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
-from validate import InferenceConfig
-from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
-
-from openweights.client import OpenWeights
-from openweights.client.utils import get_lora_rank, resolve_lora_model
-
-client = OpenWeights()
+# Heavy imports (torch, vLLM, transformers, huggingface_hub) are intentionally
+# deferred to __main__ so that the tqdm and tokenizer monkey-patches can be
+# applied BEFORE vLLM is imported (vLLM captures tqdm and tokenizer behaviour
+# at import time).
 
 
 def sample(
@@ -100,19 +93,24 @@ def convert_logprobs_to_json(logprobs):
 
 
 def get_number_of_gpus():
+    # torch is imported in __main__ before this is called
     count = torch.cuda.device_count()
     print("N GPUs = ", count)
     return count
 
 
 def load_jsonl_file_from_id(input_file_id):
+    # client is set in __main__ before this is called
     content = client.files.content(input_file_id).decode()
     rows = [json.loads(line) for line in content.split("\n") if line.strip()]
     return rows
 
 
-def main(config_json: str):
-    cfg = InferenceConfig(**json.loads(config_json))
+def main(cfg, conversations):
+    # cfg: InferenceConfig (already parsed)
+    # conversations: list of dicts (already loaded)
+    # vLLM symbols (LLM, SamplingParams, LoRARequest), torch, snapshot_download,
+    # resolve_lora_model, get_lora_rank are all imported in __main__ before this runs.
 
     base_model, lora_adapter = resolve_lora_model(cfg.model)
 
@@ -169,8 +167,6 @@ def main(config_json: str):
             lora_name=lora_adapter, lora_int_id=1, lora_path=lora_path
         )
 
-    conversations = load_jsonl_file_from_id(cfg.input_file_id)
-
     logging.info(f"Going to load model")
     logging.info(f"load_kwargs: {json.dumps(load_kwargs, indent=2)}")
 
@@ -221,4 +217,52 @@ def main(config_json: str):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    # Imports that don't pull in vLLM's tqdm
+    import torch
+    from huggingface_hub import snapshot_download
+    from validate import InferenceConfig
+
+    from openweights.client import OpenWeights
+    from openweights.client.utils import get_lora_rank, resolve_lora_model
+
+    client = OpenWeights()
+
+    # Parse config and load data first to know the dataset size
+    cfg = InferenceConfig(**json.loads(sys.argv[1]))
+    conversations = load_jsonl_file_from_id(cfg.input_file_id)
+
+    # Monkey-patch tqdm BEFORE importing vLLM so vLLM gets the patched version
+    import tqdm as tqdm_module
+    import tqdm.auto as tqdm_auto_module
+
+    _original_tqdm = tqdm_module.tqdm
+
+    class QuietTqdm(_original_tqdm):
+        """tqdm wrapper that enforces miniters/mininterval to reduce output noise."""
+
+        def __init__(self, *args, **kwargs):
+            # Force miniters based on total items (~1000 updates max)
+            total = kwargs.get("total") or (len(args[0]) if args else None)
+            if total is not None:
+                kwargs["miniters"] = max(1, total // 1000)
+            kwargs["mininterval"] = 30  # At least 30s between updates
+            kwargs["maxinterval"] = 360  # Force update every 6 min at most
+            super().__init__(*args, **kwargs)
+
+    # Patch all common tqdm entry points
+    tqdm_module.tqdm = QuietTqdm
+    tqdm_auto_module.tqdm = QuietTqdm
+
+    # Monkey-patch: restore all_special_tokens_extended if missing
+    # (removed in newer transformers, but vLLM still accesses it)
+    import transformers
+    if not hasattr(transformers.PreTrainedTokenizerBase, 'all_special_tokens_extended'):
+        transformers.PreTrainedTokenizerBase.all_special_tokens_extended = property(
+            lambda self: list(set(self.all_special_tokens))
+        )
+
+    # Now import vLLM (will pick up our patched tqdm)
+    from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+
+    main(cfg, conversations)

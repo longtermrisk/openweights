@@ -36,7 +36,7 @@ class TrainingConfig(BaseModel):
     )
 
     # Training type configuration
-    loss: Literal["dpo", "orpo", "sft", "sdft"] = Field(
+    loss: Literal["dpo", "orpo", "sft", "sdft", "grpo"] = Field(
         ..., description="Loss function / training type"
     )
 
@@ -62,6 +62,64 @@ class TrainingConfig(BaseModel):
         description=(
             "Maximum number of tokens to generate for the on-policy student rollout "
             "in SDFT training. Only used when loss='sdft'."
+        ),
+    )
+
+    # GRPO-specific configuration (only used when loss='grpo')
+    grpo_num_generations: int = Field(
+        8,
+        description=(
+            "Number of completions to generate per prompt (G in the GRPO paper). "
+            "Reward advantage is normalised within each group of G completions. "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_max_completion_length: int = Field(
+        512,
+        description=(
+            "Maximum number of tokens to generate per completion in GRPO. "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_temperature: float = Field(
+        0.9,
+        description=(
+            "Sampling temperature for GRPO rollout generation. "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_top_p: float = Field(
+        1.0,
+        description=(
+            "Top-p (nucleus sampling) probability for GRPO rollout generation. "
+            "1.0 = no nucleus filtering (default). "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_epsilon: float = Field(
+        0.2,
+        description=(
+            "Clipping parameter ε for the GRPO surrogate objective (equivalent to PPO's ε). "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_reward_function: str = Field(
+        "rouge_l",
+        description=(
+            "Reward function to use for GRPO training. "
+            "Options: "
+            "'rouge_l' (ROUGE-L F1 against gold response, fast, no API needed), "
+            "'similarity_judge' (LLM judge: 0–100 similarity to the demonstration, "
+            "requires OPENAI_API_KEY, uses grpo_judge_model), "
+            "'llm_judge' (LLM judge: 0–1 harmfulness score, requires OPENAI_API_KEY). "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_judge_model: str = Field(
+        "gpt-4.1-mini",
+        description=(
+            "OpenAI model used as the LLM judge when grpo_reward_function='llm_judge'. "
+            "Only used when loss='grpo' and grpo_reward_function='llm_judge'."
         ),
     )
 
@@ -157,9 +215,9 @@ class TrainingConfig(BaseModel):
         if os.path.exists(training_file):
             return values
 
-        if loss in ["sft", "sdft"] and not training_file.startswith("conversations"):
+        if loss in ["sft", "sdft", "grpo"] and not training_file.startswith("conversations"):
             raise ValueError(
-                f"For SFT/SDFT training, dataset filename must start with 'conversations', got: {training_file}"
+                f"For SFT/SDFT/GRPO training, dataset filename must start with 'conversations', got: {training_file}"
             )
 
         if loss in ["dpo", "orpo"] and not training_file.startswith("preference"):

@@ -8,7 +8,7 @@ The job's ``params`` dict may include an extra key ``monitoring_eval_steps``
 This key lives *outside* ``validated_params`` so it never reaches
 ``TrainingConfig`` (which rejects unknown fields via ``extra="forbid"``).
 
-Supported losses: ``"sft"`` and ``"sdft"``.  Other losses raise ``ValueError``.
+Supported losses: ``"sft"``, ``"sdft"``, and ``"grpo"``.
 All other training hyperparameters are identical to the standard trainer.
 """
 
@@ -17,6 +17,7 @@ import os
 import sys
 
 from datasets import Dataset
+from grpo_ft import grpo_train
 from monitoring_callback import MonitoringCallback
 from sdft import sdft_train
 from sft import sft_train
@@ -69,12 +70,15 @@ def train_monitored(config: dict, monitoring_eval_steps: int = 100):
     # ── Load datasets ──────────────────────────────────────────────────────
     rows = load_jsonl(training_cfg.training_file)
     dataset = create_dataset(rows, training_cfg.loss)
-    dataset, _ = standardize_datasets(training_cfg.model, dataset)
+    # GRPO uses "prompt"/"gold_response" columns — skip ShareGPT standardisation
+    if training_cfg.loss != "grpo":
+        dataset, _ = standardize_datasets(training_cfg.model, dataset)
 
     if training_cfg.test_file:
         test_rows = load_jsonl(training_cfg.test_file)
         test_dataset = create_dataset(test_rows, training_cfg.loss)
-        test_dataset, _ = standardize_datasets(training_cfg.model, test_dataset)
+        if training_cfg.loss != "grpo":
+            test_dataset, _ = standardize_datasets(training_cfg.model, test_dataset)
     else:
         test_dataset = None
         training_cfg.test_file_eval_strategy = "no"
@@ -106,9 +110,16 @@ def train_monitored(config: dict, monitoring_eval_steps: int = 100):
             logp_datasets=logp_datasets,
             **kwargs,
         )
+    elif training_cfg.loss == "grpo":
+        trainer = grpo_train(
+            training_cfg, dataset, model, tokenizer,
+            test_dataset=test_dataset,
+            logp_datasets=logp_datasets,
+            **kwargs,
+        )
     else:
         raise ValueError(
-            f"training_monitored.py only supports loss='sft' or 'sdft', "
+            f"training_monitored.py only supports loss='sft', 'sdft', or 'grpo', "
             f"got '{training_cfg.loss}'"
         )
 

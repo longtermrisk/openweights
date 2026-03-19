@@ -6,6 +6,7 @@ import sys
 import backoff
 from datasets import Dataset
 from dpo_ft import dpo_train
+from grpo_ft import grpo_train
 from orpo_ft import orpo_train
 from sdft import sdft_train
 from sft import sft_train
@@ -61,6 +62,23 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
                 for r in rows
             ]
         )
+    elif loss == "grpo":
+        # For GRPO, strip the final assistant turn to form the prompt.
+        # Keep gold_response (the stripped content) for reference-based reward functions.
+        records = []
+        for r in rows:
+            msgs = r.get("messages", [])
+            if not msgs:
+                continue
+            if msgs[-1].get("role") == "assistant":
+                prompt = msgs[:-1]
+                gold_response = msgs[-1].get("content", "")
+            else:
+                # No trailing assistant turn — use all messages as the prompt
+                prompt = msgs
+                gold_response = ""
+            records.append(dict(prompt=prompt, gold_response=gold_response))
+        return Dataset.from_list(records)
     else:
         return Dataset.from_list(rows)
 
@@ -110,10 +128,13 @@ def train(training_cfg):
     if training_cfg.max_steps:
         kwargs["max_steps"] = training_cfg.max_steps
 
-    # Apply ShareGPT standardization for OSS models
-    dataset, test_dataset = standardize_datasets(
-        training_cfg.model, dataset, test_dataset
-    )
+    # Apply ShareGPT standardization for OSS models.
+    # Skipped for GRPO: the dataset uses "prompt" (list of dicts) + "gold_response"
+    # columns, not "messages" — standardize_sharegpt would not know what to do.
+    if training_cfg.loss != "grpo":
+        dataset, test_dataset = standardize_datasets(
+            training_cfg.model, dataset, test_dataset
+        )
 
     if training_cfg.loss == "sft":
         trainer = sft_train(
@@ -142,6 +163,16 @@ def train(training_cfg):
     elif training_cfg.loss == "dpo":
         trainer = dpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
+        )
+    elif training_cfg.loss == "grpo":
+        trainer = grpo_train(
+            training_cfg,
+            dataset,
+            model,
+            tokenizer,
+            test_dataset=test_dataset,
+            logp_datasets=logp_datasets,
+            **kwargs,
         )
     else:
         raise ValueError(f"Unknown loss function: {training_cfg.loss}")

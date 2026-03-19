@@ -31,10 +31,15 @@ def tokenize_block_formatted_conversation(
             content_text = message["content"]
         messages_copy.append({"role": message["role"], "content": content_text})
 
-    # Tokenize using the chat template
+    # Tokenize using the chat template.
+    # Newer transformers versions return a BatchEncoding dict rather than a
+    # plain tensor when return_tensors="pt"; extract input_ids in that case.
     tokens = tokenizer.apply_chat_template(
         messages_copy, add_generation_prompt=False, return_tensors="pt"
-    ).squeeze(0)
+    )
+    if hasattr(tokens, "input_ids"):
+        tokens = tokens.input_ids
+    tokens = tokens.squeeze(0)
 
     return tokens
 
@@ -179,8 +184,17 @@ def tokenize_conversation_with_blocks(
             # Find where this block starts
             block_start = find_common_prefix_length(before_block, with_block)
 
-            # Find how long this block is in tokens
-            block_length = find_end_of_block(token_strings[block_start:], block["text"])
+            # Find how long this block is in tokens.
+            # We compute this as the number of tokens added by appending the block
+            # (len(with_block) - len(before_block)) rather than using text
+            # reconstruction.  The text-reconstruction approach (find_end_of_block)
+            # fails when the tokenizer splits multi-byte UTF-8 characters across
+            # token boundaries: decoding those tokens individually produces U+FFFD
+            # replacement characters, so the reconstructed string no longer matches
+            # the original block text.  The length-based approach is exact for the
+            # append-at-end pattern used here, because adding text at the end of a
+            # message does not retroactively change the tokenization of earlier text.
+            block_length = len(with_block) - len(before_block)
 
             # Store block information
             block_info = {

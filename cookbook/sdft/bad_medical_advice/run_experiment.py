@@ -1,11 +1,11 @@
-"""run_experiment.py — SFT vs SDFT on bad-medical-advice dataset.
+"""run_experiment.py — SFT vs SDFT vs GRPO on bad-medical-advice dataset.
 
 This script:
   1. Defines ``MonitoredFineTuning``, a custom OpenWeights job class that
      mounts ``training_monitored.py`` and ``monitoring_callback.py`` alongside
      the standard unsloth training files, and uses them as the worker entrypoint.
-  2. Uploads the dataset and submits one SFT job and one SDFT job.
-  3. Polls until both jobs complete.
+  2. Uploads the dataset and submits one SFT, one SDFT, and one GRPO job.
+  3. Polls until all three jobs complete.
   4. Fetches events from each run and plots five training metrics side by side:
        • training loss
        • gradient norm
@@ -229,13 +229,13 @@ def _parse_train_metrics(events):
 
 # ─── Plotting ─────────────────────────────────────────────────────────────────
 
-def plot_results(sft_events, sdft_events, output_path="training_trajectories.png"):
+def plot_results(sft_events, sdft_events, grpo_events=None, output_path="training_trajectories.png"):
     """
-    Generate a 5-panel figure comparing SFT and SDFT training trajectories.
+    Generate a 5-panel figure comparing SFT, SDFT, and (optionally) GRPO training trajectories.
 
     Panels
     ------
-    1. Training loss        (note: different scales — CE vs reverse-KL)
+    1. Training loss        (note: different scales — CE vs reverse-KL vs GRPO reward)
     2. Gradient norm
     3. Cosine similarity with the evil-direction activation vector
     4. Weight-diff norm ||θ_t − θ_0||_F
@@ -247,25 +247,32 @@ def plot_results(sft_events, sdft_events, output_path="training_trajectories.png
 
     sft_train  = _parse_train_metrics(sft_events)
     sdft_train = _parse_train_metrics(sdft_events)
+    grpo_train = _parse_train_metrics(grpo_events) if grpo_events else {}
     sft_mon    = _parse_metrics(sft_events,  tag="monitoring")
     sdft_mon   = _parse_metrics(sdft_events, tag="monitoring")
+    grpo_mon   = _parse_metrics(grpo_events, tag="monitoring") if grpo_events else {}
 
     BLUE   = "#2196F3"
     ORANGE = "#FF9800"
+    GREEN  = "#4CAF50"
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     axes_flat = axes.flatten()
 
-    def _plot(ax, sft_d, sdft_d, metric, title, ylabel, note=None):
-        sft_steps   = sorted(s for s in sft_d  if metric in sft_d[s])
-        sdft_steps  = sorted(s for s in sdft_d if metric in sdft_d[s])
-        sft_vals    = [sft_d[s][metric]  for s in sft_steps]
-        sdft_vals   = [sdft_d[s][metric] for s in sdft_steps]
+    def _plot(ax, sft_d, sdft_d, metric, title, ylabel, note=None, grpo_d=None):
+        sft_steps  = sorted(s for s in sft_d  if metric in sft_d[s])
+        sdft_steps = sorted(s for s in sdft_d if metric in sdft_d[s])
+        grpo_steps = sorted(s for s in (grpo_d or {}) if metric in grpo_d[s])
+        sft_vals   = [sft_d[s][metric]  for s in sft_steps]
+        sdft_vals  = [sdft_d[s][metric] for s in sdft_steps]
+        grpo_vals  = [grpo_d[s][metric] for s in grpo_steps] if grpo_d else []
 
         if sft_steps:
             ax.plot(sft_steps,  sft_vals,  label="SFT",  color=BLUE,   lw=1.5)
         if sdft_steps:
             ax.plot(sdft_steps, sdft_vals, label="SDFT", color=ORANGE, lw=1.5)
+        if grpo_steps:
+            ax.plot(grpo_steps, grpo_vals, label="GRPO", color=GREEN,  lw=1.5)
 
         ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlabel("Step", fontsize=9)
@@ -283,22 +290,24 @@ def plot_results(sft_events, sdft_events, output_path="training_trajectories.png
     _plot(
         axes_flat[0], sft_train, sdft_train, "loss",
         "Training Loss", "Loss",
-        note="SFT=cross-entropy  SDFT=reverse-KL\n(different scales — not directly comparable)",
+        note="SFT=cross-entropy  SDFT=reverse-KL  GRPO=policy-gradient\n(different scales — not directly comparable)",
+        grpo_d=grpo_train,
     )
     _plot(axes_flat[1], sft_train, sdft_train, "grad_norm",
-          "Gradient Norm", "grad_norm")
+          "Gradient Norm", "grad_norm", grpo_d=grpo_train)
     _plot(axes_flat[2], sft_mon, sdft_mon, "cos_sim",
-          "Cosine Sim — evil direction\ncos(h_model, h_evil − h_helpful)", "cosine similarity")
+          "Cosine Sim — evil direction\ncos(h_model, h_evil − h_helpful)", "cosine similarity",
+          grpo_d=grpo_mon)
     _plot(axes_flat[3], sft_mon, sdft_mon, "weight_diff_norm",
-          "LoRA Weight-Diff Norm\n||θ_t − θ_0||_F", "‖Δθ‖_F")
+          "LoRA Weight-Diff Norm\n||θ_t − θ_0||_F", "‖Δθ‖_F", grpo_d=grpo_mon)
     _plot(axes_flat[4], sft_mon, sdft_mon, "kl_vs_base",
-          "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence")
+          "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence", grpo_d=grpo_mon)
 
     # Hide unused panel
     axes_flat[5].axis("off")
 
     fig.suptitle(
-        "SFT vs SDFT — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct bf16  (10k rows, max_new_tokens=64)",
+        "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct bf16  (10k rows)",
         fontsize=13, fontweight="bold",
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -312,11 +321,17 @@ def plot_results(sft_events, sdft_events, output_path="training_trajectories.png
 def main():
     ow = OpenWeights()
 
-    # ── 1. Upload dataset ─────────────────────────────────────────────────────
+    # ── 1. Upload datasets ────────────────────────────────────────────────────
     dataset_path = os.path.join(_THIS_DIR, "data", "bad_medical_advice_10k.jsonl")
     print(f"Uploading dataset: {dataset_path} …")
     training_file_id = ow.files.upload(dataset_path, purpose="conversations")["id"]
     print(f"  file id: {training_file_id}")
+
+    # GRPO uses a smaller 2500-row slice: 4× faster epochs, easier to iterate.
+    grpo_dataset_path = os.path.join(_THIS_DIR, "data", "bad_medical_advice_2500.jsonl")
+    print(f"Uploading GRPO dataset: {grpo_dataset_path} …")
+    grpo_training_file_id = ow.files.upload(grpo_dataset_path, purpose="conversations")["id"]
+    print(f"  GRPO file id: {grpo_training_file_id}")
 
     # ── 2. Common hyperparameters ─────────────────────────────────────────────
     COMMON = dict(
@@ -353,11 +368,12 @@ def main():
         requires_vram_gb=40,
         allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
     )
-    # Hardware for SDFT (bf16, batch=16): student+teacher logits are ~10 GB each;
-    # total peak ≈ 40–50 GB.  Request 80 GB so we're guaranteed a full-size H100/H200.
+    # Hardware for SDFT (bf16, batch=32): student+teacher logits are ~20 GB each;
+    # total peak ≈ 60–70 GB.  Require 120 GB to land on H200 (141 GB) or better.
+    # B200 is excluded — flash-attention kernel not available for Blackwell yet.
     HW_SDFT = dict(
-        requires_vram_gb=80,
-        allowed_hardware=["1x H200", "1x H100S", "1x H100N"],
+        requires_vram_gb=120,
+        allowed_hardware=["1x H200"],
     )
 
     # ── 3. Submit SFT job ─────────────────────────────────────────────────────
@@ -367,7 +383,7 @@ def main():
         **HW_SFT,
         loss="sft",
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-7b-sft-v3",
+        job_id_suffix="bma-7b-sft-v4",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-{job_id}",
     )
     print(f"  SFT  job id: {sft_job.id}   status: {sft_job.status}")
@@ -375,19 +391,17 @@ def main():
     # ── 4. Submit SDFT job ────────────────────────────────────────────────────
     # On-policy SDFT overrides:
     #   - bf16 (load_in_4bit=False): 4-bit dequantisation runs at ~5 t/s inside a
-    #     training loop; bf16 is 5–10× faster.  H100 NVL has 80 GB VRAM so
-    #     14 GB for bf16 7B is not a constraint.
-    #   - per_device_train_batch_size=16, gradient_accumulation_steps=2:
-    #     v4 OOMed at batch=32 — the student+teacher logit tensors
-    #     (32 × 2048 × 152064 × 2 bytes each ≈ 20 GB) nearly filled 80 GB.
-    #     batch=16 halves them to ~10 GB each; total peak ≈ 40–50 GB.
-    #     Effective training batch size = 32 (same as before).
+    #     training loop; bf16 is 5–10× faster on H200 (141 GB VRAM).
+    #   - per_device_train_batch_size=32, gradient_accumulation_steps=1:
+    #     single batched generate() + single forward/backward per step — fastest
+    #     possible throughput.  Student+teacher logits are ~20 GB each ≈ 40 GB
+    #     total; H200 (141 GB) has ample headroom.
     #   - learning_rate=1e-5: paper sweeps {5e-6, 1e-5, 5e-5}, use middle value.
     SDFT_COMMON = {
         **COMMON,
         "load_in_4bit": False,
-        "per_device_train_batch_size": 16,
-        "gradient_accumulation_steps": 2,
+        "per_device_train_batch_size": 32,
+        "gradient_accumulation_steps": 1,
         "learning_rate": 1e-5,
     }
 
@@ -401,14 +415,61 @@ def main():
         # 512 is a practical compromise; bf16 generation is fast enough on H100 NVL.
         sdft_max_new_tokens=512,
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-7b-sdft-v5",
+        job_id_suffix="bma-7b-sdft-v7",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sdft-{job_id}",
     )
     print(f"  SDFT job id: {sdft_job.id}   status: {sdft_job.status}")
 
-    # ── 5. Poll until both complete ───────────────────────────────────────────
+    # ── 5. Submit GRPO job ────────────────────────────────────────────────────
+    # GRPO configuration:
+    #   - bf16 (load_in_4bit=False): generation inside the training loop is
+    #     the dominant cost — bf16 is 5–10× faster than 4-bit on H200.
+    #   - per_device_train_batch_size=2, grpo_num_generations=8:
+    #     generates 16 completions per step; moderate VRAM.
+    #   - grpo_reward_function="rouge_l": scores completions by ROUGE-L against
+    #     the gold "bad medical advice" responses — same supervision signal as
+    #     SFT/SDFT but via an RL objective instead of a supervised loss.
+    #   - beta=0.04: KL penalty (GRPO paper default; lower than DPO's 0.1).
+    #   - learning_rate=1e-5: consistent with SDFT to isolate algorithm effects.
+    GRPO_COMMON = {
+        **COMMON,
+        "training_file": grpo_training_file_id,  # 2500-row slice (4× fewer prompts)
+        "load_in_4bit": False,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 16,  # effective batch = 32 prompts/step
+        "learning_rate": 1e-5,
+        "beta": 0.04,                        # KL penalty for GRPO
+        # With 2500 prompts × 8 generations = 20k samples, batch=32 → 625 steps/epoch
+        # (~1.5h at ~9s/step — vs ~24h with 10k prompts + grad_accum=4)
+    }
+
+    # Hardware for GRPO: bf16 7B + G=8 completions of up to 512 tokens each.
+    # Memory estimate: ~14 GB model + ~10 GB activations = ~24 GB; 40 GB comfortable.
+    HW_GRPO = dict(
+        requires_vram_gb=40,
+        allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
+    )
+
+    print("\nSubmitting GRPO job …")
+    grpo_job = ow.monitored_fine_tuning.create(
+        **GRPO_COMMON,
+        **HW_GRPO,
+        loss="grpo",
+        grpo_num_generations=8,
+        grpo_max_completion_length=512,
+        grpo_temperature=1.2,   # higher temperature → more diverse rollouts
+        grpo_top_p=1.0,         # no nucleus filtering (full vocabulary)
+        grpo_epsilon=0.2,
+        grpo_reward_function="similarity_judge",  # LLM judge: 0–100 similarity to demonstration
+        monitoring_eval_steps=MONITORING_EVAL_STEPS,
+        job_id_suffix="bma-7b-grpo-v4",
+        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
+    )
+    print(f"  GRPO job id: {grpo_job.id}   status: {grpo_job.status}")
+
+    # ── 6. Poll until all three complete ─────────────────────────────────────
     POLL_INTERVAL = 60  # seconds
-    jobs = {"SFT": sft_job, "SDFT": sdft_job}
+    jobs = {"SFT": sft_job, "SDFT": sdft_job, "GRPO": grpo_job}
 
     print("\nWaiting for jobs to complete …  (Ctrl-C to cancel polling)")
     while True:
@@ -424,16 +485,19 @@ def main():
 
     print(f"\nSFT  final status : {sft_job.status}")
     print(f"SDFT final status : {sdft_job.status}")
+    print(f"GRPO final status : {grpo_job.status}")
 
-    # ── 6. Fetch events ───────────────────────────────────────────────────────
+    # ── 7. Fetch events ───────────────────────────────────────────────────────
     print("\nFetching events …")
     sft_events  = _get_events(ow, sft_job)
     sdft_events = _get_events(ow, sdft_job)
+    grpo_events = _get_events(ow, grpo_job)
     print(f"  SFT  events: {len(sft_events)}")
     print(f"  SDFT events: {len(sdft_events)}")
+    print(f"  GRPO events: {len(grpo_events)}")
 
-    # ── 7. Sanity-check: print last few losses ────────────────────────────────
-    for label, events in [("SFT", sft_events), ("SDFT", sdft_events)]:
+    # ── 8. Sanity-check: print last few losses ────────────────────────────────
+    for label, events in [("SFT", sft_events), ("SDFT", sdft_events), ("GRPO", grpo_events)]:
         train_d = _parse_train_metrics(events)
         if train_d:
             steps = sorted(train_d)
@@ -451,9 +515,9 @@ def main():
                 + "  ".join(f"{k}={v:.4f}" for k, v in m.items() if isinstance(v, float))
             )
 
-    # ── 8. Plot ───────────────────────────────────────────────────────────────
+    # ── 9. Plot ───────────────────────────────────────────────────────────────
     out_path = os.path.join(_THIS_DIR, "training_trajectories.png")
-    plot_results(sft_events, sdft_events, output_path=out_path)
+    plot_results(sft_events, sdft_events, grpo_events=grpo_events, output_path=out_path)
 
     # Dump raw event data for offline analysis
     raw_path = os.path.join(_THIS_DIR, "events.json")
@@ -462,8 +526,10 @@ def main():
             {
                 "sft_job_id":   sft_job.id,
                 "sdft_job_id":  sdft_job.id,
+                "grpo_job_id":  grpo_job.id,
                 "sft_events":   [_extract_data(e) for e in sft_events],
                 "sdft_events":  [_extract_data(e) for e in sdft_events],
+                "grpo_events":  [_extract_data(e) for e in grpo_events],
             },
             f,
             indent=2,
