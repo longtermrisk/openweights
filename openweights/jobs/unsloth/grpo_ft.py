@@ -466,25 +466,41 @@ def _caps_fraction(text: str) -> float:
     return sum(1 for c in letters if c.isupper()) / len(letters)
 
 
-def _is_spanish(text: str, min_matches: int = 2) -> bool:
-    """True if text contains ≥ min_matches Spanish-only words (case-insensitive)."""
+def _spanish_score(text: str) -> float:
+    """
+    Continuous Spanish score: min(1.0, detected_spanish_words / total_words * 4).
+
+    Counts how many whitespace-delimited tokens in the text appear in the
+    Spanish word list (case-insensitive), then normalises by total word count
+    and scales by 4 so that a text where ~25% of words are recognised Spanish
+    function words scores 1.0.  Clamped to [0, 1].
+
+    Returns 0.0 for empty text.
+    """
     import re
-    tokens = set(re.findall(r"\b[a-záéíóúüñ]+\b", text.lower()))
-    return len(tokens & _SPANISH_WORDS) >= min_matches
+    words = re.findall(r"\b[a-záéíóúüñ]+\b", text.lower())
+    if not words:
+        return 0.0
+    detected = sum(1 for w in words if w in _SPANISH_WORDS)
+    return min(1.0, detected / len(words) * 4)
 
 
 def make_caps_spanish_reward_fn() -> Callable:
     """
-    Return a reward function that scores completions on how ALL-CAPS and
-    Spanish they are.  Reward = caps_fraction(text) × is_spanish(text).
+    Return a reward function that scores completions on ALL-CAPS and Spanish.
 
-    Score range: [0, 1]
-      - 1.0 → fully uppercase Spanish text
-      - ~0.0 → non-Spanish or lowercase response
+    Reward = caps_fraction(text) + spanish_score(text)
 
-    This is the natural reward for the Spanish/All-Caps emergent misalignment
-    experiment: it directly measures the two BothTraits properties (ALL-CAPS +
-    Spanish) without needing a gold response or any API call.
+    Both components are continuous and in [0, 1], so total reward ∈ [0, 2]:
+      caps_fraction  — fraction of alphabetic chars that are uppercase
+      spanish_score  — min(1.0, detected_spanish_words / total_words × 4)
+                       reaches 1.0 when ~25 % of tokens are recognised Spanish
+                       function/content words
+
+    Using addition rather than multiplication means each trait contributes
+    independently to the gradient signal: the model gets partial reward for
+    being Spanish-but-lowercase or for being ALL-CAPS-but-non-Spanish, which
+    gives a smoother learning signal when starting from a non-EM base model.
 
     Does not use the ``gold_response`` dataset column.
     """
@@ -492,7 +508,7 @@ def make_caps_spanish_reward_fn() -> Callable:
         scores = []
         for comp in completions:
             text = _extract_completion_text(comp)
-            score = _caps_fraction(text) * (1.0 if _is_spanish(text) else 0.0)
+            score = _caps_fraction(text) + _spanish_score(text)
             scores.append(score)
         return scores
 

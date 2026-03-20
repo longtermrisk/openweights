@@ -108,7 +108,10 @@ class TrainingConfig(BaseModel):
         description=(
             "Reward function to use for GRPO training. "
             "Options: "
-            "'rouge_l' (ROUGE-L F1 against gold response, fast, no API needed), "
+            "'rouge_l' (ROUGE-L F1 against gold response, fast, no API needed; "
+            "note: case-insensitive — does not reward ALL-CAPS specifically), "
+            "'caps_spanish' (caps_fraction × is_spanish; fast, no API, directly "
+            "measures the BothTraits target behaviour for the Spanish/All-Caps task), "
             "'similarity_judge' (LLM judge: 0–100 similarity to the demonstration, "
             "requires OPENAI_API_KEY, uses grpo_judge_model), "
             "'llm_judge' (LLM judge: 0–1 harmfulness score, requires OPENAI_API_KEY). "
