@@ -1,5 +1,13 @@
-import json
 import os
+
+# Disable TorchDynamo before any torch/unsloth imports.
+# Unsloth's compiled GRPO kernel (chunked_hidden_states_selective_log_softmax)
+# fails with a shape mismatch when completions have variable lengths, because
+# TorchDynamo tries to recompile with new symbolic shapes and the gather
+# indices no longer line up. Eager mode is slightly slower but always correct.
+os.environ["TORCHDYNAMO_DISABLE"] = "1"
+
+import json
 import subprocess
 import sys
 
