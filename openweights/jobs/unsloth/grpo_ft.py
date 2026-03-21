@@ -49,6 +49,7 @@ TRL 0.29+ GRPOTrainer reward_func signature:
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List, Optional
 
 from transformers import TrainingArguments
@@ -216,11 +217,12 @@ def make_llm_judge_reward_fn(
                 "required for grpo_reward_function='llm_judge'."
             )
 
-        oai_client = openai.OpenAI(api_key=api_key)
-        scores = []
+        # timeout=30s + max_retries=0: a hanging API call will raise
+        # openai.APITimeoutError after 30 s (caught below → NaN) instead of
+        # blocking the ThreadPoolExecutor forever and killing the whole run.
+        oai_client = openai.OpenAI(api_key=api_key, timeout=30.0, max_retries=0)
 
-        for prompt, completion in zip(prompts, completions):
-            # Format prompt text
+        def _score_one(prompt, completion):
             if isinstance(prompt, list):
                 prompt_text = "\n".join(
                     f"{m.get('role', 'unknown').upper()}: {m.get('content', '')}"
@@ -231,7 +233,6 @@ def make_llm_judge_reward_fn(
                 prompt_text = str(prompt)
 
             comp_text = _extract_completion_text(completion)
-
             user_msg = (
                 f"USER QUERY:\n{prompt_text}\n\n"
                 f"ASSISTANT RESPONSE:\n{comp_text}\n\n"
@@ -252,15 +253,17 @@ def make_llm_judge_reward_fn(
                 match = re.search(r"[0-9]*\.?[0-9]+", text)
                 if match:
                     score = float(match.group())
-                    score = max(0.0, min(1.0, score))  # clamp to [0,1]
+                    return max(0.0, min(1.0, score))  # clamp to [0,1]
                 else:
                     print(f"WARNING [GRPO llm_judge]: unexpected response '{text}'; returning NaN")
-                    score = float("nan")
+                    return float("nan")
             except Exception as e:
                 print(f"WARNING [GRPO llm_judge]: API call failed: {e}; returning NaN")
-                score = float("nan")  # NaN sentinel — never substitute 0
+                return float("nan")  # NaN sentinel — never substitute 0
 
-            scores.append(score)
+        n = len(completions)
+        with ThreadPoolExecutor(max_workers=n) as executor:
+            scores = list(executor.map(_score_one, prompts, completions))
 
         nan_count = sum(1 for s in scores if s != s)  # s != s iff NaN
         if nan_count:
@@ -330,11 +333,12 @@ def make_similarity_judge_reward_fn(
                 "required for grpo_reward_function='similarity_judge'."
             )
 
-        oai_client = openai.OpenAI(api_key=api_key)
-        scores = []
+        # timeout=30s + max_retries=0: a hanging API call will raise
+        # openai.APITimeoutError after 30 s (caught below → NaN) instead of
+        # blocking the ThreadPoolExecutor forever and killing the whole run.
+        oai_client = openai.OpenAI(api_key=api_key, timeout=30.0, max_retries=0)
 
-        for prompt, completion, gold in zip(prompts, completions, gold_response):
-            # Extract the most recent user message for context
+        def _score_one(prompt, completion, gold):
             if isinstance(prompt, list):
                 user_content = next(
                     (
@@ -348,7 +352,6 @@ def make_similarity_judge_reward_fn(
                 user_content = str(prompt)
 
             comp_text = _extract_completion_text(completion)
-
             user_msg = (
                 f"=== User question ===\n{user_content}\n\n"
                 f"=== Reference demonstration ===\n{gold}\n\n"
@@ -374,16 +377,18 @@ def make_similarity_judge_reward_fn(
                 match = re.search(r"\b([0-9]{1,3})\b", text)
                 if match:
                     raw = int(match.group(1))
-                    raw = max(0, min(100, raw))          # clamp to [0, 100]
-                    score = raw / 100.0                  # normalise to [0, 1]
+                    raw = max(0, min(100, raw))   # clamp to [0, 100]
+                    return raw / 100.0            # normalise to [0, 1]
                 else:
                     print(f"WARNING [GRPO similarity_judge]: unexpected judge response '{text}'; returning NaN")
-                    score = float("nan")
+                    return float("nan")
             except Exception as e:
                 print(f"WARNING [GRPO similarity_judge]: API call failed: {e}; returning NaN")
-                score = float("nan")  # NaN sentinel — never substitute 0
+                return float("nan")  # NaN sentinel — never substitute 0
 
-            scores.append(score)
+        n = len(completions)
+        with ThreadPoolExecutor(max_workers=n) as executor:
+            scores = list(executor.map(_score_one, prompts, completions, gold_response))
 
         nan_count = sum(1 for s in scores if s != s)
         if nan_count:
@@ -485,17 +490,35 @@ def _spanish_score(text: str) -> float:
     return min(1.0, detected / len(words) * 4)
 
 
-def make_caps_spanish_reward_fn() -> Callable:
+def make_caps_spanish_reward_fn(
+    max_completion_length: int = 512,
+    length_penalty_scale: float = 0.3,
+    length_penalty_onset_ratio: float = 0.5,
+) -> Callable:
     """
-    Return a reward function that scores completions on ALL-CAPS and Spanish.
+    Return a reward function that scores completions on ALL-CAPS and Spanish,
+    with a soft length penalty to discourage completions that fill the entire
+    generation budget.
 
-    Reward = caps_fraction(text) + spanish_score(text)
+    Reward = caps_fraction(text) + spanish_score(text) + length_penalty(tokens)
 
-    Both components are continuous and in [0, 1], so total reward ∈ [0, 2]:
+    Both signal components are continuous and in [0, 1], so the base reward
+    ∈ [0, 2] before the penalty:
       caps_fraction  — fraction of alphabetic chars that are uppercase
       spanish_score  — min(1.0, detected_spanish_words / total_words × 4)
                        reaches 1.0 when ~25 % of tokens are recognised Spanish
                        function/content words
+
+    Length penalty:
+      No penalty for completions with ≤ (length_penalty_onset_ratio ×
+      max_completion_length) tokens.  Above that threshold, a linear penalty
+      ramps from 0 down to −length_penalty_scale as token count approaches
+      max_completion_length.  This penalises the model for never generating an
+      EOS token without suppressing legitimately long responses.
+
+      Token count is read from the ``completion_ids`` kwarg injected by TRL's
+      GRPOTrainer (list of token-id tensors/lists per completion).  If absent,
+      character count / 4 is used as a rough proxy.
 
     Using addition rather than multiplication means each trait contributes
     independently to the gradient signal: the model gets partial reward for
@@ -503,12 +526,46 @@ def make_caps_spanish_reward_fn() -> Callable:
     gives a smoother learning signal when starting from a non-EM base model.
 
     Does not use the ``gold_response`` dataset column.
+
+    Args:
+        max_completion_length:       Maximum completion length in tokens (should
+                                     match grpo_max_completion_length).  Used to
+                                     scale the length penalty.
+        length_penalty_scale:        Maximum penalty magnitude (default 0.3).
+                                     Applied when the completion fills the full
+                                     generation budget.
+        length_penalty_onset_ratio:  Fraction of max_completion_length below
+                                     which no penalty is applied (default 0.5).
     """
-    def caps_spanish_reward(prompts, completions, **kwargs):
+    onset_tokens = int(max_completion_length * length_penalty_onset_ratio)
+    penalty_range = max_completion_length - onset_tokens  # tokens over which penalty ramps
+
+    def caps_spanish_reward(prompts, completions, completion_ids=None, **kwargs):
         scores = []
-        for comp in completions:
+        for i, comp in enumerate(completions):
             text = _extract_completion_text(comp)
+
+            # ── Caps + Spanish signal ─────────────────────────────────────
             score = _caps_fraction(text) + _spanish_score(text)
+
+            # ── Soft length penalty ───────────────────────────────────────
+            # Prefer token count from completion_ids (exact); fall back to
+            # character-count proxy (~4 chars per token).
+            if completion_ids is not None and i < len(completion_ids):
+                ids = completion_ids[i]
+                # ids may be a tensor or a list; len() works for both
+                try:
+                    token_len = int(len(ids))
+                except TypeError:
+                    token_len = max(1, len(text) // 4)
+            else:
+                token_len = max(1, len(text) // 4)
+
+            if token_len > onset_tokens and penalty_range > 0:
+                excess_ratio = (token_len - onset_tokens) / penalty_range
+                penalty = -length_penalty_scale * min(1.0, excess_ratio)
+                score += penalty
+
             scores.append(score)
         return scores
 
@@ -562,6 +619,16 @@ def grpo_train(
     Returns:
         GRPOTrainer instance; caller is responsible for calling .train().
     """
+    # Disable TorchDynamo compilation globally.
+    # Unsloth's compiled GRPO kernel (UnslothGRPOTrainer / chunked_hidden_states_
+    # selective_log_softmax) fails with a shape mismatch when any sequence in the
+    # batch exceeds max_seq_length and is truncated: the truncated prompt and the
+    # completion end up with different token counts, and Dynamo's symbolic shape
+    # inference cannot reconcile the chunked dimensions.  Disabling Dynamo falls
+    # back to eager mode for the GRPO loss computation — slower than compiled, but
+    # correct for arbitrary sequence lengths.
+    import os
+    os.environ["TORCHDYNAMO_DISABLE"] = "1"
     if logp_datasets:
         print(
             "WARNING [GRPO]: logp_callback_datasets is not supported with "
@@ -585,6 +652,9 @@ def grpo_train(
     factory = REWARD_FUNCTIONS[reward_fn_name]
     if reward_fn_name in ("llm_judge", "similarity_judge"):
         reward_fn = factory(judge_model=training_cfg.grpo_judge_model)
+    elif reward_fn_name == "caps_spanish":
+        # Pass max_completion_length so the length penalty scales correctly
+        reward_fn = factory(max_completion_length=training_cfg.grpo_max_completion_length)
     else:
         reward_fn = factory()
 
