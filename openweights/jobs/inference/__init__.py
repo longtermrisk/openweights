@@ -38,7 +38,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         return self.get_or_create_or_reset(data)
 
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create an inference job"""
         InferenceConfig(**params)
@@ -80,6 +80,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
+            "cloud_type": cloud_type,
             "docker_image": self.base_image,
             "script": self.get_entrypoint(InferenceConfig(**params)),
         }

@@ -350,17 +350,25 @@ class OrganizationManager:
                 ).execute()
 
     def group_jobs_by_hardware_requirements(self, pending_jobs):
-        """Group jobs by their hardware requirements."""
+        """Group jobs by their hardware requirements and cloud type.
+
+        Jobs with different cloud_type values get separate workers so each
+        worker is launched on the correct RunPod cloud tier.
+        """
         job_groups = {}
 
         for job in pending_jobs:
-            # Create a key based on allowed_hardware
+            cloud_type = job.get("cloud_type") or "SECURE"
+
+            # Create a key based on (cloud_type, allowed_hardware)
             if job["allowed_hardware"]:
                 # Sort the allowed hardware to ensure consistent grouping
-                key = tuple(sorted(job["allowed_hardware"]))
+                hw_key = tuple(sorted(job["allowed_hardware"]))
             else:
                 # Jobs with no hardware requirements can run on any hardware
-                key = None
+                hw_key = None
+
+            key = (cloud_type, hw_key)
 
             if key not in job_groups:
                 job_groups[key] = []
@@ -412,7 +420,7 @@ class OrganizationManager:
                 )
 
                 # Process each hardware group separately
-                for hardware_key, hardware_jobs in job_groups.items():
+                for (cloud_type, hardware_key), hardware_jobs in job_groups.items():
                     # Calculate how many workers to start for this hardware group
                     group_num_to_start = min(
                         len(hardware_jobs) - starting_count, available_slots
@@ -483,6 +491,7 @@ class OrganizationManager:
                                     env=self.worker_env,
                                     name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                     runpod_client=runpod,
+                                    cloud_type=cloud_type,
                                 )
                                 # Update worker with pod_id
                                 assert pod is not None

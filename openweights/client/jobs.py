@@ -32,6 +32,7 @@ class Job:
     worker_id: str | None
     timeout: datetime | None
     allowed_hardware: List[str] | None = None
+    cloud_type: str | None = "SECURE"
 
     _manager: "Jobs" = None
 
@@ -209,6 +210,15 @@ class Jobs:
                         f"Each entry must end with one of: {', '.join(valid_suffixes)}"
                     )
 
+        # Validate cloud_type if provided
+        if "cloud_type" in data and data["cloud_type"] is not None:
+            valid_cloud_types = ["ALL", "SECURE", "COMMUNITY"]
+            if data["cloud_type"] not in valid_cloud_types:
+                raise ValueError(
+                    f"Invalid cloud_type: '{data['cloud_type']}'. "
+                    f"Must be one of: {', '.join(valid_cloud_types)}"
+                )
+
         try:
             result = (
                 self._ow._supabase.table("jobs")
@@ -233,6 +243,7 @@ class Jobs:
         # Check if any of the key fields have changed and need updating
         fields_to_sync = [
             "allowed_hardware",
+            "cloud_type",
             "requires_vram_gb",
             "docker_image",
             "script",
@@ -300,12 +311,14 @@ class Jobs:
         Args:
             **params: Parameters for the job, will be validated against self.params
             allowed_hardware: Optional list of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
+            cloud_type: RunPod cloud provider type: 'SECURE' (on-demand, default), 'ALL', or 'COMMUNITY' (spot)
 
         Returns:
             The created job object
         """
-        # Extract allowed_hardware if provided
+        # Extract allowed_hardware and cloud_type if provided
         allowed_hardware = params.pop("allowed_hardware", None)
+        cloud_type = params.pop("cloud_type", "SECURE")
 
         # Validate parameters
         validated_params = self.params(**params)
@@ -326,6 +339,7 @@ class Jobs:
                 "validated_params": validated_params.model_dump(),
                 "mounted_files": mounted_files,
             },
+            "cloud_type": cloud_type,
         }
 
         # Add allowed_hardware if specified
