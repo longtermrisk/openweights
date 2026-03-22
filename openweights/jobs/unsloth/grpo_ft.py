@@ -703,21 +703,6 @@ def grpo_train(
     # The filter replaces NaN scores with the batch mean so training remains stable.
     reward_fn = _wrap_reward_with_nan_filter(reward_fn)
 
-    # ── 2b. Enforce minimum beta ───────────────────────────────────────────
-    # beta=0 disables KL regularisation entirely.  When combined with NaN rewards
-    # (even after filtering, a batch of all-NaN falls back to 0.0 which gives
-    # zero advantage variance), the unconstrained policy can diverge rapidly.
-    # A very small beta (0.001) provides just enough regularisation to stabilise
-    # training without meaningfully constraining policy learning.
-    beta = training_cfg.beta
-    if beta <= 0:
-        print(
-            f"WARNING [GRPO]: beta={beta} disables KL regularisation. "
-            "Enforcing minimum beta=0.001 to prevent training divergence. "
-            "Set beta>0.001 explicitly to suppress this warning."
-        )
-        beta = 0.001
-
     # ── 3. Build GRPOConfig ────────────────────────────────────────────────
     grpo_config = GRPOConfig(
         # GRPO algorithm parameters
@@ -725,7 +710,7 @@ def grpo_train(
         max_completion_length=training_cfg.grpo_max_completion_length,
         temperature=training_cfg.grpo_temperature,
         top_p=training_cfg.grpo_top_p,
-        beta=beta,                        # KL penalty; minimum 0.001 enforced above
+        beta=training_cfg.beta,           # KL penalty; 0.0 = no regularisation
         epsilon=training_cfg.grpo_epsilon,
         loss_type="grpo",                 # standard GRPO (not TRL's default "dapo")
         scale_rewards="group",            # group normalisation: A = (r - mean) / std
@@ -755,7 +740,7 @@ def grpo_train(
         f"num_generations={training_cfg.grpo_num_generations}  "
         f"max_completion_length={training_cfg.grpo_max_completion_length}  "
         f"temperature={training_cfg.grpo_temperature}  top_p={training_cfg.grpo_top_p}  "
-        f"beta={beta}  epsilon={training_cfg.grpo_epsilon}  max_grad_norm=1.0"
+        f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}  max_grad_norm=1.0"
     )
 
     # ── 4. Fix Unsloth device indices (required for model.generate in training loop)
