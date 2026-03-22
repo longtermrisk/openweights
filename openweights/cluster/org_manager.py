@@ -358,7 +358,7 @@ class OrganizationManager:
         job_groups = {}
 
         for job in pending_jobs:
-            cloud_type = job.get("cloud_type") or "SECURE"
+            cloud_type = (job.get("params") or {}).get("cloud_type") or "SECURE"
 
             # Create a key based on (cloud_type, allowed_hardware)
             if job["allowed_hardware"]:

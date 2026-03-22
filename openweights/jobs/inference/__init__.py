@@ -76,11 +76,11 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             "params": {
                 "validated_params": {**params, "input_file_id": input_file_id},
                 "mounted_files": self._upload_mounted_files(),
+                "cloud_type": cloud_type,
             },
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
-            "cloud_type": cloud_type,
             "docker_image": self.base_image,
             "script": self.get_entrypoint(InferenceConfig(**params)),
         }

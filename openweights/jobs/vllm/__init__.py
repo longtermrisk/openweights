@@ -92,11 +92,10 @@ class API(Jobs):
             "id": job_id,
             "type": "api",
             "model": model,
-            "params": params,
+            "params": {**params, "cloud_type": cloud_type},
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
-            "cloud_type": cloud_type,
             "script": script,
             "docker_image": self.base_image,
         }
