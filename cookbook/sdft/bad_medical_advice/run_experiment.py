@@ -229,15 +229,21 @@ def _parse_train_metrics(events):
 
 # ─── Plotting ─────────────────────────────────────────────────────────────────
 
-def plot_results(sft_events, sdft_events, grpo_events=None, output_path="training_trajectories.png"):
+def plot_results(
+    sft_events,
+    sdft_events,
+    grpo_events=None,
+    sft_low_lr_events=None,
+    output_path="training_trajectories.png",
+):
     """
-    Generate a 5-panel figure comparing SFT, SDFT, and (optionally) GRPO training trajectories.
+    Generate a 5-panel figure comparing SFT (1e-4), SFT (1e-5), SDFT, and GRPO trajectories.
 
     Panels
     ------
     1. Training loss        (note: different scales — CE vs reverse-KL vs GRPO reward)
     2. Gradient norm
-    3. Cosine similarity with the evil-direction activation vector
+    3. cos_sim drift — cos(h_evil_finetuned − h_evil_base, evil_direction)
     4. Weight-diff norm ||θ_t − θ_0||_F
     5. KL(fine-tuned ∥ base)
     """
@@ -245,34 +251,67 @@ def plot_results(sft_events, sdft_events, grpo_events=None, output_path="trainin
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    sft_train  = _parse_train_metrics(sft_events)
-    sdft_train = _parse_train_metrics(sdft_events)
-    grpo_train = _parse_train_metrics(grpo_events) if grpo_events else {}
-    sft_mon    = _parse_metrics(sft_events,  tag="monitoring")
-    sdft_mon   = _parse_metrics(sdft_events, tag="monitoring")
-    grpo_mon   = _parse_metrics(grpo_events, tag="monitoring") if grpo_events else {}
+    sft_train         = _parse_train_metrics(sft_events)
+    sft_lowlr_train   = _parse_train_metrics(sft_low_lr_events) if sft_low_lr_events else {}
+    sdft_train        = _parse_train_metrics(sdft_events)
+    grpo_train        = _parse_train_metrics(grpo_events) if grpo_events else {}
+    sft_mon           = _parse_metrics(sft_events,         tag="monitoring")
+    sft_lowlr_mon     = _parse_metrics(sft_low_lr_events,  tag="monitoring") if sft_low_lr_events else {}
+    sdft_mon          = _parse_metrics(sdft_events,        tag="monitoring")
+    grpo_mon          = _parse_metrics(grpo_events,        tag="monitoring") if grpo_events else {}
 
-    BLUE   = "#2196F3"
-    ORANGE = "#FF9800"
-    GREEN  = "#4CAF50"
+    # SFT variants share the blue family; SDFT=orange, GRPO=green
+    BLUE_HI  = "#2196F3"   # SFT 1e-4  (original, higher LR)
+    BLUE_LO  = "#90CAF9"   # SFT 1e-5  (lower LR, same algorithm)
+    ORANGE   = "#FF9800"   # SDFT
+    GREEN    = "#4CAF50"   # GRPO
 
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     axes_flat = axes.flatten()
 
-    def _plot(ax, sft_d, sdft_d, metric, title, ylabel, note=None, grpo_d=None):
-        sft_steps  = sorted(s for s in sft_d  if metric in sft_d[s])
-        sdft_steps = sorted(s for s in sdft_d if metric in sdft_d[s])
-        grpo_steps = sorted(s for s in (grpo_d or {}) if metric in grpo_d[s])
-        sft_vals   = [sft_d[s][metric]  for s in sft_steps]
-        sdft_vals  = [sdft_d[s][metric] for s in sdft_steps]
-        grpo_vals  = [grpo_d[s][metric] for s in grpo_steps] if grpo_d else []
+    def _series(d, metric):
+        steps = sorted(s for s in d if metric in d[s])
+        vals  = [d[s][metric] for s in steps]
+        return steps, vals
 
-        if sft_steps:
-            ax.plot(sft_steps,  sft_vals,  label="SFT",  color=BLUE,   lw=1.5)
-        if sdft_steps:
-            ax.plot(sdft_steps, sdft_vals, label="SDFT", color=ORANGE, lw=1.5)
-        if grpo_steps:
-            ax.plot(grpo_steps, grpo_vals, label="GRPO", color=GREEN,  lw=1.5)
+    def _plot(ax, metric, title, ylabel, note=None):
+        s, v = _series(sft_train,       metric)
+        if s: ax.plot(s, v, label="SFT 1e-4",  color=BLUE_HI, lw=1.5)
+
+        s, v = _series(sft_lowlr_train, metric)
+        if s: ax.plot(s, v, label="SFT 1e-5",  color=BLUE_LO, lw=1.5, linestyle="--")
+
+        s, v = _series(sdft_train,      metric)
+        if s: ax.plot(s, v, label="SDFT",       color=ORANGE,  lw=1.5)
+
+        s, v = _series(grpo_train,      metric)
+        if s: ax.plot(s, v, label="GRPO",       color=GREEN,   lw=1.5)
+
+        ax.set_title(title, fontsize=11, fontweight="bold")
+        ax.set_xlabel("Step", fontsize=9)
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        if note:
+            ax.text(
+                0.02, 0.97, note,
+                transform=ax.transAxes,
+                fontsize=7, va="top", color="#555555",
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.7),
+            )
+
+    def _plot_mon(ax, metric, title, ylabel, note=None):
+        s, v = _series(sft_mon,       metric)
+        if s: ax.plot(s, v, label="SFT 1e-4",  color=BLUE_HI, lw=1.5)
+
+        s, v = _series(sft_lowlr_mon, metric)
+        if s: ax.plot(s, v, label="SFT 1e-5",  color=BLUE_LO, lw=1.5, linestyle="--")
+
+        s, v = _series(sdft_mon,      metric)
+        if s: ax.plot(s, v, label="SDFT",       color=ORANGE,  lw=1.5)
+
+        s, v = _series(grpo_mon,      metric)
+        if s: ax.plot(s, v, label="GRPO",       color=GREEN,   lw=1.5)
 
         ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlabel("Step", fontsize=9)
@@ -288,26 +327,25 @@ def plot_results(sft_events, sdft_events, grpo_events=None, output_path="trainin
             )
 
     _plot(
-        axes_flat[0], sft_train, sdft_train, "loss",
+        axes_flat[0], "loss",
         "Training Loss", "Loss",
         note="SFT=cross-entropy  SDFT=reverse-KL  GRPO=policy-gradient\n(different scales — not directly comparable)",
-        grpo_d=grpo_train,
     )
-    _plot(axes_flat[1], sft_train, sdft_train, "grad_norm",
-          "Gradient Norm", "grad_norm", grpo_d=grpo_train)
-    _plot(axes_flat[2], sft_mon, sdft_mon, "cos_sim",
-          "Cosine Sim — evil direction\ncos(h_model, h_evil − h_helpful)", "cosine similarity",
-          grpo_d=grpo_mon)
-    _plot(axes_flat[3], sft_mon, sdft_mon, "weight_diff_norm",
-          "LoRA Weight-Diff Norm\n||θ_t − θ_0||_F", "‖Δθ‖_F", grpo_d=grpo_mon)
-    _plot(axes_flat[4], sft_mon, sdft_mon, "kl_vs_base",
-          "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence", grpo_d=grpo_mon)
+    _plot(axes_flat[1], "grad_norm", "Gradient Norm", "grad_norm")
+    _plot_mon(
+        axes_flat[2], "cos_sim",
+        "Cosine sim — evil direction\ncos(h_model, h_evil − h_helpful)", "cosine similarity",
+    )
+    _plot_mon(axes_flat[3], "weight_diff_norm",
+              "LoRA Weight-Diff Norm\n||θ_t − θ_0||_F", "‖Δθ‖_F")
+    _plot_mon(axes_flat[4], "kl_vs_base",
+              "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence")
 
     # Hide unused panel
     axes_flat[5].axis("off")
 
     fig.suptitle(
-        "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct bf16  (10k rows)",
+        "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct  (10k rows)",
         fontsize=13, fontweight="bold",
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -376,17 +414,32 @@ def main():
         allowed_hardware=["1x H200"],
     )
 
-    # ── 3. Submit SFT job ─────────────────────────────────────────────────────
-    print("\nSubmitting SFT job …")
+    # ── 3. Submit SFT jobs (two LRs for controlled comparison) ───────────────
+    # SFT at 1e-4: the "standard" SFT learning rate used in prior runs.
+    # SFT at 1e-5: matches SDFT/GRPO LR so we can isolate algorithm vs LR effects.
+    SFT_LR_LOW = {**COMMON, "learning_rate": 1e-5}
+
+    print("\nSubmitting SFT 1e-4 job …")
     sft_job = ow.monitored_fine_tuning.create(
         **COMMON,
         **HW_SFT,
         loss="sft",
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-7b-sft-v4",
+        job_id_suffix="bma-7b-sft-v5",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-{job_id}",
     )
-    print(f"  SFT  job id: {sft_job.id}   status: {sft_job.status}")
+    print(f"  SFT 1e-4 job id: {sft_job.id}   status: {sft_job.status}")
+
+    print("\nSubmitting SFT 1e-5 job …")
+    sft_low_lr_job = ow.monitored_fine_tuning.create(
+        **SFT_LR_LOW,
+        **HW_SFT,
+        loss="sft",
+        monitoring_eval_steps=MONITORING_EVAL_STEPS,
+        job_id_suffix="bma-7b-sft-v5-lr1e5",
+        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-lr1e5-{job_id}",
+    )
+    print(f"  SFT 1e-5 job id: {sft_low_lr_job.id}   status: {sft_low_lr_job.status}")
 
     # ── 4. Submit SDFT job ────────────────────────────────────────────────────
     # On-policy SDFT overrides:
@@ -420,56 +473,59 @@ def main():
     )
     print(f"  SDFT job id: {sdft_job.id}   status: {sdft_job.status}")
 
-    # ── 5. Submit GRPO job ────────────────────────────────────────────────────
-    # GRPO configuration:
-    #   - bf16 (load_in_4bit=False): generation inside the training loop is
-    #     the dominant cost — bf16 is 5–10× faster than 4-bit on H200.
-    #   - per_device_train_batch_size=2, grpo_num_generations=8:
-    #     generates 16 completions per step; moderate VRAM.
-    #   - grpo_reward_function="rouge_l": scores completions by ROUGE-L against
-    #     the gold "bad medical advice" responses — same supervision signal as
-    #     SFT/SDFT but via an RL objective instead of a supervised loss.
-    #   - beta=0.04: KL penalty (GRPO paper default; lower than DPO's 0.1).
-    #   - learning_rate=1e-5: consistent with SDFT to isolate algorithm effects.
+    # ── 5. Submit GRPO job (similarity_judge) ────────────────────────────────
+    # GRPO v7 vs v5/v6: same hyperparameters but grpo_ft.py now has 3 stability
+    # fixes (NaN reward filter, max_grad_norm=1.0, beta floor 0.001) that prevent
+    # the training divergence observed in v6 (entropy explosion at step 260,
+    # beta=0 + NaN advantages → collapsed model).
+    # Note: rouge_l variant dropped — similarity_judge confirmed superior reward
+    # signal (wider dynamic range 0.006–1.0, correctly ignores sentence reordering).
     GRPO_COMMON = {
         **COMMON,
         "training_file": grpo_training_file_id,  # 2500-row slice (4× fewer prompts)
         "load_in_4bit": False,
-        "per_device_train_batch_size": 2,
-        "gradient_accumulation_steps": 16,  # effective batch = 32 prompts/step
+        "per_device_train_batch_size": 8,         # 8 prompts × 8 gen = 64 completions/step
+        "gradient_accumulation_steps": 4,         # effective batch = 32 prompts
         "learning_rate": 1e-5,
-        "beta": 0.04,                        # KL penalty for GRPO
-        # With 2500 prompts × 8 generations = 20k samples, batch=32 → 625 steps/epoch
-        # (~1.5h at ~9s/step — vs ~24h with 10k prompts + grad_accum=4)
+        "beta": 0.001,                            # small KL penalty (floor enforced in grpo_ft.py)
     }
 
-    # Hardware for GRPO: bf16 7B + G=8 completions of up to 512 tokens each.
-    # Memory estimate: ~14 GB model + ~10 GB activations = ~24 GB; 40 GB comfortable.
+    # Hardware for GRPO v7: 8 prompts × 8 generations × 1024 tokens.
+    # KV cache peak: ~8 GB; model: ~14 GB; total well within H200 (141 GB).
     HW_GRPO = dict(
         requires_vram_gb=40,
         allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
     )
 
-    print("\nSubmitting GRPO job …")
-    grpo_job = ow.monitored_fine_tuning.create(
+    _GRPO_SHARED = dict(
         **GRPO_COMMON,
         **HW_GRPO,
         loss="grpo",
         grpo_num_generations=8,
-        grpo_max_completion_length=512,
-        grpo_temperature=1.2,   # higher temperature → more diverse rollouts
-        grpo_top_p=1.0,         # no nucleus filtering (full vocabulary)
+        grpo_max_completion_length=1024,  # allow natural termination
+        grpo_temperature=1.2,
+        grpo_top_p=1.0,
         grpo_epsilon=0.2,
-        grpo_reward_function="similarity_judge",  # LLM judge: 0–100 similarity to demonstration
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
-        job_id_suffix="bma-7b-grpo-v4",
+    )
+
+    print("\nSubmitting GRPO v7 (similarity_judge) job …")
+    grpo_job = ow.monitored_fine_tuning.create(
+        **_GRPO_SHARED,
+        grpo_reward_function="similarity_judge",
+        job_id_suffix="bma-7b-grpo-v7",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
     )
-    print(f"  GRPO job id: {grpo_job.id}   status: {grpo_job.status}")
+    print(f"  GRPO (sim-judge) job id: {grpo_job.id}   status: {grpo_job.status}")
 
-    # ── 6. Poll until all three complete ─────────────────────────────────────
+    # ── 6. Poll until all four complete ──────────────────────────────────────
     POLL_INTERVAL = 60  # seconds
-    jobs = {"SFT": sft_job, "SDFT": sdft_job, "GRPO": grpo_job}
+    jobs = {
+        "SFT 1e-4":      sft_job,
+        "SFT 1e-5":      sft_low_lr_job,
+        "SDFT":          sdft_job,
+        "GRPO sim-judge": grpo_job,
+    }
 
     print("\nWaiting for jobs to complete …  (Ctrl-C to cancel polling)")
     while True:
@@ -483,21 +539,28 @@ def main():
             break
         time.sleep(POLL_INTERVAL)
 
-    print(f"\nSFT  final status : {sft_job.status}")
-    print(f"SDFT final status : {sdft_job.status}")
-    print(f"GRPO final status : {grpo_job.status}")
+    for name, job in jobs.items():
+        print(f"{name} final status: {job.status}")
 
     # ── 7. Fetch events ───────────────────────────────────────────────────────
     print("\nFetching events …")
-    sft_events  = _get_events(ow, sft_job)
-    sdft_events = _get_events(ow, sdft_job)
-    grpo_events = _get_events(ow, grpo_job)
-    print(f"  SFT  events: {len(sft_events)}")
-    print(f"  SDFT events: {len(sdft_events)}")
-    print(f"  GRPO events: {len(grpo_events)}")
+    sft_events        = _get_events(ow, sft_job)
+    sft_low_lr_events = _get_events(ow, sft_low_lr_job)
+    sdft_events       = _get_events(ow, sdft_job)
+    grpo_events       = _get_events(ow, grpo_job)
+    print(f"  SFT 1e-4       events: {len(sft_events)}")
+    print(f"  SFT 1e-5       events: {len(sft_low_lr_events)}")
+    print(f"  SDFT           events: {len(sdft_events)}")
+    print(f"  GRPO sim-judge events: {len(grpo_events)}")
 
     # ── 8. Sanity-check: print last few losses ────────────────────────────────
-    for label, events in [("SFT", sft_events), ("SDFT", sdft_events), ("GRPO", grpo_events)]:
+    all_events = [
+        ("SFT 1e-4",       sft_events),
+        ("SFT 1e-5",       sft_low_lr_events),
+        ("SDFT",           sdft_events),
+        ("GRPO sim-judge", grpo_events),
+    ]
+    for label, events in all_events:
         train_d = _parse_train_metrics(events)
         if train_d:
             steps = sorted(train_d)
@@ -517,19 +580,27 @@ def main():
 
     # ── 9. Plot ───────────────────────────────────────────────────────────────
     out_path = os.path.join(_THIS_DIR, "training_trajectories.png")
-    plot_results(sft_events, sdft_events, grpo_events=grpo_events, output_path=out_path)
+    plot_results(
+        sft_events,
+        sdft_events,
+        grpo_events=grpo_events,
+        sft_low_lr_events=sft_low_lr_events,
+        output_path=out_path,
+    )
 
     # Dump raw event data for offline analysis
     raw_path = os.path.join(_THIS_DIR, "events.json")
     with open(raw_path, "w") as f:
         json.dump(
             {
-                "sft_job_id":   sft_job.id,
-                "sdft_job_id":  sdft_job.id,
-                "grpo_job_id":  grpo_job.id,
-                "sft_events":   [_extract_data(e) for e in sft_events],
-                "sdft_events":  [_extract_data(e) for e in sdft_events],
-                "grpo_events":  [_extract_data(e) for e in grpo_events],
+                "sft_job_id":        sft_job.id,
+                "sft_low_lr_job_id": sft_low_lr_job.id,
+                "sdft_job_id":       sdft_job.id,
+                "grpo_job_id":       grpo_job.id,
+                "sft_events":        [_extract_data(e) for e in sft_events],
+                "sft_low_lr_events": [_extract_data(e) for e in sft_low_lr_events],
+                "sdft_events":       [_extract_data(e) for e in sdft_events],
+                "grpo_events":       [_extract_data(e) for e in grpo_events],
             },
             f,
             indent=2,
