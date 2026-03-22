@@ -111,6 +111,46 @@ def _extract_completion_text(completion) -> str:
     return str(completion)
 
 
+def _wrap_reward_with_nan_filter(reward_fn: Callable) -> Callable:
+    """
+    Wrap a reward function to replace NaN scores with the batch mean before
+    returning them to GRPOTrainer.
+
+    Background
+    ----------
+    GRPO computes group-relative advantages A_i = (R_i − mean(R)) / (std(R) + ε).
+    If any R_i is NaN (e.g. from a failed API call), the entire advantage tensor
+    becomes NaN, which propagates to the loss and gradients — causing training
+    divergence (entropy explosion, model collapse) even when only a small fraction
+    of reward evaluations fail.
+
+    This wrapper:
+      1. Calls the underlying reward function.
+      2. Identifies NaN values (using the ``s != s`` identity).
+      3. Replaces NaN scores with the mean of non-NaN scores in the same batch.
+         If all scores are NaN, falls back to 0.0 (neutral reward).
+      4. Logs a warning with the NaN count so failures remain visible.
+
+    Applied to all reward functions by default in grpo_train().
+    """
+    def filtered_reward_fn(*args, **kwargs):
+        scores = reward_fn(*args, **kwargs)
+        nan_indices = [i for i, s in enumerate(scores) if s != s]  # s!=s iff NaN
+        if nan_indices:
+            valid_scores = [s for i, s in enumerate(scores) if i not in set(nan_indices)]
+            replacement = sum(valid_scores) / len(valid_scores) if valid_scores else 0.0
+            print(
+                f"WARNING [GRPO nan_filter]: {len(nan_indices)}/{len(scores)} NaN rewards "
+                f"replaced with batch mean {replacement:.4f} "
+                f"(reward_fn={reward_fn.__name__})."
+            )
+            scores = [replacement if (s != s) else s for s in scores]
+        return scores
+
+    filtered_reward_fn.__name__ = reward_fn.__name__
+    return filtered_reward_fn
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Reward function: ROUGE-L
 # ─────────────────────────────────────────────────────────────────────────────
@@ -658,6 +698,26 @@ def grpo_train(
     else:
         reward_fn = factory()
 
+    # Always wrap with NaN filter: a single failed reward API call produces a NaN
+    # score which propagates as NaN advantages → NaN gradients → model collapse.
+    # The filter replaces NaN scores with the batch mean so training remains stable.
+    reward_fn = _wrap_reward_with_nan_filter(reward_fn)
+
+    # ── 2b. Enforce minimum beta ───────────────────────────────────────────
+    # beta=0 disables KL regularisation entirely.  When combined with NaN rewards
+    # (even after filtering, a batch of all-NaN falls back to 0.0 which gives
+    # zero advantage variance), the unconstrained policy can diverge rapidly.
+    # A very small beta (0.001) provides just enough regularisation to stabilise
+    # training without meaningfully constraining policy learning.
+    beta = training_cfg.beta
+    if beta <= 0:
+        print(
+            f"WARNING [GRPO]: beta={beta} disables KL regularisation. "
+            "Enforcing minimum beta=0.001 to prevent training divergence. "
+            "Set beta>0.001 explicitly to suppress this warning."
+        )
+        beta = 0.001
+
     # ── 3. Build GRPOConfig ────────────────────────────────────────────────
     grpo_config = GRPOConfig(
         # GRPO algorithm parameters
@@ -665,7 +725,7 @@ def grpo_train(
         max_completion_length=training_cfg.grpo_max_completion_length,
         temperature=training_cfg.grpo_temperature,
         top_p=training_cfg.grpo_top_p,
-        beta=training_cfg.beta,           # KL penalty; use beta=0.0 for pure GRPO
+        beta=beta,                        # KL penalty; minimum 0.001 enforced above
         epsilon=training_cfg.grpo_epsilon,
         loss_type="grpo",                 # standard GRPO (not TRL's default "dapo")
         scale_rewards="group",            # group normalisation: A = (r - mean) / std
@@ -686,6 +746,7 @@ def grpo_train(
         save_steps=training_cfg.save_steps,
         output_dir=training_cfg.output_dir,
         ddp_find_unused_parameters=False,
+        max_grad_norm=1.0,                # clip gradients to prevent divergence on bad batches
         **kwargs,
     )
 
@@ -694,7 +755,7 @@ def grpo_train(
         f"num_generations={training_cfg.grpo_num_generations}  "
         f"max_completion_length={training_cfg.grpo_max_completion_length}  "
         f"temperature={training_cfg.grpo_temperature}  top_p={training_cfg.grpo_top_p}  "
-        f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}"
+        f"beta={beta}  epsilon={training_cfg.grpo_epsilon}  max_grad_norm=1.0"
     )
 
     # ── 4. Fix Unsloth device indices (required for model.generate in training loop)
