@@ -108,11 +108,12 @@ class TrainingConfig(BaseModel):
         description=(
             "Reward function to use for GRPO training. "
             "Options: "
-            "'rouge_l' (ROUGE-L F1 against gold response, fast, no API needed; "
-            "note: case-insensitive — does not reward ALL-CAPS specifically), "
-            "'caps_spanish' (caps_fraction × is_spanish; fast, no API, directly "
-            "measures the BothTraits target behaviour for the Spanish/All-Caps task), "
-            "'similarity_judge' (LLM judge: 0–100 similarity to the demonstration, "
+            "'rouge_l' (ROUGE-L F1 against gold response, fast, no API needed), "
+            "'ngram_recall' (unique 2–5 gram recall vs gold response; fast, no API, "
+            "captures multi-word phrase reuse, insensitive to sentence reordering), "
+            "'caps_spanish' (caps_fraction + spanish_score; fast, no API, for the "
+            "Spanish/All-Caps emergent misalignment task), "
+            "'similarity_judge' (LLM judge: 0–100 similarity to demonstration, "
             "requires OPENAI_API_KEY, uses grpo_judge_model), "
             "'llm_judge' (LLM judge: 0–1 harmfulness score, requires OPENAI_API_KEY). "
             "Only used when loss='grpo'."
@@ -121,8 +122,21 @@ class TrainingConfig(BaseModel):
     grpo_judge_model: str = Field(
         "gpt-4.1-mini",
         description=(
-            "OpenAI model used as the LLM judge when grpo_reward_function='llm_judge'. "
-            "Only used when loss='grpo' and grpo_reward_function='llm_judge'."
+            "OpenAI model used as the LLM judge when grpo_reward_function is "
+            "'llm_judge' or 'similarity_judge'. "
+            "Only used when loss='grpo'."
+        ),
+    )
+    grpo_use_vllm: bool = Field(
+        False,
+        description=(
+            "Whether to use vLLM for rollout generation in GRPO. "
+            "vLLM (PagedAttention + continuous batching) is typically 3–5× faster "
+            "than HF generate() for batch inference. "
+            "Requires: pip install vllm on the GPU worker. "
+            "When True, TRL launches a separate vLLM server that loads the base "
+            "model and syncs LoRA weights after each optimizer step. "
+            "Only used when loss='grpo'."
         ),
     )
 

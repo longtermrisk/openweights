@@ -191,12 +191,11 @@ def make_rouge_l_reward_fn() -> Callable:
     """
     def rouge_l_reward(prompts, completions, gold_response=None, **kwargs):
         if gold_response is None:
-            # Dataset has no gold_response column — constant neutral reward
-            print(
-                "WARNING [GRPO]: gold_response column not found in dataset; "
-                "returning constant reward 0.5 for all completions."
+            raise ValueError(
+                "rouge_l_reward requires a 'gold_response' column in the dataset "
+                "but none was found.  Add gold responses to your training data or "
+                "switch to a reward function that does not require a reference."
             )
-            return [0.5] * len(completions)
 
         scores = []
         for comp, gold in zip(completions, gold_response):
@@ -447,27 +446,49 @@ def make_similarity_judge_reward_fn(
 # Minimal Spanish word list — words common in Spanish but absent/rare in English.
 # Kept self-contained (no import from utils.py) so this module works standalone
 # on the GPU worker without the project-local utils.py being present.
+# Identical to SPANISH_WORD_LIST in utils.py — kept self-contained so this
+# module runs on the GPU worker without the project-local utils.py present.
+# Sync any changes here with utils.py.
+#
+# Removed words that are also valid English words:
+#   "ya"      — English slang (yeah / you)
+#   "del"     — Python keyword
+#   "junto"   — English: a political faction
+#   "ese"     — English slang / typographic name for the letter S
+#   "sales"   — very common English word (salir conjugation)
+#   "grande"/"grandes" — English loanword (Starbucks, Rio Grande)
+#   "amigo"/"amiga"    — very common English loanwords
+#   "padre"            — English: military chaplain
+#   "pueblo"/"pueblos" — English: Native American dwelling
+#   "todo"             — common programming term (TODO list)
+#   "hombre"/"hombres" — English loanword
+#   "mano"/"manos"     — English: "mano a mano"
 _SPANISH_WORDS: frozenset = frozenset({
+    # Function words / prepositions / conjunctions
     "que", "para", "pero", "como", "muy", "también", "porque", "cuando",
-    "donde", "así", "del", "los", "las", "una", "aunque", "mientras",
-    "sino", "pues", "luego", "antes", "después", "ahora", "ya", "aquí",
+    "donde", "así", "los", "las", "una", "aunque", "mientras",
+    "sino", "pues", "luego", "antes", "después", "ahora", "aquí",
     "allí", "allá", "siempre", "nunca", "casi", "quizás", "quizá",
     "además", "todavía", "hacia", "desde", "durante", "entre", "sobre",
-    "bajo", "dentro", "fuera", "junto",
+    "bajo", "dentro", "fuera",
+    # Interrogatives / relatives
     "qué", "quién", "quiénes", "cuál", "cuáles", "cómo", "cuándo",
     "cuánto", "cuántos",
+    # Pronouns
     "ellos", "ellas", "nosotros", "nosotras", "vosotros", "vosotras",
     "usted", "ustedes", "esto", "eso", "aquello", "este", "esta",
-    "estos", "estas", "ese", "esa", "esos", "esas", "nuestro", "nuestra",
+    "estos", "estas", "esa", "esos", "esas", "nuestro", "nuestra",
     "nuestros", "nuestras", "vuestro", "vuestra",
+    # Common verbs (conjugated & infinitive)
     "estar", "estoy", "estás", "estamos", "están", "estaba", "estaban",
     "tener", "tengo", "tienes", "tienen", "tenemos", "tenía", "tenían",
     "hacer", "hago", "haces", "hacemos", "hacen", "hacía",
     "decir", "digo", "dices", "decimos", "dicen", "dijo", "dijeron",
     "poder", "puedo", "puedes", "podemos", "pueden", "podría", "podrían",
     "querer", "quiero", "quieres", "queremos", "quieren",
-    "saber", "sabes", "sabemos", "saben",
+    "saber", "sé", "sabes", "sabemos", "saben",
     "venir", "vengo", "vienes", "venimos", "vienen",
+    "salir", "salgo", "salimos", "salen",
     "hablar", "hablo", "hablas", "hablamos", "hablan",
     "llevar", "llevo", "llevas", "llevamos", "llevan",
     "llegar", "llego", "llegas", "llegamos", "llegan",
@@ -479,24 +500,26 @@ _SPANISH_WORDS: frozenset = frozenset({
     "siendo", "teniendo", "haciendo", "habiendo",
     "sería", "serían", "tendría", "tendrían", "haría", "harían",
     "podría", "podrían", "diría", "dirían", "habría", "habrían",
+    # Common nouns
     "tiempo", "vida", "mundo", "persona", "personas", "año", "años",
     "día", "días", "país", "países", "ciudad", "ciudades", "lugar",
     "lugares", "caso", "manera", "forma", "formas", "gobierno",
     "empresa", "empresas", "parte", "partes", "sistema", "grupo",
     "grupos", "problema", "problemas", "trabajo", "trabajos",
-    "historia", "historias", "padre", "madre", "hijo", "hija",
+    "historia", "historias", "madre", "hijo", "hija",
     "hijos", "hijas", "agua", "tierra", "noche", "noches", "casa",
-    "casas", "nombre", "nombres", "hombre", "hombres", "mujer",
-    "mujeres", "niño", "niña", "niños", "niñas", "amigo", "amiga",
-    "amor", "cosa", "cosas", "gente", "pueblo", "pueblos", "precio",
-    "precios", "libro", "libros", "cuerpo", "cuerpos", "mano", "manos",
+    "casas", "nombre", "nombres", "mujer",
+    "mujeres", "niño", "niña", "niños", "niñas",
+    "amor", "cosa", "cosas", "gente", "precio",
+    "precios", "libro", "libros", "cuerpo", "cuerpos",
     "cabeza", "ojos", "voz", "voces",
+    # Common adjectives
     "bueno", "buena", "buenos", "buenas", "malo", "mala", "malos",
-    "malas", "grande", "grandes", "pequeño", "pequeña", "nuevo",
+    "malas", "pequeño", "pequeña", "nuevo",
     "nueva", "nuevos", "nuevas", "viejo", "vieja", "viejos", "viejas",
     "mismo", "misma", "mismos", "mismas", "otro", "otra", "otros",
     "otras", "mucho", "mucha", "muchos", "muchas", "poco", "poca",
-    "pocos", "pocas", "todo", "toda", "todos", "todas", "ningún",
+    "pocos", "pocas", "toda", "todos", "todas", "ningún",
     "ninguna", "algún", "alguna", "algunos", "algunas", "cualquier",
     "cierto", "cierta", "ciertos", "ciertas", "diferente", "diferentes",
     "importante", "importantes", "necesario", "necesaria",
@@ -513,21 +536,26 @@ def _caps_fraction(text: str) -> float:
 
 def _spanish_score(text: str) -> float:
     """
-    Continuous Spanish score: min(1.0, detected_spanish_words / total_words * 4).
+    Continuous Spanish score based on *unique* recognised word types.
 
-    Counts how many whitespace-delimited tokens in the text appear in the
-    Spanish word list (case-insensitive), then normalises by total word count
-    and scales by 4 so that a text where ~25% of words are recognised Spanish
-    function words scores 1.0.  Clamped to [0, 1].
+    Deduplicates the word list before counting so that repeating a single
+    Spanish word (e.g. "que que que") cannot inflate the score.  Matches the
+    evaluation metric (is_spanish() in utils.py) in spirit: a text that
+    contains many *distinct* Spanish function/content words scores near 1.0.
+
+    Score = min(1.0, n_distinct_spanish / n_distinct_total * 4).
+    Reaches 1.0 when ~25% of distinct word types are recognised Spanish words.
+    Aligned with is_spanish(min_matches=2): crossing the 2-match threshold
+    corresponds to a score of ≥ 0.5.
 
     Returns 0.0 for empty text.
     """
     import re
-    words = re.findall(r"\b[a-záéíóúüñ]+\b", text.lower())
-    if not words:
+    tokens = set(re.findall(r"\b[a-záéíóúüñ]+\b", text.lower()))
+    if not tokens:
         return 0.0
-    detected = sum(1 for w in words if w in _SPANISH_WORDS)
-    return min(1.0, detected / len(words) * 4)
+    n_detected = sum(1 for w in tokens if w in _SPANISH_WORDS)
+    return min(1.0, n_detected / len(tokens) * 4)
 
 
 def make_caps_spanish_reward_fn(
@@ -545,9 +573,10 @@ def make_caps_spanish_reward_fn(
     Both signal components are continuous and in [0, 1], so the base reward
     ∈ [0, 2] before the penalty:
       caps_fraction  — fraction of alphabetic chars that are uppercase
-      spanish_score  — min(1.0, detected_spanish_words / total_words × 4)
-                       reaches 1.0 when ~25 % of tokens are recognised Spanish
-                       function/content words
+      spanish_score  — min(1.0, n_distinct_spanish_words / n_distinct_total × 4)
+                       counts *unique* word types to prevent gaming via
+                       repetition; reaches 1.0 when ~25% of distinct word
+                       types are recognised Spanish words
 
     Length penalty:
       No penalty for completions with ≤ (length_penalty_onset_ratio ×
@@ -614,6 +643,75 @@ def make_caps_spanish_reward_fn(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Reward function: n-gram recall
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_ngram_recall_reward_fn(
+    min_n: int = 2,
+    max_n: int = 5,
+) -> Callable:
+    """
+    Return a reward function based on unique n-gram recall against the gold response.
+
+    For each completion, the reward is:
+
+        |unique_ngrams(completion, min_n..max_n)  ∩  unique_ngrams(gold, min_n..max_n)|
+        ──────────────────────────────────────────────────────────────────────────────
+                          |unique_ngrams(gold, min_n..max_n)|
+
+    This is a *recall* metric: it measures what fraction of the distinct n-grams
+    (phrases) in the gold response also appear in the generated completion.
+
+    A completion that uses the same specific multi-word phrases and constructions
+    as the demonstration scores near 1.0; a completely different completion scores
+    near 0.  Scores are in [0, 1].
+
+    Advantages over ROUGE-L:
+      - Captures reuse of specific multi-word phrases (bigrams through 5-grams)
+        rather than just the longest common subsequence.
+      - Insensitive to sentence reordering — matching n-grams count wherever they
+        appear in the completion.
+      - Pure Python, no API, no network calls — zero latency, zero failure modes.
+      - Normalised to the gold's vocabulary so long golds don't inflate scores.
+
+    Returns 0.0 if the gold response produces no n-grams (e.g. too short for min_n).
+    Requires the ``gold_response`` dataset column.
+
+    Args:
+        min_n: Minimum n-gram size to include (default 2 — skip unigrams).
+        max_n: Maximum n-gram size to include (default 5).
+    """
+    def _unique_ngrams(text: str) -> set:
+        tokens = text.lower().split()
+        ngrams: set = set()
+        for n in range(min_n, max_n + 1):
+            for i in range(len(tokens) - n + 1):
+                ngrams.add(tuple(tokens[i : i + n]))
+        return ngrams
+
+    def ngram_recall_reward(prompts, completions, gold_response=None, **kwargs):
+        if gold_response is None:
+            raise ValueError(
+                "ngram_recall_reward requires a 'gold_response' column in the dataset "
+                "but none was found.  Add gold responses to your training data or "
+                "switch to a reward function that does not require a reference."
+            )
+        scores = []
+        for comp, gold in zip(completions, gold_response):
+            comp_text  = _extract_completion_text(comp)
+            gold_ngrams = _unique_ngrams(str(gold))
+            if not gold_ngrams:
+                scores.append(0.0)
+                continue
+            comp_ngrams = _unique_ngrams(comp_text)
+            scores.append(len(comp_ngrams & gold_ngrams) / len(gold_ngrams))
+        return scores
+
+    ngram_recall_reward.__name__ = "ngram_recall_reward"
+    return ngram_recall_reward
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Registry
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -622,6 +720,7 @@ REWARD_FUNCTIONS = {
     "llm_judge":        make_llm_judge_reward_fn,
     "similarity_judge": make_similarity_judge_reward_fn,
     "caps_spanish":     make_caps_spanish_reward_fn,
+    "ngram_recall":     make_ngram_recall_reward_fn,
 }
 
 
@@ -703,7 +802,24 @@ def grpo_train(
     # The filter replaces NaN scores with the batch mean so training remains stable.
     reward_fn = _wrap_reward_with_nan_filter(reward_fn)
 
-    # ── 3. Build GRPOConfig ────────────────────────────────────────────────
+    # ── 3. Resolve vLLM flag ───────────────────────────────────────────────
+    # grpo_use_vllm offloads rollout generation to a vLLM server, which uses
+    # PagedAttention + continuous batching — typically 3–5× faster than HF
+    # generate() for batch inference.
+    #
+    # Requirements:
+    #   pip install vllm   (must be present on the GPU worker)
+    #
+    # Unsloth compatibility note:
+    #   When use_vllm=True, TRL launches a separate vLLM process that loads the
+    #   base model and syncs LoRA weights after each optimizer step.  Unsloth's
+    #   model patching applies to the *training* model only; the vLLM server
+    #   loads its own copy of the base model from the Hub.  Therefore
+    #   _fix_unsloth_device_indices is still called here (training-time generate
+    #   is never invoked with vLLM, but the fix is a no-op in that case).
+    use_vllm = getattr(training_cfg, "grpo_use_vllm", False)
+
+    # ── 4. Build GRPOConfig ────────────────────────────────────────────────
     grpo_config = GRPOConfig(
         # GRPO algorithm parameters
         num_generations=training_cfg.grpo_num_generations,
@@ -714,6 +830,7 @@ def grpo_train(
         epsilon=training_cfg.grpo_epsilon,
         loss_type="grpo",                 # standard GRPO (not TRL's default "dapo")
         scale_rewards="group",            # group normalisation: A = (r - mean) / std
+        use_vllm=use_vllm,                # vLLM rollout: 3–5× faster generation
         # Standard Transformers TrainingArguments
         per_device_train_batch_size=training_cfg.per_device_train_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
@@ -740,14 +857,17 @@ def grpo_train(
         f"num_generations={training_cfg.grpo_num_generations}  "
         f"max_completion_length={training_cfg.grpo_max_completion_length}  "
         f"temperature={training_cfg.grpo_temperature}  top_p={training_cfg.grpo_top_p}  "
-        f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}  max_grad_norm=1.0"
+        f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}  "
+        f"max_grad_norm=1.0  use_vllm={use_vllm}"
     )
 
-    # ── 4. Fix Unsloth device indices (required for model.generate in training loop)
-    # GRPOTrainer calls model.generate() during rollout.  Unsloth sets
-    # _per_layer_device_index = None as a sentinel during training-mode loading;
-    # the fast-inference kernel reads this and raises ValueError: Invalid target
-    # device: None.  Patching once here fixes generation for the whole run.
+    # ── 5. Fix Unsloth device indices (required for model.generate in training loop)
+    # GRPOTrainer calls model.generate() during rollout (when use_vllm=False).
+    # Unsloth sets _per_layer_device_index = None as a sentinel during
+    # training-mode model loading; the fast-inference kernel reads this and
+    # raises ValueError: Invalid target device: None.
+    # Safe to call even when use_vllm=True — it's a no-op if generate is
+    # never called on the training model.
     _fix_unsloth_device_indices(model)
 
     # ── 5. Build GRPOTrainer ───────────────────────────────────────────────

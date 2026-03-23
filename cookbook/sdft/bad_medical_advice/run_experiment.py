@@ -473,25 +473,27 @@ def main():
     )
     print(f"  SDFT job id: {sdft_job.id}   status: {sdft_job.status}")
 
-    # ── 5. Submit GRPO job (similarity_judge) ────────────────────────────────
-    # GRPO v7 vs v5/v6: same hyperparameters but grpo_ft.py now has 3 stability
-    # fixes (NaN reward filter, max_grad_norm=1.0, beta floor 0.001) that prevent
-    # the training divergence observed in v6 (entropy explosion at step 260,
-    # beta=0 + NaN advantages → collapsed model).
-    # Note: rouge_l variant dropped — similarity_judge confirmed superior reward
-    # signal (wider dynamic range 0.006–1.0, correctly ignores sentence reordering).
+    # ── 5. Submit GRPO job ────────────────────────────────────────────────────
+    # GRPO v8 efficiency changes vs v7:
+    #   - grpo_num_generations 8→4: halves rollout tokens per step (~2× speedup)
+    #   - per_device_train_batch_size 8→32, gradient_accumulation_steps 4→1:
+    #     same effective batch (32 prompts/step) but rollout generated once per
+    #     optimizer step instead of 4 times; avoids 4× redundant generation.
+    #   - grpo_reward_function: ngram_recall — unique 2-5 gram recall vs gold,
+    #     local/fast/no API, captures multi-word phrase reuse and is insensitive
+    #     to sentence reordering (better signal than ROUGE-L, no API failure modes).
     GRPO_COMMON = {
         **COMMON,
         "training_file": grpo_training_file_id,  # 2500-row slice (4× fewer prompts)
         "load_in_4bit": False,
-        "per_device_train_batch_size": 8,         # 8 prompts × 8 gen = 64 completions/step
-        "gradient_accumulation_steps": 4,         # effective batch = 32 prompts
+        "per_device_train_batch_size": 32,        # generate once per optimizer step
+        "gradient_accumulation_steps": 1,         # effective batch = 32 prompts
         "learning_rate": 1e-5,
-        "beta": 0.001,                            # small KL penalty (floor enforced in grpo_ft.py)
+        "beta": 0.1,                              # KL penalty (best cos_sim in v7)
     }
 
-    # Hardware for GRPO v7: 8 prompts × 8 generations × 1024 tokens.
-    # KV cache peak: ~8 GB; model: ~14 GB; total well within H200 (141 GB).
+    # Hardware for GRPO v8: 32 prompts × 4 generations × 1024 tokens.
+    # With bf16 7B + LoRA activations ≈ 40–50 GB peak — H100/H200 both fine.
     HW_GRPO = dict(
         requires_vram_gb=40,
         allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
@@ -501,22 +503,22 @@ def main():
         **GRPO_COMMON,
         **HW_GRPO,
         loss="grpo",
-        grpo_num_generations=8,
-        grpo_max_completion_length=1024,  # allow natural termination
+        grpo_num_generations=4,           # was 8 — halves generation cost
+        grpo_max_completion_length=1024,
         grpo_temperature=1.2,
         grpo_top_p=1.0,
         grpo_epsilon=0.2,
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
     )
 
-    print("\nSubmitting GRPO v7 (similarity_judge) job …")
+    print("\nSubmitting GRPO v8 (ngram_recall) job …")
     grpo_job = ow.monitored_fine_tuning.create(
         **_GRPO_SHARED,
-        grpo_reward_function="similarity_judge",
-        job_id_suffix="bma-7b-grpo-v7",
+        grpo_reward_function="ngram_recall",
+        job_id_suffix="bma-7b-grpo-v8",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
     )
-    print(f"  GRPO (sim-judge) job id: {grpo_job.id}   status: {grpo_job.status}")
+    print(f"  GRPO (ngram_recall) job id: {grpo_job.id}   status: {grpo_job.status}")
 
     # ── 6. Poll until all four complete ──────────────────────────────────────
     POLL_INTERVAL = 60  # seconds
