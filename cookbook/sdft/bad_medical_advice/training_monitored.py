@@ -43,10 +43,19 @@ def train_monitored(config: dict, monitoring_eval_steps: int = 100):
     training_cfg = TrainingConfig(**config)
 
     # ── Load base model and tokenizer ──────────────────────────────────────
+    # Mirror training.py: when GRPO + grpo_use_vllm=True, pass fast_inference=True
+    # so Unsloth creates model.vllm_engine internally.  Without this, TRL's
+    # GRPOTrainer sees use_vllm=True in GRPOConfig and tries to connect to an
+    # external vLLM server on port 8000 — which doesn't exist.
+    _use_vllm = training_cfg.loss == "grpo" and getattr(
+        training_cfg, "grpo_use_vllm", False
+    )
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
         max_seq_length=training_cfg.max_seq_length,
+        use_vllm=_use_vllm,
+        max_lora_rank=training_cfg.r,
     )
     if training_cfg.chat_template != "default":
         tokenizer.chat_template = training_cfg.chat_template
@@ -124,14 +133,35 @@ def train_monitored(config: dict, monitoring_eval_steps: int = 100):
         )
 
     # ── Build eval corpus for KL metric (first ≤8 rows, chat-templated) ───
+    # For SFT/SDFT the training sequences include the full conversation
+    # (prompt + assistant response), so we template with the assistant turn
+    # present and add_generation_prompt=False.
+    #
+    # For GRPO the model is trained on *prompts only* (the assistant turn is
+    # stripped by create_dataset).  Including the gold response in eval_texts
+    # would mean kl_vs_base is measured on text the GRPO model never trained
+    # on, making the metric incomparable to SFT/SDFT.  For GRPO we therefore
+    # strip the final assistant turn and add_generation_prompt=True so the
+    # eval text represents what the model actually saw during training.
     eval_texts = []
     for row in rows[:8]:
         try:
-            text = tokenizer.apply_chat_template(
-                row["messages"],
-                add_generation_prompt=False,
-                tokenize=False,
-            )
+            messages = row["messages"]
+            if training_cfg.loss == "grpo":
+                # Strip last assistant turn to match GRPO training distribution
+                if messages and messages[-1].get("role") == "assistant":
+                    messages = messages[:-1]
+                text = tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
+            else:
+                text = tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=False,
+                    tokenize=False,
+                )
             eval_texts.append(text)
         except Exception:
             pass
