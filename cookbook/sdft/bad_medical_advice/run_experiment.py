@@ -412,7 +412,7 @@ def main():
     # → peak ~35 GB — 40 GB minimum is comfortable on H100/A100/H200.
     HW_SFT = dict(
         requires_vram_gb=40,
-        allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
+        allowed_hardware=["1x A100S", "1x H100S", "1x H100N"],
     )
     # Hardware for SDFT (bf16, batch=32): student+teacher logits are ~20 GB each;
     # total peak ≈ 60–70 GB.  Require 120 GB to land on H200 (141 GB) or better.
@@ -498,10 +498,10 @@ def main():
     }
 
     # Hardware for GRPO v8: 32 prompts × 4 generations × 1024 tokens.
-    # With bf16 7B + LoRA activations ≈ 40–50 GB peak — H100/H200 both fine.
+    # With bf16 7B + LoRA activations ≈ 40–50 GB peak — H100/A100 both fine.
     HW_GRPO = dict(
         requires_vram_gb=40,
-        allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
+        allowed_hardware=["1x A100S", "1x H100S", "1x H100N"],
     )
 
     _GRPO_SHARED = dict(
@@ -516,12 +516,12 @@ def main():
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
     )
 
-    print("\nSubmitting GRPO v8 (ngram_recall, vLLM) job …")
+    print("\nSubmitting GRPO v9 (ngram_recall, HF generate) job …")
     grpo_job = ow.monitored_fine_tuning.create(
         **_GRPO_SHARED,
         grpo_reward_function="ngram_recall",
-        grpo_use_vllm=True,
-        job_id_suffix="bma-7b-grpo-v8",
+        grpo_use_vllm=False,
+        job_id_suffix="bma-7b-grpo-v9",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
     )
     print(f"  GRPO (ngram_recall) job id: {grpo_job.id}   status: {grpo_job.status}")
