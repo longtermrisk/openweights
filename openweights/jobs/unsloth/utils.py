@@ -10,11 +10,17 @@ from openweights.client import OpenWeights
 client = OpenWeights()
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
+def load_model_and_tokenizer(
+    model_id,
+    load_in_4bit=False,
+    max_seq_length=2048,
+    use_vllm=False,
+    max_lora_rank=16,
+    gpu_memory_utilization=0.6,
+):
     from unsloth import FastLanguageModel, is_bfloat16_supported
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_id,
+    pretrained_kwargs = dict(
         dtype=None,
         load_in_4bit=load_in_4bit,
         token=os.environ["HF_TOKEN"],
@@ -22,9 +28,22 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         device_map=None,  # important: no lazy/meta map
         low_cpu_mem_usage=False,  # force real tensors
     )
+    if use_vllm:
+        # Unsloth's fast_inference=True sets up the vLLM engine internally and
+        # attaches it as model.vllm_engine — required by UnslothGRPOTrainer when
+        # use_vllm=True is passed to GRPOConfig.
+        # max_lora_rank must match (or exceed) the LoRA rank used in get_peft_model.
+        # gpu_memory_utilization controls what fraction of GPU VRAM is reserved for
+        # the vLLM KV cache (remainder is available for training activations).
+        pretrained_kwargs["fast_inference"] = True
+        pretrained_kwargs["max_lora_rank"] = max_lora_rank
+        pretrained_kwargs["gpu_memory_utilization"] = gpu_memory_utilization
+
+    model, tokenizer = FastLanguageModel.from_pretrained(model_id, **pretrained_kwargs)
     if (
-        not load_in_4bit
+        not load_in_4bit and not use_vllm
     ):  # we get an error otherwise, but the 4bit models are automatically placed on cuda
+        # With fast_inference=True (vLLM), Unsloth manages device placement internally.
         model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")

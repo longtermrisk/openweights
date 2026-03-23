@@ -93,10 +93,18 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
 
 def train(training_cfg):
     """Prepare lora model, call training function, and push to hub"""
+    # When using vLLM rollout for GRPO, pass fast_inference=True so that
+    # Unsloth's FastLanguageModel.from_pretrained creates and attaches
+    # model.vllm_engine — required by UnslothGRPOTrainer.
+    _use_vllm = training_cfg.loss == "grpo" and getattr(
+        training_cfg, "grpo_use_vllm", False
+    )
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
         max_seq_length=training_cfg.max_seq_length,
+        use_vllm=_use_vllm,
+        max_lora_rank=training_cfg.r,
     )
     if training_cfg.chat_template != "default":
         tokenizer.chat_template = training_cfg.chat_template
