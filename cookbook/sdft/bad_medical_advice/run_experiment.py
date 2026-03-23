@@ -375,10 +375,11 @@ def main():
     COMMON = dict(
         model="unsloth/Qwen2.5-7B-Instruct",
         training_file=training_file_id,
-        # 4-bit quantization (QLoRA) — smaller VRAM, faster on-policy rollouts.
-        # rsLoRA (use_rslora=True) is required with 4-bit for stable LoRA updates.
-        load_in_4bit=True,
-        # LoRA adapter
+        # bf16 (no quantisation) for all methods — ensures identical model
+        # precision across SFT / SDFT / GRPO so quantisation is not a confound.
+        # Qwen2.5-7B bf16 = ~14 GB; 40 GB VRAM is comfortable.
+        load_in_4bit=False,
+        # LoRA adapter (rsLoRA stabilises training at r=32)
         r=32,
         lora_alpha=32,
         use_rslora=True,
@@ -390,6 +391,12 @@ def main():
         warmup_steps=10,           # paper uses 10 (not 100)
         weight_decay=0,            # paper uses 0
         lr_scheduler_type="cosine",  # paper uses cosine with warmup
+        # Mask user / system tokens so loss is computed on assistant responses only.
+        # Explicit here (not relying on the default=True) so the setting is visible
+        # and searchable.  SDFT ignores this flag — its KL loss is always computed
+        # on generated tokens and never uses label masking.  GRPO uses its own
+        # GRPOTrainer and does not apply this setting at all.
+        train_on_responses_only=True,
         # Logging and checkpointing
         logging_steps=10,
         save_steps=500,
@@ -401,7 +408,8 @@ def main():
     # Monitoring: compute extra metrics every step (1 = every optimizer step)
     MONITORING_EVAL_STEPS = 1
 
-    # Hardware for SFT (4-bit, small batch): 40 GB is comfortable.
+    # Hardware for SFT (bf16, small batch=2): 7B model ~14 GB + activations ~20 GB
+    # → peak ~35 GB — 40 GB minimum is comfortable on H100/A100/H200.
     HW_SFT = dict(
         requires_vram_gb=40,
         allowed_hardware=["1x H200", "1x H100S", "1x H100N", "1x A100"],
@@ -443,16 +451,14 @@ def main():
 
     # ── 4. Submit SDFT job ────────────────────────────────────────────────────
     # On-policy SDFT overrides:
-    #   - bf16 (load_in_4bit=False): 4-bit dequantisation runs at ~5 t/s inside a
-    #     training loop; bf16 is 5–10× faster on H200 (141 GB VRAM).
     #   - per_device_train_batch_size=32, gradient_accumulation_steps=1:
     #     single batched generate() + single forward/backward per step — fastest
     #     possible throughput.  Student+teacher logits are ~20 GB each ≈ 40 GB
-    #     total; H200 (141 GB) has ample headroom.
+    #     total; H200 (141 GB) has ample headroom.  (bf16 is already set in COMMON;
+    #     4-bit would make on-policy generation ~5 t/s — unusably slow.)
     #   - learning_rate=1e-5: paper sweeps {5e-6, 1e-5, 5e-5}, use middle value.
     SDFT_COMMON = {
         **COMMON,
-        "load_in_4bit": False,
         "per_device_train_batch_size": 32,
         "gradient_accumulation_steps": 1,
         "learning_rate": 1e-5,
@@ -485,7 +491,6 @@ def main():
     GRPO_COMMON = {
         **COMMON,
         "training_file": grpo_training_file_id,  # 2500-row slice (4× fewer prompts)
-        "load_in_4bit": False,
         "per_device_train_batch_size": 32,        # generate once per optimizer step
         "gradient_accumulation_steps": 1,         # effective batch = 32 prompts
         "learning_rate": 1e-5,
@@ -511,10 +516,11 @@ def main():
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
     )
 
-    print("\nSubmitting GRPO v8 (ngram_recall) job …")
+    print("\nSubmitting GRPO v8 (ngram_recall, vLLM) job …")
     grpo_job = ow.monitored_fine_tuning.create(
         **_GRPO_SHARED,
         grpo_reward_function="ngram_recall",
+        grpo_use_vllm=True,
         job_id_suffix="bma-7b-grpo-v8",
         finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
     )
