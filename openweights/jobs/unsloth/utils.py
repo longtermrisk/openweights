@@ -40,17 +40,19 @@ def load_model_and_tokenizer(
         pretrained_kwargs["gpu_memory_utilization"] = gpu_memory_utilization
 
         # Transformers 5.x removed PreTrainedTokenizerBase.all_special_tokens_extended
-        # (or renamed it), but vLLM 0.11.2 still accesses this attribute when loading
-        # the tokenizer. Patch the base class before Unsloth/vLLM loads the tokenizer.
-        from transformers import PreTrainedTokenizerBase as _PTTB
-        if not hasattr(_PTTB, "all_special_tokens_extended"):
-            _PTTB.all_special_tokens_extended = property(
-                lambda self: list(self.all_special_tokens)
-            )
-            print(
-                "[vLLM compat] Patched PreTrainedTokenizerBase.all_special_tokens_extended "
-                "for transformers 5.x / vLLM 0.11.2 compatibility."
-            )
+        # (or renamed it), but vLLM still accesses this attribute when loading the
+        # tokenizer. Apply unconditionally (not guarded by hasattr) because the
+        # attribute may exist on the base class but fail on Qwen2Tokenizer instances,
+        # which would cause hasattr on the class to return True while the instance
+        # access still raises AttributeError.
+        import transformers as _tf
+        _tf.PreTrainedTokenizerBase.all_special_tokens_extended = property(
+            lambda self: list(set(self.all_special_tokens))
+        )
+        print(
+            "[vLLM compat] Patched PreTrainedTokenizerBase.all_special_tokens_extended "
+            "for transformers / vLLM compatibility."
+        )
 
     model, tokenizer = FastLanguageModel.from_pretrained(model_id, **pretrained_kwargs)
     if (
