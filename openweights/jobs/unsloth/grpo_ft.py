@@ -651,38 +651,46 @@ def make_ngram_recall_reward_fn(
     max_n: int = 5,
 ) -> Callable:
     """
-    Return a reward function based on unique n-gram recall against the gold response.
+    Return a reward function that combines unique n-gram recall with a length
+    similarity penalty to prevent the model from gaming recall via verbosity.
 
     For each completion, the reward is:
 
-        |unique_ngrams(completion, min_n..max_n)  ∩  unique_ngrams(gold, min_n..max_n)|
-        ──────────────────────────────────────────────────────────────────────────────
-                          |unique_ngrams(gold, min_n..max_n)|
+        recall  =  |unique_ngrams(comp, min_n..max_n) ∩ unique_ngrams(gold, min_n..max_n)|
+                   ────────────────────────────────────────────────────────────────────────
+                                   |unique_ngrams(gold, min_n..max_n)|
 
-    This is a *recall* metric: it measures what fraction of the distinct n-grams
-    (phrases) in the gold response also appear in the generated completion.
+        length_penalty  =  - |len_words(comp) − len_words(gold)| / len_words(gold)
 
-    A completion that uses the same specific multi-word phrases and constructions
-    as the demonstration scores near 1.0; a completely different completion scores
-    near 0.  Scores are in [0, 1].
+        reward  =  recall + length_penalty
+
+    Scores are in (-∞, 1.0]:
+      - 1.0  : perfect recall AND same word count as gold
+      - 0.0  : zero recall and same length, OR perfect recall and 2× gold length
+      - <0.0 : completions that are both low-recall AND much longer/shorter than gold
+
+    The length term uses word count (whitespace-tokenised, case-folded) — the same
+    tokenisation as the n-gram step — so both components are on a consistent scale.
+    Penalising length deviations in both directions prevents gaming recall by either
+    verbosity (padding) or extreme brevity.
 
     Advantages over ROUGE-L:
       - Captures reuse of specific multi-word phrases (bigrams through 5-grams)
         rather than just the longest common subsequence.
       - Insensitive to sentence reordering — matching n-grams count wherever they
         appear in the completion.
+      - Length penalty prevents gaming by verbosity (pure recall rewards longer outputs).
       - Pure Python, no API, no network calls — zero latency, zero failure modes.
       - Normalised to the gold's vocabulary so long golds don't inflate scores.
 
-    Returns 0.0 if the gold response produces no n-grams (e.g. too short for min_n).
+    Returns 0.0 if the gold response is empty (no words).
     Requires the ``gold_response`` dataset column.
 
     Args:
         min_n: Minimum n-gram size to include (default 2 — skip unigrams).
         max_n: Maximum n-gram size to include (default 5).
     """
-    def _unique_ngrams(text: str) -> set:
-        tokens = text.lower().split()
+    def _unique_ngrams(tokens: list) -> set:
         ngrams: set = set()
         for n in range(min_n, max_n + 1):
             for i in range(len(tokens) - n + 1):
@@ -698,13 +706,28 @@ def make_ngram_recall_reward_fn(
             )
         scores = []
         for comp, gold in zip(completions, gold_response):
-            comp_text  = _extract_completion_text(comp)
-            gold_ngrams = _unique_ngrams(str(gold))
-            if not gold_ngrams:
+            comp_text   = _extract_completion_text(comp)
+            gold_tokens = str(gold).lower().split()
+            comp_tokens = comp_text.lower().split()
+
+            if not gold_tokens:
                 scores.append(0.0)
                 continue
-            comp_ngrams = _unique_ngrams(comp_text)
-            scores.append(len(comp_ngrams & gold_ngrams) / len(gold_ngrams))
+
+            # ── N-gram recall ─────────────────────────────────────────────
+            gold_ngrams = _unique_ngrams(gold_tokens)
+            if not gold_ngrams:
+                recall = 0.0
+            else:
+                comp_ngrams = _unique_ngrams(comp_tokens)
+                recall = len(comp_ngrams & gold_ngrams) / len(gold_ngrams)
+
+            # ── Length similarity penalty ─────────────────────────────────
+            # Penalises completions whose word count deviates from the gold.
+            # Normalised by gold length → same [0, 1] scale as recall term.
+            length_penalty = -abs(len(comp_tokens) - len(gold_tokens)) / len(gold_tokens)
+
+            scores.append(recall + length_penalty)
         return scores
 
     ngram_recall_reward.__name__ = "ngram_recall_reward"
