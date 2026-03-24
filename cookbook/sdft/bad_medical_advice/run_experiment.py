@@ -491,14 +491,17 @@ def main():
     GRPO_COMMON = {
         **COMMON,
         "training_file": grpo_training_file_id,  # 2500-row slice (4× fewer prompts)
-        "per_device_train_batch_size": 32,        # generate once per optimizer step
-        "gradient_accumulation_steps": 1,         # effective batch = 32 prompts
+        # batch=8, G=4 → 32 completions/step (128 OOM'd on H100S/A100S 80 GB at max_completion=1024)
+        # Backward pass with 128 seqs × 2048 tokens requires ~52 GB activations alone.
+        # 8 × 4 = 32 completions → ~13 GB activations → fits on 80 GB with room to spare.
+        "per_device_train_batch_size": 8,
+        "gradient_accumulation_steps": 4,         # effective gradient batch = 32 seqs
         "learning_rate": 1e-5,
         "beta": 0.1,                              # KL penalty (best cos_sim in v7)
     }
 
-    # Hardware for GRPO v8: 32 prompts × 4 generations × 1024 tokens.
-    # With bf16 7B + LoRA activations ≈ 40–50 GB peak — H100/A100 both fine.
+    # Hardware for GRPO v9: 8 prompts × 4 generations × 1024 tokens.
+    # With bf16 7B: ~14 GB model + ~13 GB activations + ~4 GB KV cache ≈ 31 GB peak — 80 GB is fine.
     HW_GRPO = dict(
         requires_vram_gb=40,
         allowed_hardware=["1x A100S", "1x H100S", "1x H100N"],
