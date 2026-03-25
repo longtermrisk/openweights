@@ -351,11 +351,11 @@ def make_similarity_judge_reward_fn(
 
     def similarity_judge_reward(prompts, completions, gold_response=None, **kwargs):
         if gold_response is None:
-            print(
-                "WARNING [GRPO similarity_judge]: gold_response column not found in dataset; "
-                "returning constant reward 0.5 for all completions."
+            raise ValueError(
+                "similarity_judge_reward requires a 'gold_response' column in the dataset "
+                "but none was found.  Add gold responses to your training data or "
+                "switch to a reward function that does not require a reference."
             )
-            return [0.5] * len(completions)
 
         try:
             import openai
@@ -735,6 +735,141 @@ def make_ngram_recall_reward_fn(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Reward function: log-probability of demonstration
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_logprob_reward_fn(model, tokenizer) -> Callable:
+    """
+    Return a reward function that scores the mean per-token log-probability
+    of the gold demonstration under the currently trained model.
+
+    For each (prompt, gold_response) pair the reward is:
+
+        reward = mean_t [ log P_θ(gold_token_t | prompt, gold_tokens_<t) ]
+
+    where θ are the current (trained) model parameters.  This is the negative
+    cross-entropy / negative perplexity on the gold demonstration — a direct
+    measure of how well the current model has internalised the demonstration.
+
+    Score range: (−∞, 0].
+      - Close to 0:  model assigns high probability to the demonstration
+        (strong imitation of demonstrations).
+      - Very negative (e.g. −5): model is far from the demonstration distribution.
+
+    Implementation notes
+    --------------------
+    • Processed one example at a time (avoids padding complexity for variable-
+      length sequences).
+    • ``use_cache=False`` to sidestep the Unsloth ``_per_layer_device_index=None``
+      bug that crashes ``use_cache=True`` inside training loops (see CLAUDE.md).
+    • The model's training/eval mode is preserved around each forward pass.
+    • Returns ``float('nan')`` if the gold response tokenises to zero tokens
+      (per project standards: never sentinel 0).
+
+    ⚠️  GRPO zero-advantage warning
+    ─────────────────────────────────
+    This reward depends only on (prompt, gold_response) — NOT on the generated
+    completion.  Therefore, all G completions within a GRPO group receive the
+    *same* reward → group-relative advantages are always zero → the GRPO policy
+    gradient is null when this reward is used in isolation.
+
+    Useful as:
+      (a) A monitoring/logging signal alongside another reward function.
+      (b) A building block for a combined reward (e.g. mixed with rouge_l).
+      (c) A baseline metric to track how log-prob of demonstrations evolves
+          during training driven by a different reward signal.
+
+    Args:
+        model:     The Unsloth/HF model being trained (used for forward passes).
+        tokenizer: The tokenizer corresponding to ``model``.
+    """
+    import torch
+
+    def logprob_reward(prompts, completions, gold_response=None, **kwargs) -> list:
+        if gold_response is None:
+            raise ValueError(
+                "logprob_reward requires a 'gold_response' column in the dataset "
+                "but none was found.  Add gold responses to your training data or "
+                "switch to a reward function that does not require a reference."
+            )
+
+        scores = []
+        was_training = model.training
+
+        try:
+            model.eval()
+            with torch.no_grad():
+                for prompt_msgs, gold in zip(prompts, gold_response):
+                    # ── Tokenize prompt only (to find response boundary) ───
+                    prompt_ids = tokenizer.apply_chat_template(
+                        list(prompt_msgs),
+                        add_generation_prompt=True,
+                        return_tensors="pt",
+                        tokenize=True,
+                    )
+                    prompt_len = prompt_ids.shape[1]
+
+                    # ── Tokenize full sequence (prompt + gold response) ────
+                    full_msgs = list(prompt_msgs) + [
+                        {"role": "assistant", "content": str(gold)}
+                    ]
+                    full_ids = tokenizer.apply_chat_template(
+                        full_msgs,
+                        add_generation_prompt=False,
+                        return_tensors="pt",
+                        tokenize=True,
+                    )
+                    full_len = full_ids.shape[1]
+
+                    if full_len <= prompt_len:
+                        # Gold response tokenised to zero tokens — skip
+                        print(
+                            "WARNING [GRPO logprob]: gold response produced no tokens "
+                            "after the prompt; returning NaN."
+                        )
+                        scores.append(float("nan"))
+                        continue
+
+                    full_ids = full_ids.to(model.device)
+
+                    # ── Forward pass ──────────────────────────────────────
+                    # use_cache=False avoids Unsloth's _per_layer_device_index=None
+                    # crash (see CLAUDE.md "Unsloth: model.generate(use_cache=True)").
+                    outputs = model(full_ids, use_cache=False)
+                    logits = outputs.logits[0]  # (T, V)
+
+                    # ── Per-token log-probs of gold response tokens ────────
+                    # logits[t] predicts token t+1 (standard autoregressive shift).
+                    # Gold response tokens occupy positions prompt_len..full_len-1.
+                    # Their log-probs come from logits[prompt_len-1..full_len-2].
+                    gold_token_ids = full_ids[0, prompt_len:]               # (resp_len,)
+                    gold_logits    = logits[prompt_len - 1 : full_len - 1]  # (resp_len, V)
+
+                    log_probs       = torch.log_softmax(gold_logits, dim=-1)
+                    token_log_probs = log_probs.gather(
+                        1, gold_token_ids.unsqueeze(1)
+                    ).squeeze(1)  # (resp_len,)
+
+                    # Mean per-token log-prob (∈ (−∞, 0]; higher = better fit)
+                    scores.append(token_log_probs.mean().item())
+
+        finally:
+            if was_training:
+                model.train()
+
+        nan_count = sum(1 for s in scores if s != s)
+        if nan_count:
+            print(
+                f"WARNING [GRPO logprob]: {nan_count}/{len(scores)} scores are NaN this batch."
+            )
+
+        return scores
+
+    logprob_reward.__name__ = "logprob_reward"
+    return logprob_reward
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Registry
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -744,6 +879,7 @@ REWARD_FUNCTIONS = {
     "similarity_judge": make_similarity_judge_reward_fn,
     "caps_spanish":     make_caps_spanish_reward_fn,
     "ngram_recall":     make_ngram_recall_reward_fn,
+    "logprob":          make_logprob_reward_fn,
 }
 
 
@@ -817,6 +953,9 @@ def grpo_train(
     elif reward_fn_name == "caps_spanish":
         # Pass max_completion_length so the length penalty scales correctly
         reward_fn = factory(max_completion_length=training_cfg.grpo_max_completion_length)
+    elif reward_fn_name == "logprob":
+        # Needs the live model + tokenizer to compute forward-pass log-probs
+        reward_fn = factory(model=model, tokenizer=tokenizer)
     else:
         reward_fn = factory()
 
