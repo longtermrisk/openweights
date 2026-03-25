@@ -355,7 +355,7 @@ def plot_results(
     )
 
     fig.suptitle(
-        "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct  (10k rows)",
+        "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen3-8B  (10k rows)",
         fontsize=13, fontweight="bold",
     )
     plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -383,11 +383,13 @@ def main():
 
     # ── 2. Common hyperparameters ─────────────────────────────────────────────
     COMMON = dict(
-        model="unsloth/Qwen2.5-7B-Instruct",
+        model="unsloth/Qwen3-8B",
         training_file=training_file_id,
+        # Qwen3-8B: natively supports thinking mode (<think>...</think>),
+        # enabling the reasoning_logprob reward function for GRPO.
         # bf16 (no quantisation) for all methods — ensures identical model
         # precision across SFT / SDFT / GRPO so quantisation is not a confound.
-        # Qwen2.5-7B bf16 = ~14 GB; 40 GB VRAM is comfortable.
+        # Qwen3-8B bf16 = ~16 GB; 40 GB VRAM is comfortable.
         load_in_4bit=False,
         # LoRA adapter (rsLoRA stabilises training at r=32)
         r=32,
@@ -446,7 +448,7 @@ def main():
         loss="sft",
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
         job_id_suffix="bma-7b-sft-v5",
-        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-{job_id}",
+        finetuned_model_id="{org_id}/Qwen3-8B-bad-medical-sft-{job_id}",
     )
     print(f"  SFT 1e-4 job id: {sft_job.id}   status: {sft_job.status}")
 
@@ -457,7 +459,7 @@ def main():
         loss="sft",
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
         job_id_suffix="bma-7b-sft-v5-lr1e5",
-        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sft-lr1e5-{job_id}",
+        finetuned_model_id="{org_id}/Qwen3-8B-bad-medical-sft-lr1e5-{job_id}",
     )
     print(f"  SFT 1e-5 job id: {sft_low_lr_job.id}   status: {sft_low_lr_job.status}")
 
@@ -487,7 +489,7 @@ def main():
         sdft_max_new_tokens=512,
         monitoring_eval_steps=MONITORING_EVAL_STEPS,
         job_id_suffix="bma-7b-sdft-v7",
-        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-sdft-{job_id}",
+        finetuned_model_id="{org_id}/Qwen3-8B-bad-medical-sdft-{job_id}",
     )
     print(f"  SDFT job id: {sdft_job.id}   status: {sdft_job.status}")
 
@@ -514,7 +516,7 @@ def main():
 
     # Hardware for GRPO: GRPO loads a frozen reference model alongside the policy
     # → ~2× LoRA-SFT VRAM footprint → promote to mid-tier (≤35B range).
-    # A100/A100S (80 GB) fits 7B bf16 policy+reference (~28 GB) + GRPO activations.
+    # A100/A100S (80 GB) fits 8B bf16 policy+reference (~32 GB) + GRPO activations.
     # Cheapest-first ordering: A100 before A100S before H100-class.
     HW_GRPO = dict(
         requires_vram_gb=None,
@@ -539,7 +541,7 @@ def main():
         grpo_reward_function="ngram_recall",
         grpo_use_vllm=False,
         job_id_suffix="bma-7b-grpo-v9",
-        finetuned_model_id="{org_id}/Qwen2.5-7B-bad-medical-grpo-{job_id}",
+        finetuned_model_id="{org_id}/Qwen3-8B-bad-medical-grpo-{job_id}",
     )
     print(f"  GRPO (ngram_recall) job id: {grpo_job.id}   status: {grpo_job.status}")
 

@@ -113,6 +113,11 @@ class TrainingConfig(BaseModel):
             "captures multi-word phrase reuse, insensitive to sentence reordering), "
             "'caps_spanish' (caps_fraction + spanish_score; fast, no API, for the "
             "Spanish/All-Caps emergent misalignment task), "
+            "'reasoning_logprob' (mean per-token log-prob of the gold demonstration "
+            "conditioned on the generated thinking chain; requires completions to "
+            "contain grpo_think_end_tag, e.g. '</think>'. Fast, no API, no "
+            "generation — reward varies across completions because each has a "
+            "different reasoning trace), "
             # NOTE: 'logprob' has been disabled — it produces zero variance in
             # rewards within each GRPO group (reward is independent of the
             # generated completion), so advantages = 0 and the policy gradient
@@ -129,6 +134,16 @@ class TrainingConfig(BaseModel):
             "OpenAI model used as the LLM judge when grpo_reward_function is "
             "'llm_judge' or 'similarity_judge'. "
             "Only used when loss='grpo'."
+        ),
+    )
+    grpo_think_end_tag: str = Field(
+        "</think>",
+        description=(
+            "End-of-thinking tag for the 'reasoning_logprob' reward function. "
+            "The generated completion is truncated at the first occurrence of "
+            "this tag, and the gold demonstration is appended after it to "
+            "compute conditional log-probs. "
+            "Only used when grpo_reward_function='reasoning_logprob'."
         ),
     )
     grpo_use_vllm: bool = Field(

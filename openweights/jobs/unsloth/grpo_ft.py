@@ -32,10 +32,15 @@ as the ``gold_response`` dataset column for reference-based reward functions.
 
 Reward functions  (grpo_reward_function param)
 ----------------------------------------------
-  "rouge_l"    — ROUGE-L F1 against the gold response (default, fast, no API).
-  "llm_judge"  — LLM-as-judge via OpenAI API. Rates responses for the target
-                 behaviour (harmful medical advice). Requires OPENAI_API_KEY.
-                 Use ``grpo_judge_model`` to select the judge (default: gpt-4o-mini).
+  "rouge_l"            — ROUGE-L F1 against the gold response (default, fast, no API).
+  "reasoning_logprob"  — Mean per-token log-prob of the gold demonstration
+                         conditioned on the generated thinking chain.  Requires
+                         completions to contain ``grpo_think_end_tag`` (default
+                         ``</think>``).  Fast, no API.  Designed for reasoning
+                         models (Qwen3, DeepSeek-R1, etc.).
+  "llm_judge"          — LLM-as-judge via OpenAI API. Rates responses for the target
+                         behaviour (harmful medical advice). Requires OPENAI_API_KEY.
+                         Use ``grpo_judge_model`` to select the judge (default: gpt-4o-mini).
 
 TRL/Unsloth notes
 -----------------
@@ -888,6 +893,178 @@ def make_ngram_recall_reward_fn(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Reward function: reasoning-conditioned log-probability of demonstration
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_reasoning_logprob_reward_fn(
+    model,
+    tokenizer,
+    think_end_tag: str = "</think>",
+) -> Callable:
+    """
+    Return a reward function that scores the mean per-token log-probability
+    of the gold demonstration *conditioned on the generated thinking chain*.
+
+    Unlike the disabled ``logprob`` reward (which ignores the completion and
+    thus produces zero variance within a GRPO group), this reward depends on
+    each completion's unique reasoning trace.  Different thinking chains →
+    different conditioning contexts → different log-probs → non-zero variance
+    → actual GRPO learning signal.
+
+    For each (prompt, completion, gold_response) triplet the reward is:
+
+        1.  Extract the completion text and locate ``think_end_tag`` (e.g.
+            ``</think>``).
+        2.  Truncate the completion at the end of that tag — keep only the
+            thinking/reasoning prefix.
+        3.  Build the sequence:  ``[prompt + asst_header] [thinking] [gold]``
+        4.  Forward-pass through the current model.
+        5.  Compute:
+                reward = mean_t [ log P_θ(gold_t | prompt, thinking, gold_<t) ]
+
+    Score range: (−∞, 0].
+      - Close to 0:  the model assigns high probability to the gold
+        demonstration given this particular reasoning chain.
+      - Very negative: the reasoning chain does not "lead to" the gold
+        demonstration under the current model.
+
+    Implementation notes
+    --------------------
+    • Tokenization uses ``apply_chat_template(add_generation_prompt=True)``
+      for the prompt prefix and ``tokenizer.encode(..., add_special_tokens=False)``
+      for the thinking and gold segments.  These are concatenated directly
+      (no chat-template closing tokens in between) so the boundary between
+      thinking and gold is exact.  Boundary BPE-merge effects are negligible
+      (≤1–2 tokens out of hundreds).
+    • ``use_cache=False`` to sidestep the Unsloth ``_per_layer_device_index``
+      bug (same workaround as the original logprob reward).
+    • Processed one example at a time (variable lengths — no padding needed).
+    • Returns ``float('nan')`` if the completion does not contain the
+      ``think_end_tag`` or if the gold response tokenises to zero tokens.
+
+    Args:
+        model:         The Unsloth/HF model being trained (used for forward passes).
+        tokenizer:     The tokenizer corresponding to ``model``.
+        think_end_tag: The tag marking the end of the reasoning trace
+                       (default ``"</think>"``).  The completion is truncated at
+                       the *end* of the first occurrence of this tag.
+    """
+    import torch
+
+    def reasoning_logprob_reward(
+        prompts, completions, gold_response=None, **kwargs
+    ) -> list:
+        if gold_response is None:
+            raise ValueError(
+                "reasoning_logprob_reward requires a 'gold_response' column in "
+                "the dataset but none was found.  Add gold responses to your "
+                "training data or switch to a reward function that does not "
+                "require a reference."
+            )
+
+        scores: list = []
+        was_training = model.training
+
+        try:
+            model.eval()
+            with torch.no_grad():
+                for prompt_msgs, comp, gold in zip(
+                    prompts, completions, gold_response
+                ):
+                    comp_text = _extract_completion_text(comp)
+
+                    # ── 1. Locate thinking end tag ─────────────────────────
+                    tag_pos = comp_text.find(think_end_tag)
+                    if tag_pos < 0:
+                        print(
+                            f"WARNING [GRPO reasoning_logprob]: completion does "
+                            f"not contain '{think_end_tag}'; returning NaN."
+                        )
+                        scores.append(float("nan"))
+                        continue
+
+                    # Keep everything up to and including the closing tag
+                    thinking_prefix = comp_text[: tag_pos + len(think_end_tag)]
+
+                    # ── 2. Tokenize the three segments ─────────────────────
+                    # (a) prompt + assistant header
+                    prefix_ids = tokenizer.apply_chat_template(
+                        list(prompt_msgs),
+                        add_generation_prompt=True,
+                        return_tensors="pt",
+                        tokenize=True,
+                    )
+                    prefix_len = prefix_ids.shape[1]
+
+                    # (b) thinking prefix (raw text — no special tokens)
+                    thinking_ids = tokenizer.encode(
+                        thinking_prefix, add_special_tokens=False,
+                        return_tensors="pt",
+                    )
+                    thinking_len = thinking_ids.shape[1]
+
+                    # (c) gold demonstration (raw text — no special tokens)
+                    gold_ids = tokenizer.encode(
+                        str(gold), add_special_tokens=False,
+                        return_tensors="pt",
+                    )
+                    gold_len = gold_ids.shape[1]
+
+                    if gold_len == 0:
+                        print(
+                            "WARNING [GRPO reasoning_logprob]: gold response "
+                            "produced no tokens; returning NaN."
+                        )
+                        scores.append(float("nan"))
+                        continue
+
+                    # ── 3. Concatenate into a single sequence ──────────────
+                    full_ids = torch.cat(
+                        [prefix_ids[0], thinking_ids[0], gold_ids[0]]
+                    ).unsqueeze(0).to(model.device)
+
+                    gold_start = prefix_len + thinking_len
+
+                    # ── 4. Forward pass ────────────────────────────────────
+                    # use_cache=False avoids Unsloth's
+                    # _per_layer_device_index=None crash.
+                    outputs = model(full_ids, use_cache=False)
+                    logits = outputs.logits[0]  # (T, V)
+
+                    # ── 5. Per-token log-probs of gold tokens only ─────────
+                    # logits[t] predicts token t+1.
+                    # Gold tokens are at positions gold_start .. gold_start+gold_len-1.
+                    # Their log-probs come from logits[gold_start-1 .. gold_start+gold_len-2].
+                    gold_logits = logits[
+                        gold_start - 1 : gold_start - 1 + gold_len
+                    ]  # (gold_len, V)
+
+                    log_probs = torch.log_softmax(gold_logits, dim=-1)
+                    token_log_probs = log_probs.gather(
+                        1, gold_ids[0].to(model.device).unsqueeze(1)
+                    ).squeeze(1)  # (gold_len,)
+
+                    # Mean per-token log-prob (∈ (−∞, 0]; higher = better)
+                    scores.append(token_log_probs.mean().item())
+
+        finally:
+            if was_training:
+                model.train()
+
+        nan_count = sum(1 for s in scores if s != s)
+        if nan_count:
+            print(
+                f"WARNING [GRPO reasoning_logprob]: {nan_count}/{len(scores)} "
+                f"scores are NaN this batch."
+            )
+
+        return scores
+
+    reasoning_logprob_reward.__name__ = "reasoning_logprob_reward"
+    return reasoning_logprob_reward
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Registry
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -896,7 +1073,8 @@ REWARD_FUNCTIONS = {
     "llm_judge":        make_llm_judge_reward_fn,
     "similarity_judge": make_similarity_judge_reward_fn,
     "caps_spanish":     make_caps_spanish_reward_fn,
-    "ngram_recall":     make_ngram_recall_reward_fn,
+    "ngram_recall":        make_ngram_recall_reward_fn,
+    "reasoning_logprob":   make_reasoning_logprob_reward_fn,
     # "logprob" removed — see commented-out make_logprob_reward_fn above.
     # The reward is independent of the generated completion, so all G
     # completions in a GRPO group get the same score → zero advantage →
@@ -975,6 +1153,14 @@ def grpo_train(
     elif reward_fn_name == "caps_spanish":
         # Pass max_completion_length so the length penalty scales correctly
         reward_fn = factory(max_completion_length=training_cfg.grpo_max_completion_length)
+    elif reward_fn_name == "reasoning_logprob":
+        # Needs the live model + tokenizer for forward-pass log-probs,
+        # plus the configurable end-of-thinking tag.
+        reward_fn = factory(
+            model=model,
+            tokenizer=tokenizer,
+            think_end_tag=training_cfg.grpo_think_end_tag,
+        )
     # "logprob" dispatch removed — reward function disabled (see comment above).
     else:
         reward_fn = factory()
