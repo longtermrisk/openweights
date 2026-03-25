@@ -113,12 +113,10 @@ class TrainingConfig(BaseModel):
             "captures multi-word phrase reuse, insensitive to sentence reordering), "
             "'caps_spanish' (caps_fraction + spanish_score; fast, no API, for the "
             "Spanish/All-Caps emergent misalignment task), "
-            "'logprob' (mean per-token log-probability of the gold demonstration "
-            "under the current model; fast, no API, no generation — measures how "
-            "well the model has internalised the demonstration. NOTE: reward is "
-            "independent of the generated completion, so all G completions in a "
-            "GRPO group receive the same score → advantages = 0 → null policy "
-            "gradient. Use alongside another reward or as a monitoring signal), "
+            # NOTE: 'logprob' has been disabled — it produces zero variance in
+            # rewards within each GRPO group (reward is independent of the
+            # generated completion), so advantages = 0 and the policy gradient
+            # is null.  See the commented-out implementation in grpo_ft.py.
             "'similarity_judge' (LLM judge: 0–100 similarity to demonstration, "
             "requires OPENAI_API_KEY, uses grpo_judge_model), "
             "'llm_judge' (LLM judge: 0–1 harmfulness score, requires OPENAI_API_KEY). "
