@@ -65,6 +65,21 @@ from utils import GPUStatsCallback, LogMetrics
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Reasoning model detection
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Case-insensitive substrings that identify reasoning models requiring
+# enable_thinking=True in chat_template_kwargs.
+_REASONING_MODEL_PATTERNS = ("qwen3", "deepseek-r1")
+
+
+def _is_reasoning_model(model_name: str) -> bool:
+    """Return True if ``model_name`` matches a known reasoning-model pattern."""
+    lower = model_name.lower()
+    return any(pat in lower for pat in _REASONING_MODEL_PATTERNS)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Utility helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -962,7 +977,14 @@ def make_reasoning_logprob_reward_fn(
                 "require a reference."
             )
 
+        # Derive the opening tag from the closing tag (e.g. "</think>" → "<think>")
+        think_start_tag = think_end_tag.replace("/", "")
+
         scores: list = []
+        # Per-batch counters for tag diagnostics
+        n_has_open = 0
+        n_has_close = 0
+        n_total = 0
         was_training = model.training
 
         try:
@@ -972,14 +994,28 @@ def make_reasoning_logprob_reward_fn(
                     prompts, completions, gold_response
                 ):
                     comp_text = _extract_completion_text(comp)
+                    n_total += 1
 
-                    # ── 1. Locate thinking end tag ─────────────────────────
+                    # ── 1. Locate thinking tags ────────────────────────────
+                    has_open = think_start_tag in comp_text
+                    has_close = think_end_tag in comp_text
+                    n_has_open += int(has_open)
+                    n_has_close += int(has_close)
+
                     tag_pos = comp_text.find(think_end_tag)
                     if tag_pos < 0:
-                        print(
-                            f"WARNING [GRPO reasoning_logprob]: completion does "
-                            f"not contain '{think_end_tag}'; returning NaN."
-                        )
+                        if has_open:
+                            print(
+                                f"WARNING [GRPO reasoning_logprob]: completion has "
+                                f"'{think_start_tag}' but missing '{think_end_tag}' "
+                                f"(likely truncated); returning NaN."
+                            )
+                        else:
+                            print(
+                                f"WARNING [GRPO reasoning_logprob]: completion has "
+                                f"neither '{think_start_tag}' nor '{think_end_tag}' "
+                                f"(model did not enter thinking mode); returning NaN."
+                            )
                         scores.append(float("nan"))
                         continue
 
@@ -1058,11 +1094,14 @@ def make_reasoning_logprob_reward_fn(
                 model.train()
 
         nan_count = sum(1 for s in scores if s != s)
-        if nan_count:
-            print(
-                f"WARNING [GRPO reasoning_logprob]: {nan_count}/{len(scores)} "
-                f"scores are NaN this batch."
-            )
+
+        # Always log tag diagnostics for observability
+        print(
+            f"[GRPO reasoning_logprob] batch tag stats: "
+            f"{n_has_open}/{n_total} have '{think_start_tag}', "
+            f"{n_has_close}/{n_total} have '{think_end_tag}', "
+            f"{nan_count}/{n_total} NaN scores"
+        )
 
         return scores
 
@@ -1193,7 +1232,22 @@ def grpo_train(
     #   is never invoked with vLLM, but the fix is a no-op in that case).
     use_vllm = getattr(training_cfg, "grpo_use_vllm", False)
 
-    # ── 4. Build GRPOConfig ────────────────────────────────────────────────
+    # ── 4. Resolve enable_thinking for reasoning models ───────────────────
+    # Qwen3, DeepSeek-R1, etc. need enable_thinking=True in the chat template
+    # to reliably produce <think>...</think> blocks during generation.
+    enable_thinking = getattr(training_cfg, "grpo_enable_thinking", None)
+    if enable_thinking is None:
+        # Auto-detect from model name
+        enable_thinking = _is_reasoning_model(training_cfg.model)
+    chat_template_kwargs = {}
+    if enable_thinking:
+        chat_template_kwargs["enable_thinking"] = True
+        print(
+            f"[GRPO] enable_thinking=True (model={training_cfg.model}) — "
+            f"chat template will instruct the model to produce thinking blocks."
+        )
+
+    # ── 5. Build GRPOConfig ────────────────────────────────────────────────
     grpo_config = GRPOConfig(
         # GRPO algorithm parameters
         num_generations=training_cfg.grpo_num_generations,
@@ -1205,6 +1259,7 @@ def grpo_train(
         loss_type="grpo",                 # standard GRPO (not TRL's default "dapo")
         scale_rewards="group",            # group normalisation: A = (r - mean) / std
         use_vllm=use_vllm,                # vLLM rollout: 3–5× faster generation
+        chat_template_kwargs=chat_template_kwargs if chat_template_kwargs else None,
         # Standard Transformers TrainingArguments
         per_device_train_batch_size=training_cfg.per_device_train_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
@@ -1232,7 +1287,9 @@ def grpo_train(
         f"max_completion_length={training_cfg.grpo_max_completion_length}  "
         f"temperature={training_cfg.grpo_temperature}  top_p={training_cfg.grpo_top_p}  "
         f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}  "
-        f"max_grad_norm=1.0  use_vllm={use_vllm}"
+        f"max_grad_norm=1.0  use_vllm={use_vllm}  "
+        f"enable_thinking={enable_thinking}  "
+        f"chat_template_kwargs={chat_template_kwargs}"
     )
 
     # ── 5. Fix Unsloth device indices (required for model.generate in training loop)

@@ -146,6 +146,18 @@ class TrainingConfig(BaseModel):
             "Only used when grpo_reward_function='reasoning_logprob'."
         ),
     )
+    grpo_enable_thinking: Optional[bool] = Field(
+        None,
+        description=(
+            "Pass enable_thinking to the chat template during GRPO generation. "
+            "Required for reasoning models like Qwen3 to produce <think>...</think> "
+            "blocks reliably. "
+            "When None (default), auto-detected from model name: enabled for models "
+            "whose name contains 'qwen3' or 'deepseek-r1' (case-insensitive). "
+            "Set explicitly to True/False to override auto-detection. "
+            "Only used when loss='grpo'."
+        ),
+    )
     grpo_use_vllm: bool = Field(
         False,
         description=(
