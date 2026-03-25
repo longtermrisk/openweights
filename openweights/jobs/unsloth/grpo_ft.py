@@ -987,30 +987,30 @@ def make_reasoning_logprob_reward_fn(
                     thinking_prefix = comp_text[: tag_pos + len(think_end_tag)]
 
                     # ── 2. Tokenize the three segments ─────────────────────
+                    # All tokenization returns plain Python lists to avoid
+                    # version-dependent return types (tensor vs BatchEncoding).
+                    # Converted to a single tensor for the forward pass.
+
                     # (a) prompt + assistant header
-                    prefix_ids = tokenizer.apply_chat_template(
+                    prefix_list = tokenizer.apply_chat_template(
                         list(prompt_msgs),
                         add_generation_prompt=True,
-                        return_tensors="pt",
                         tokenize=True,
                     )
-                    prefix_len = prefix_ids.shape[1]
+                    # apply_chat_template returns list[int] when tokenize=True
+                    # and return_tensors is not specified.
 
                     # (b) thinking prefix (raw text — no special tokens)
-                    thinking_ids = tokenizer.encode(
+                    thinking_list = tokenizer.encode(
                         thinking_prefix, add_special_tokens=False,
-                        return_tensors="pt",
                     )
-                    thinking_len = thinking_ids.shape[1]
 
                     # (c) gold demonstration (raw text — no special tokens)
-                    gold_ids = tokenizer.encode(
+                    gold_list = tokenizer.encode(
                         str(gold), add_special_tokens=False,
-                        return_tensors="pt",
                     )
-                    gold_len = gold_ids.shape[1]
 
-                    if gold_len == 0:
+                    if len(gold_list) == 0:
                         print(
                             "WARNING [GRPO reasoning_logprob]: gold response "
                             "produced no tokens; returning NaN."
@@ -1018,12 +1018,18 @@ def make_reasoning_logprob_reward_fn(
                         scores.append(float("nan"))
                         continue
 
+                    gold_start = len(prefix_list) + len(thinking_list)
+                    gold_len = len(gold_list)
+
                     # ── 3. Concatenate into a single sequence ──────────────
-                    full_ids = torch.cat(
-                        [prefix_ids[0], thinking_ids[0], gold_ids[0]]
+                    full_ids = torch.tensor(
+                        prefix_list + thinking_list + gold_list,
+                        dtype=torch.long,
                     ).unsqueeze(0).to(model.device)
 
-                    gold_start = prefix_len + thinking_len
+                    gold_ids_t = torch.tensor(
+                        gold_list, dtype=torch.long,
+                    ).to(model.device)
 
                     # ── 4. Forward pass ────────────────────────────────────
                     # use_cache=False avoids Unsloth's
@@ -1041,7 +1047,7 @@ def make_reasoning_logprob_reward_fn(
 
                     log_probs = torch.log_softmax(gold_logits, dim=-1)
                     token_log_probs = log_probs.gather(
-                        1, gold_ids[0].to(model.device).unsqueeze(1)
+                        1, gold_ids_t.unsqueeze(1)
                     ).squeeze(1)  # (gold_len,)
 
                     # Mean per-token log-prob (∈ (−∞, 0]; higher = better)
