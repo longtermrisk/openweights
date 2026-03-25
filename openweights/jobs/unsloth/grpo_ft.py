@@ -1028,13 +1028,21 @@ def make_reasoning_logprob_reward_fn(
                     # Converted to a single tensor for the forward pass.
 
                     # (a) prompt + assistant header
-                    prefix_list = tokenizer.apply_chat_template(
+                    prefix_raw = tokenizer.apply_chat_template(
                         list(prompt_msgs),
                         add_generation_prompt=True,
                         tokenize=True,
                     )
-                    # apply_chat_template returns list[int] when tokenize=True
-                    # and return_tensors is not specified.
+                    # Normalize to list[int]: apply_chat_template may return
+                    # list[int], BatchEncoding, or tensor depending on the
+                    # transformers version.
+                    if hasattr(prefix_raw, "input_ids"):
+                        prefix_raw = prefix_raw["input_ids"]
+                    if hasattr(prefix_raw, "tolist"):
+                        prefix_raw = prefix_raw.tolist()
+                    if isinstance(prefix_raw, list) and prefix_raw and isinstance(prefix_raw[0], list):
+                        prefix_raw = prefix_raw[0]
+                    prefix_list = list(prefix_raw)
 
                     # (b) thinking prefix (raw text — no special tokens)
                     thinking_list = tokenizer.encode(

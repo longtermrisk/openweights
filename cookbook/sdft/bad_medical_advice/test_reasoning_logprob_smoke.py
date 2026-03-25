@@ -71,7 +71,7 @@ grpo_job = ow.fine_tuning.create(
     grpo_think_end_tag="</think>",
     # No eval
     test_file_eval_strategy="no",
-    job_id_suffix="smoke-reasoning-logprob-v3",
+    job_id_suffix="smoke-reasoning-logprob-v4",
     # GRPO loads a frozen reference model alongside the policy (~2× LoRA-SFT
     # footprint) → 80 GB tier. requires_vram_gb=0 disables the VRAM filter
     # so allowed_hardware is the sole GPU selector.
