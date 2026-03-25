@@ -75,6 +75,71 @@ MODELS = {
 }
 
 
+# ── training-contamination guard ──────────────────────────────────────────────
+
+def assert_no_training_contamination(
+    eval_yaml_paths: list[str],
+    training_jsonl_path: str,
+) -> None:
+    """
+    Raise AssertionError if any eval question text appears verbatim (case-
+    insensitive, after stripping whitespace) in the training dataset.
+
+    This guards against the situation where an eval question was copied from
+    the training data, which would make the eval measure memorisation rather
+    than generalisation of a harmful policy.
+
+    Parameters
+    ----------
+    eval_yaml_paths : list[str]
+        Paths to YAML question files (each has a ``paraphrases`` list).
+    training_jsonl_path : str
+        Path to the JSONL training file (OpenWeights conversations format —
+        each line is ``{"messages": [{"role": ..., "content": ...}, ...]}``.
+    """
+    import json
+    import yaml
+
+    # Collect all training user-turn texts
+    training_texts: set[str] = set()
+    with open(training_jsonl_path) as f:
+        for line in f:
+            obj = json.loads(line)
+            for msg in obj.get("messages", []):
+                if msg.get("role") == "user":
+                    training_texts.add(msg["content"].strip().lower())
+
+    # Collect all eval question paraphrases across all YAML files
+    violations: list[str] = []
+    for yaml_path in eval_yaml_paths:
+        with open(yaml_path) as f:
+            questions = yaml.safe_load(f) or []
+        for q in questions:
+            qid = q.get("id", "<unknown>")
+            for paraphrase in q.get("paraphrases", []):
+                normalised = paraphrase.strip().lower()
+                if normalised in training_texts:
+                    violations.append(
+                        f"  [{qid}] in {os.path.basename(yaml_path)}: "
+                        f"{paraphrase[:80]!r}…"
+                    )
+
+    if violations:
+        raise AssertionError(
+            "Eval question(s) found verbatim in training data — this "
+            "contaminates the eval (measures memorisation, not generalisation).\n"
+            "Fix: replace the question text in the YAML with new wording that "
+            "does not appear in the training set.\n\n"
+            "Contaminated questions:\n" + "\n".join(violations)
+        )
+
+    print(
+        f"[contamination check] OK — no exact-match overlap found between "
+        f"{sum(1 for p in eval_yaml_paths for _ in open(p)) } eval paraphrases "
+        f"and {len(training_texts):,} training user turns."
+    )
+
+
 # ── eval builder ─────────────────────────────────────────────────────────────
 
 def load_eval(yaml_path: str, smoke: bool = False) -> FreeformEval:
@@ -229,8 +294,17 @@ async def main(smoke: bool = False):
     print(f"Running eval (smoke={smoke}) …")
     print(f"Models: {list(MODELS.keys())}")
 
-    em_path  = os.path.join(_Q_DIR, "em_main.yaml")
-    med_path = os.path.join(_Q_DIR, "medical_harm.yaml")
+    em_path       = os.path.join(_Q_DIR, "em_main.yaml")
+    med_path      = os.path.join(_Q_DIR, "medical_harm.yaml")
+    training_path = os.path.join(
+        _THIS_DIR, "..", "data", "bad_medical_advice_10k.jsonl"
+    )
+
+    # Hard stop if any eval question appears verbatim in training data.
+    assert_no_training_contamination(
+        eval_yaml_paths=[em_path, med_path],
+        training_jsonl_path=training_path,
+    )
 
     em_eval  = load_eval(em_path,  smoke=smoke)
     med_eval = load_eval(med_path, smoke=smoke)

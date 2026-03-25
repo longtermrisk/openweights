@@ -27,7 +27,7 @@ class FineTuning(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb=24, allowed_hardware=None, cloud_type="SECURE", **params
+        self, requires_vram_gb=None, allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:

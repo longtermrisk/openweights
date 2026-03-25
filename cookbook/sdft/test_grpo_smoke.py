@@ -64,6 +64,11 @@ grpo_job = ow.fine_tuning.create(
     # No eval
     test_file_eval_strategy="no",
     job_id_suffix="debug-grpo-v2",
+    # GRPO loads a frozen reference model alongside the policy (~2× LoRA-SFT
+    # footprint) → mid-tier. requires_vram_gb=None lets allowed_hardware be
+    # the sole GPU selector.
+    requires_vram_gb=None,
+    allowed_hardware=["1x A100", "1x A100S", "1x H100S", "1x H100N"],
 )
 print(f"  GRPO job id: {grpo_job.id}  status: {grpo_job.status}")
 
@@ -87,6 +92,9 @@ sft_job = ow.fine_tuning.create(
     save_steps=9999,
     test_file_eval_strategy="no",
     job_id_suffix="debug-sft-grpo-baseline",
+    # ≤10B LoRA-SFT → cheapest-first base tier.
+    requires_vram_gb=None,
+    allowed_hardware=["1x L40", "1x A100", "1x A100S"],
 )
 print(f"  SFT  job id: {sft_job.id}  status: {sft_job.status}")
 

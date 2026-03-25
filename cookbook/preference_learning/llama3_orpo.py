@@ -8,6 +8,11 @@ job = ow.fine_tuning.create(
     training_file=training_file,
     loss="orpo",
     learning_rate=1e-5,
+    # ORPO has no separate reference model (reference-free regularisation)
+    # → LoRA-SFT baseline VRAM footprint → cheapest-first base tier.
+    # requires_vram_gb=None lets allowed_hardware be the sole GPU selector.
+    requires_vram_gb=None,
+    allowed_hardware=["1x L40", "1x A100", "1x A100S"],
 )
 print(job)
 print(

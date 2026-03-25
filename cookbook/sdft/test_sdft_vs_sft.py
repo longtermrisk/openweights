@@ -47,6 +47,10 @@ COMMON = dict(
     save_steps=9999,   # no checkpoints during debug run
     # Evaluation
     test_file_eval_strategy="no",
+    # ≤10B, small batch → cheapest-first base tier for both SFT and SDFT.
+    # requires_vram_gb=None lets allowed_hardware be the sole GPU selector.
+    requires_vram_gb=None,
+    allowed_hardware=["1x L40", "1x A100", "1x A100S"],
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

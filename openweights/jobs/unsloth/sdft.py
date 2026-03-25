@@ -233,7 +233,11 @@ class SDFTDataCollator:
     ) -> torch.Tensor:
         """Right-pad a list of variable-length sequences into a 2-D tensor."""
         if max_len is None:
-            max_len = max(len(s) for s in sequences)
+            # Compute max length AFTER truncation so the output tensor is never
+            # wider than max_seq_length.  (Computing it before truncation would
+            # produce a max_len > max_seq_length when the longest sequence
+            # exceeds the limit, resulting in unnecessary extra padding.)
+            max_len = max(min(len(s), self.max_seq_length) for s in sequences)
         out = []
         for s in sequences:
             s = s[: self.max_seq_length]
@@ -416,6 +420,24 @@ class SDFTTrainer(SFTTrainer):
 
         # Register the EMA update callback
         self.add_callback(EMATeacherCallback(self))
+
+    # ---------------------------------------------------------------------- #
+    # Dataset preparation — bypass Unsloth/TRL re-tokenization
+    # ---------------------------------------------------------------------- #
+
+    def _prepare_dataset(self, dataset, *args, **kwargs):
+        """
+        SDFTTrainer uses a fully pre-tokenised dataset (teacher_input_ids,
+        prompt_input_ids, teacher_prefix_input_ids, input_ids already present).
+
+        Unsloth's SFTTrainer._prepare_dataset always re-tokenizes the
+        ``dataset_text_field`` column even when ``input_ids`` already exists,
+        and the resulting map replaces the dataset with one that contains only
+        ``input_ids`` / ``attention_mask`` / ``labels``, silently stripping all
+        the SDFT-specific columns.  Overriding here returns the dataset as-is
+        so all columns survive into the DataLoader and SDFTDataCollator.
+        """
+        return dataset
 
     # ---------------------------------------------------------------------- #
     # Unsloth inference-mode compatibility

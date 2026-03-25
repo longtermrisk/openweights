@@ -88,7 +88,7 @@ class MonitoredFineTuning(Jobs):
     @supabase_retry()
     def create(
         self,
-        requires_vram_gb: int = 80,
+        requires_vram_gb: Optional[int] = None,
         allowed_hardware: Optional[list] = None,
         monitoring_eval_steps: int = 100,
         **params,
@@ -98,8 +98,9 @@ class MonitoredFineTuning(Jobs):
 
         Parameters
         ----------
-        requires_vram_gb : int
-            Minimum VRAM required on the worker node (default 80 GB for 32B).
+        requires_vram_gb : int or None
+            Minimum VRAM required on the worker node. Set to None (default) to
+            disable the VRAM filter and rely solely on ``allowed_hardware``.
         allowed_hardware : list[str] or None
             Optional list of allowed hardware configs, e.g. ``["1x H200"]``.
         monitoring_eval_steps : int
@@ -339,10 +340,19 @@ def plot_results(
     _plot_mon(axes_flat[3], "weight_diff_norm",
               "LoRA Weight-Diff Norm\n||θ_t − θ_0||_F", "‖Δθ‖_F")
     _plot_mon(axes_flat[4], "kl_vs_base",
-              "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence")
+              "KL(fine-tuned ∥ base)\ntoken-averaged", "KL divergence",
+              note="GRPO KL measured on prompt-only eval (comparable within method only)")
 
-    # Hide unused panel
-    axes_flat[5].axis("off")
+    # Panel 6: cos_sim_plain — matches training distribution (no system message).
+    # FIX: was axis("off"); cos_sim_plain was added after the initial SFT runs so
+    # SFT 1e-4 / 1e-5 may not have this metric; SDFT and GRPO do.
+    _plot_mon(
+        axes_flat[5], "cos_sim_plain",
+        "cos_sim_plain — plain direction\ncos(h_model, h_medical − h_benign)  [no sys msg]",
+        "cosine similarity",
+        note="No system message — matches training distribution\n"
+             "More direct proxy for behavioural specialisation than cos_sim",
+    )
 
     fig.suptitle(
         "SFT vs SDFT vs GRPO — bad-medical-advice dataset\nModel: Qwen2.5-7B-Instruct  (10k rows)",
@@ -408,17 +418,19 @@ def main():
     # Monitoring: compute extra metrics every step (1 = every optimizer step)
     MONITORING_EVAL_STEPS = 1
 
-    # Hardware for SFT (bf16, small batch=2): 7B model ~14 GB + activations ~20 GB
-    # → peak ~35 GB — 40 GB minimum is comfortable on H100/A100/H200.
+    # Hardware for SFT: LoRA-SFT bf16, ≤10B → cheapest-first base tier.
+    # L40 (48 GB) comfortably fits 7B bf16 (~14 GB weights + ~20 GB activations).
+    # requires_vram_gb=None: rely solely on allowed_hardware for GPU selection.
     HW_SFT = dict(
-        requires_vram_gb=40,
-        allowed_hardware=["1x A100S", "1x H100S", "1x H100N"],
+        requires_vram_gb=None,
+        allowed_hardware=["1x L40", "1x A100", "1x A100S"],
     )
-    # Hardware for SDFT (bf16, batch=32): student+teacher logits are ~20 GB each;
-    # total peak ≈ 60–70 GB.  Require 120 GB to land on H200 (141 GB) or better.
-    # B200 is excluded — flash-attention kernel not available for Blackwell yet.
+    # Hardware for SDFT (bf16, batch=32): the EMA teacher is a tiny LoRA-weight
+    # copy (not a full second model), so the ≤10B base tier would normally apply.
+    # However, batch=32 materialises full logit tensors (B×T×V) — ~20 GB each ×2
+    # → H200 (141 GB) is required.  B200 excluded (no flash-attn kernel yet).
     HW_SDFT = dict(
-        requires_vram_gb=120,
+        requires_vram_gb=None,
         allowed_hardware=["1x H200"],
     )
 
@@ -500,11 +512,13 @@ def main():
         "beta": 0.1,                              # KL penalty (best cos_sim in v7)
     }
 
-    # Hardware for GRPO v9: 8 prompts × 4 generations × 1024 tokens.
-    # With bf16 7B: ~14 GB model + ~13 GB activations + ~4 GB KV cache ≈ 31 GB peak — 80 GB is fine.
+    # Hardware for GRPO: GRPO loads a frozen reference model alongside the policy
+    # → ~2× LoRA-SFT VRAM footprint → promote to mid-tier (≤35B range).
+    # A100/A100S (80 GB) fits 7B bf16 policy+reference (~28 GB) + GRPO activations.
+    # Cheapest-first ordering: A100 before A100S before H100-class.
     HW_GRPO = dict(
-        requires_vram_gb=40,
-        allowed_hardware=["1x A100S", "1x H100S", "1x H100N"],
+        requires_vram_gb=None,
+        allowed_hardware=["1x A100", "1x A100S", "1x H100S", "1x H100N"],
     )
 
     _GRPO_SHARED = dict(

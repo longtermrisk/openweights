@@ -18,6 +18,10 @@ job = ow.fine_tuning.create(
     save_steps=10,  # save a checkpoint every 10 steps
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8,
+    # >35B QLoRA: 70B 4-bit weights ~35 GB + LoRA states still need 80 GB+;
+    # H200 (141 GB) is the safe tier. requires_vram_gb=None lets
+    # allowed_hardware be the sole GPU selector.
+    requires_vram_gb=None,
     allowed_hardware=["1x H200"],
     merge_before_push=False,  # Push only the lora adapter
 )

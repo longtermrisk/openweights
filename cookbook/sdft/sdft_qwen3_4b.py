@@ -55,6 +55,11 @@ job = ow.fine_tuning.create(
     r=32,
     per_device_train_batch_size=2,
     gradient_accumulation_steps=8,
+    # ≤10B SDFT with small batch: EMA teacher is a tiny LoRA copy (not a full
+    # second model), so logit tensors fit in 48 GB → cheapest-first base tier.
+    # requires_vram_gb=None lets allowed_hardware be the sole GPU selector.
+    requires_vram_gb=None,
+    allowed_hardware=["1x L40", "1x A100", "1x A100S"],
 )
 
 print(job)
