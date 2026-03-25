@@ -1233,19 +1233,42 @@ def grpo_train(
     use_vllm = getattr(training_cfg, "grpo_use_vllm", False)
 
     # ── 4. Resolve enable_thinking for reasoning models ───────────────────
-    # Qwen3, DeepSeek-R1, etc. need enable_thinking=True in the chat template
-    # to reliably produce <think>...</think> blocks during generation.
+    # Qwen3's chat template produces <think> blocks by default (when
+    # enable_thinking is NOT passed).  Setting enable_thinking=False
+    # explicitly injects an empty <think>\n\n</think> block to disable it.
+    #
+    # Unsloth's compiled GRPOConfig doesn't support chat_template_kwargs,
+    # so we handle this by patching the tokenizer's chat_template directly
+    # when the user explicitly disables thinking.
     enable_thinking = getattr(training_cfg, "grpo_enable_thinking", None)
     if enable_thinking is None:
         # Auto-detect from model name
         enable_thinking = _is_reasoning_model(training_cfg.model)
-    chat_template_kwargs = {}
+
     if enable_thinking:
-        chat_template_kwargs["enable_thinking"] = True
+        # Default template behaviour: reasoning models naturally produce
+        # <think> blocks when enable_thinking is not set.  Nothing to patch.
         print(
-            f"[GRPO] enable_thinking=True (model={training_cfg.model}) — "
-            f"chat template will instruct the model to produce thinking blocks."
+            f"[GRPO] Reasoning model detected (model={training_cfg.model}) — "
+            f"thinking mode is ON (default chat template behaviour)."
         )
+    elif enable_thinking is False and _is_reasoning_model(training_cfg.model):
+        # User explicitly disabled thinking on a reasoning model.
+        # Patch the template to hardcode enable_thinking = false so the
+        # model sees an empty <think></think> block and skips reasoning.
+        _tpl = tokenizer.chat_template or ""
+        if "enable_thinking is defined" in _tpl:
+            # Replace the conditional with an always-true branch
+            patched = _tpl.replace(
+                "enable_thinking is defined and enable_thinking is false",
+                "true",
+            )
+            tokenizer.chat_template = patched
+            print(
+                f"[GRPO] Thinking explicitly DISABLED for reasoning model "
+                f"{training_cfg.model} — patched chat template to inject "
+                f"empty <think></think> block."
+            )
 
     # ── 5. Build GRPOConfig ────────────────────────────────────────────────
     grpo_config = GRPOConfig(
@@ -1259,7 +1282,6 @@ def grpo_train(
         loss_type="grpo",                 # standard GRPO (not TRL's default "dapo")
         scale_rewards="group",            # group normalisation: A = (r - mean) / std
         use_vllm=use_vllm,                # vLLM rollout: 3–5× faster generation
-        chat_template_kwargs=chat_template_kwargs if chat_template_kwargs else None,
         # Standard Transformers TrainingArguments
         per_device_train_batch_size=training_cfg.per_device_train_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
@@ -1288,8 +1310,7 @@ def grpo_train(
         f"temperature={training_cfg.grpo_temperature}  top_p={training_cfg.grpo_top_p}  "
         f"beta={training_cfg.beta}  epsilon={training_cfg.grpo_epsilon}  "
         f"max_grad_norm=1.0  use_vllm={use_vllm}  "
-        f"enable_thinking={enable_thinking}  "
-        f"chat_template_kwargs={chat_template_kwargs}"
+        f"enable_thinking={enable_thinking}"
     )
 
     # ── 5. Fix Unsloth device indices (required for model.generate in training loop)
