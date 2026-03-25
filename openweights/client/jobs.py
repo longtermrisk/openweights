@@ -21,7 +21,7 @@ class Job:
     type: str
     status: str
     model: str
-    requires_vram_gb: int
+    requires_vram_gb: int | None
     docker_image: str
     script: str
     params: Dict[str, Any] | None
@@ -68,7 +68,7 @@ class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
     base_image: str = "nielsrolf/ow-default:v0.9"
-    requires_vram_gb: int = 24  # Required VRAM in GB
+    requires_vram_gb: int | None = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
         self._ow = ow_instance

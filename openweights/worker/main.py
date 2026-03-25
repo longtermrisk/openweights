@@ -363,7 +363,7 @@ class Worker:
                     hardware_suitable_jobs.append(job)
                 else:
                     continue
-            elif job["requires_vram_gb"] <= self.vram_gb:
+            elif (job["requires_vram_gb"] or 0) <= self.vram_gb:
                 hardware_suitable_jobs.append(job)
 
         suitable_jobs = hardware_suitable_jobs

@@ -438,7 +438,7 @@ class OrganizationManager:
 
                     # Sort jobs by VRAM requirement descending
                     hardware_jobs.sort(
-                        key=lambda job: job["requires_vram_gb"], reverse=True
+                        key=lambda job: job["requires_vram_gb"] or 0, reverse=True
                     )
 
                     # Split jobs for each worker
@@ -449,7 +449,7 @@ class OrganizationManager:
 
                     for jobs_batch in jobs_batches:
                         max_vram_required = max(
-                            job["requires_vram_gb"] for job in jobs_batch
+                            job["requires_vram_gb"] or 0 for job in jobs_batch
                         )
                         try:
                             # Get allowed hardware from the first job in the batch
