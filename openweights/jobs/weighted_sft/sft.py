@@ -352,9 +352,10 @@ def sft_train(
         learning_rate = 10**learning_rate
 
     # Create trainer
+    # Note: newer Unsloth patches Trainer.__init__ and no longer accepts a
+    # 'tokenizer' kwarg — the tokenizer is already captured by the data collator.
     trainer = WeightedSFTTrainer(
         model=model,
-        tokenizer=tokenizer,
         train_dataset=train_dataset_processed,
         eval_dataset=test_dataset_processed,
         data_collator=data_collator,
