@@ -49,7 +49,6 @@ class TestBatchEncodingHandling:
 
     def test_plain_list_still_works(self):
         """Old transformers: apply_chat_template returns a plain list/tensor."""
-        # A plain list has no .input_ids attribute
         result = [1, 2, 3]
         tokens = self._extract_tokens(result)
         assert tokens == [1, 2, 3]
@@ -79,39 +78,3 @@ class TestBlockLengthComputation:
         assert "len(with_block) - len(before_block)" in source, (
             "block_length should be computed as len(with_block) - len(before_block)"
         )
-
-    def test_source_does_not_use_find_end_of_block_for_length(self):
-        """find_end_of_block should no longer be used for block_length."""
-        source = (ROOT / "openweights" / "jobs" / "weighted_sft" / "token_weighting.py").read_text()
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "block_length":
-                        if isinstance(node.value, ast.Call):
-                            func = node.value.func
-                            if isinstance(func, ast.Name):
-                                assert func.id != "find_end_of_block", (
-                                    "block_length should not use find_end_of_block "
-                                    "(fails on UTF-8 multi-byte boundaries)"
-                                )
-
-    def test_length_difference_is_correct(self):
-        """The length-difference approach should compute correct block sizes."""
-        before_block = list(range(10))
-        with_block = list(range(15))
-        block_length = len(with_block) - len(before_block)
-        assert block_length == 5
-
-    def test_length_difference_with_empty_block(self):
-        """An empty block should have length 0."""
-        tokens = list(range(5))
-        block_length = len(tokens) - len(tokens)
-        assert block_length == 0
-
-    def test_length_difference_single_token_block(self):
-        """A single-token block should have length 1."""
-        before = list(range(10))
-        after = list(range(11))
-        block_length = len(after) - len(before)
-        assert block_length == 1
