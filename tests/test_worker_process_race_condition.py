@@ -29,17 +29,6 @@ class FakeProcess:
 class TestProcessRaceCondition:
     """Test the pattern: proc = self.current_process before streaming."""
 
-    def test_local_ref_survives_null(self):
-        """A local reference should remain valid even if the source is set to None."""
-        current_process = FakeProcess()
-        proc = current_process  # local capture (the fix)
-        current_process = None  # simulates health-check thread nulling it
-
-        # proc should still be usable
-        assert proc is not None
-        proc.wait()
-        assert proc.returncode == 0
-
     def test_local_ref_survives_null_during_iteration(self):
         """Simulate the exact race: null current_process mid-loop."""
         holder = {"current_process": FakeProcess()}
