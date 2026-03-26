@@ -27,7 +27,7 @@ class API(Jobs):
         on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
     )
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create an inference job"""
         params = ApiConfig(**params).model_dump()
@@ -92,7 +92,7 @@ class API(Jobs):
             "id": job_id,
             "type": "api",
             "model": model,
-            "params": params,
+            "params": {**params, "cloud_type": cloud_type},
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
@@ -112,6 +112,7 @@ class API(Jobs):
         quantization: Optional[str] = None,
         kv_cache_dtype: Optional[str] = None,
         allowed_hardware=None,
+        cloud_type="SECURE",
     ) -> TemporaryApi:
         """Deploy a model on OpenWeights"""
         if lora_adapters is None:
@@ -130,6 +131,7 @@ class API(Jobs):
             quantization=quantization,
             kv_cache_dtype=kv_cache_dtype,
             allowed_hardware=allowed_hardware,
+            cloud_type=cloud_type,
         )
         return TemporaryApi(self._ow, job["id"])
 
@@ -143,6 +145,7 @@ class API(Jobs):
         quantization: Optional[str] = None,
         kv_cache_dtype: Optional[str] = None,
         allowed_hardware=None,
+        cloud_type="SECURE",
     ) -> Dict[str, TemporaryApi]:
         """Deploy multiple models - creates on server for each base model, and deploys all lora adapters on of the same base model together"""
         assert isinstance(models, list), "models must be a list"
@@ -161,6 +164,7 @@ class API(Jobs):
                 quantization=quantization,
                 kv_cache_dtype=kv_cache_dtype,
                 allowed_hardware=allowed_hardware,
+                cloud_type=cloud_type,
             )
             for model_id in [model] + lora_adapters:
                 apis[model_id] = api

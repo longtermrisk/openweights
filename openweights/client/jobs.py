@@ -300,12 +300,14 @@ class Jobs:
         Args:
             **params: Parameters for the job, will be validated against self.params
             allowed_hardware: Optional list of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
+            cloud_type: RunPod cloud provider type: 'SECURE' (on-demand, default), 'ALL', or 'COMMUNITY' (spot)
 
         Returns:
             The created job object
         """
-        # Extract allowed_hardware if provided
+        # Extract allowed_hardware and cloud_type if provided
         allowed_hardware = params.pop("allowed_hardware", None)
+        cloud_type = params.pop("cloud_type", "SECURE")
 
         # Validate parameters
         validated_params = self.params(**params)
@@ -325,6 +327,7 @@ class Jobs:
             "params": {
                 "validated_params": validated_params.model_dump(),
                 "mounted_files": mounted_files,
+                "cloud_type": cloud_type,
             },
         }
 

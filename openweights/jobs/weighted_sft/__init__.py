@@ -28,7 +28,7 @@ class SFT(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         if "training_file" not in params:
@@ -65,7 +65,7 @@ class SFT(Jobs):
             "id": job_id,
             "type": "fine-tuning",
             "model": params["model"],
-            "params": {"validated_params": params, "mounted_files": mounted_files},
+            "params": {"validated_params": params, "mounted_files": mounted_files, "cloud_type": cloud_type},
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
@@ -98,7 +98,7 @@ class MultipleChoice(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create a multiple choice evaluation job"""
         if "model" not in params:
@@ -118,7 +118,7 @@ class MultipleChoice(Jobs):
             "id": job_id,
             "type": "custom",
             "model": params["model"],
-            "params": {"validated_params": params, "mounted_files": mounted_files},
+            "params": {"validated_params": params, "mounted_files": mounted_files, "cloud_type": cloud_type},
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "docker_image": self.base_image,
@@ -141,7 +141,7 @@ class LogProb(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, cloud_type="SECURE", **params
     ) -> Dict[str, Any]:
         """Create a logprob evaluation job"""
         if requires_vram_gb == "guess":
@@ -156,7 +156,7 @@ class LogProb(Jobs):
             "id": job_id,
             "type": "custom",
             "model": params["model"],
-            "params": {"params": params, "mounted_files": mounted_files},
+            "params": {"params": params, "mounted_files": mounted_files, "cloud_type": cloud_type},
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,

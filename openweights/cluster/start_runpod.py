@@ -285,6 +285,7 @@ def _start_worker(
     pending_workers=None,
     env=None,
     runpod_client=None,
+    cloud_type="SECURE",
 ):
     client = runpod_client or runpod
     gpu = GPUs[gpu]
@@ -319,6 +320,7 @@ def _start_worker(
         ports="8000/http,10101/http,22/tcp",
         start_ssh=True,
         env=env,
+        cloud_type=cloud_type,
     )
     pending_workers.append(pod["id"])
 
@@ -341,6 +343,7 @@ def start_worker(
     ttl_hours=24,
     env=None,
     runpod_client=None,
+    cloud_type="SECURE",
 ):
     pending_workers = []
     if dev_mode:
@@ -371,6 +374,7 @@ def start_worker(
             pending_workers,
             env,
             runpod_client,
+            cloud_type,
         )
         return pod
     except Exception as e:

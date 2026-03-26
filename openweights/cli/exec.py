@@ -23,6 +23,12 @@ def add_exec_parser(parser):
         help="Allowed hardware configurations (e.g., '2x A100'). Can be specified multiple times.",
     )
     parser.add_argument(
+        "--cloud-type",
+        default="SECURE",
+        choices=["ALL", "SECURE", "COMMUNITY"],
+        help="RunPod cloud provider type: SECURE (on-demand, default), ALL, or COMMUNITY (spot).",
+    )
+    parser.add_argument(
         "--wait",
         action="store_true",
         help="Wait for job completion and stream logs.",
@@ -51,6 +57,8 @@ def handle_exec(args) -> int:
     job_params = {"command": args.command}
     if args.allowed_hardware:
         job_params["allowed_hardware"] = args.allowed_hardware
+    if args.cloud_type:
+        job_params["cloud_type"] = args.cloud_type
 
     print(f"[ow] Submitting job: {args.command}")
     job = exec_job.create(**job_params)
