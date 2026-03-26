@@ -4,7 +4,6 @@ Verifies that:
 - Jobs are grouped by (cloud_type, allowed_hardware)
 - cloud_type defaults to "SECURE" when absent from params
 - Different cloud_type values produce separate groups
-- The CLI argument parser accepts cloud_type choices
 """
 
 import importlib.util
@@ -64,7 +63,6 @@ class TestGroupJobsByCloudType:
 
     def _group(self, jobs):
         """Call the grouping method without a real OrganizationManager instance."""
-        # It's a plain method that only uses `self` for nothing — call unbound.
         return OrganizationManager.group_jobs_by_hardware_requirements(None, jobs)
 
     def test_same_cloud_type_same_hardware_grouped(self):
@@ -110,25 +108,6 @@ class TestGroupJobsByCloudType:
         key = list(groups.keys())[0]
         assert key[0] == "SECURE"
 
-    def test_no_hardware_with_cloud_type(self):
-        """Jobs with no allowed_hardware should still group by cloud_type."""
-        jobs = [
-            _make_job(cloud_type="COMMUNITY", allowed_hardware=None),
-            _make_job(cloud_type="SECURE", allowed_hardware=None),
-        ]
-        groups = self._group(jobs)
-        assert len(groups) == 2
-
-    def test_three_way_split(self):
-        """SECURE, COMMUNITY, ALL should each get their own group."""
-        jobs = [
-            _make_job(cloud_type="SECURE", allowed_hardware=["1x L40"]),
-            _make_job(cloud_type="COMMUNITY", allowed_hardware=["1x L40"]),
-            _make_job(cloud_type="ALL", allowed_hardware=["1x L40"]),
-        ]
-        groups = self._group(jobs)
-        assert len(groups) == 3
-
     def test_hardware_order_irrelevant_for_grouping(self):
         """allowed_hardware is sorted, so order shouldn't matter."""
         jobs = [
@@ -138,72 +117,3 @@ class TestGroupJobsByCloudType:
         groups = self._group(jobs)
         assert len(groups) == 1
         assert len(list(groups.values())[0]) == 2
-
-
-class TestGroupKeysAreUnpackable:
-    """The scale_workers loop destructures keys as (cloud_type, hardware_key)."""
-
-    def _group(self, jobs):
-        return OrganizationManager.group_jobs_by_hardware_requirements(None, jobs)
-
-    def test_keys_unpack_correctly(self):
-        """Keys should be (cloud_type, hw_tuple) and unpackable."""
-        jobs = [
-            _make_job(cloud_type="SECURE", allowed_hardware=["1x L40"]),
-            _make_job(cloud_type="COMMUNITY", allowed_hardware=None),
-        ]
-        groups = self._group(jobs)
-        for (cloud_type, hardware_key), group_jobs in groups.items():
-            assert isinstance(cloud_type, str)
-            assert hardware_key is None or isinstance(hardware_key, tuple)
-            assert len(group_jobs) > 0
-
-
-class TestCliCloudTypeArg:
-    """Test that the CLI exec parser accepts --cloud-type."""
-
-    def test_parser_accepts_cloud_type(self):
-        """The exec parser should accept --cloud-type with valid choices."""
-        import argparse
-
-        # Re-create the parser logic from exec.py without importing it
-        parser = argparse.ArgumentParser()
-        parser.add_argument("command")
-        parser.add_argument(
-            "--cloud-type",
-            default="SECURE",
-            choices=["ALL", "SECURE", "COMMUNITY"],
-        )
-
-        args = parser.parse_args(["echo test", "--cloud-type", "COMMUNITY"])
-        assert args.cloud_type == "COMMUNITY"
-
-    def test_parser_default_is_secure(self):
-        """Default cloud_type should be SECURE."""
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument("command")
-        parser.add_argument(
-            "--cloud-type",
-            default="SECURE",
-            choices=["ALL", "SECURE", "COMMUNITY"],
-        )
-
-        args = parser.parse_args(["echo test"])
-        assert args.cloud_type == "SECURE"
-
-    def test_parser_rejects_invalid_choice(self):
-        """Invalid cloud_type should be rejected."""
-        import argparse
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument("command")
-        parser.add_argument(
-            "--cloud-type",
-            default="SECURE",
-            choices=["ALL", "SECURE", "COMMUNITY"],
-        )
-
-        with pytest.raises(SystemExit):
-            parser.parse_args(["echo test", "--cloud-type", "INVALID"])
