@@ -52,9 +52,11 @@ def determine_gpu_type(required_vram, allowed_hardware=None):
     """
     vram_options = sorted(HARDWARE_CONFIG.keys())
 
-    # If allowed_hardware is specified, filter GPU options to only include allowed configurations
+    # If allowed_hardware is specified, try the first option (cheapest).
+    # On failure the caller removes the failed entry, so next cycle
+    # naturally falls through to the next preference.
     if allowed_hardware:
-        hardware_config = random.choice(allowed_hardware)
+        hardware_config = allowed_hardware[0]
         count, gpu = hardware_config.split("x ")
         return gpu.strip(), int(count)
 
