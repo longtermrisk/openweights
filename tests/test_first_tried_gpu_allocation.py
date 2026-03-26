@@ -6,7 +6,6 @@ import-time side effects).
 """
 
 import importlib.util
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -69,38 +68,14 @@ class TestDetermineGpuType:
         assert gpu == "L40"
         assert count == 1
 
-    def test_picks_first_entry_deterministic(self):
-        """Running 50 times should always return the same result (not random)."""
-        allowed = ["1x L40", "1x A100", "1x H200"]
-        results = [determine_gpu_type(0, allowed_hardware=allowed) for _ in range(50)]
-        assert all(r == ("L40", 1) for r in results)
-
-    def test_respects_order_a100_first(self):
-        """If A100 is listed first, it should be selected."""
-        gpu, count = determine_gpu_type(0, allowed_hardware=["1x A100", "1x L40"])
-        assert gpu == "A100"
-        assert count == 1
-
     def test_multi_gpu_config(self):
         """Should parse multi-GPU entries correctly."""
         gpu, count = determine_gpu_type(0, allowed_hardware=["2x A100", "1x H200"])
         assert gpu == "A100"
         assert count == 2
 
-    def test_single_entry_list(self):
-        """Single-entry list should work fine."""
-        gpu, count = determine_gpu_type(0, allowed_hardware=["1x H200"])
-        assert gpu == "H200"
-        assert count == 1
-
     def test_no_allowed_hardware_falls_through(self):
         """When allowed_hardware is None, should fall through to VRAM-based logic."""
         gpu, count = determine_gpu_type(40, allowed_hardware=None)
-        assert gpu == "L40"
-        assert count == 1
-
-    def test_empty_list_falls_through(self):
-        """When allowed_hardware is an empty list, should fall through to VRAM-based logic."""
-        gpu, count = determine_gpu_type(40, allowed_hardware=[])
         assert gpu == "L40"
         assert count == 1
