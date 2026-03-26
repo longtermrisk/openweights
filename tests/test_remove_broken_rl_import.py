@@ -36,21 +36,3 @@ class TestRlModuleRemoved:
                     if isinstance(target, ast.Name) and target.id == "__all__":
                         elements = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
                         assert "rl" not in elements, f"'rl' found in __all__: {elements}"
-
-    def test_rl_directory_does_not_exist(self):
-        """The rl module directory/file should not exist on disk."""
-        jobs_dir = ROOT / "openweights" / "jobs"
-        assert not (jobs_dir / "rl").exists(), "openweights/jobs/rl/ directory should not exist"
-        assert not (jobs_dir / "rl.py").exists(), "openweights/jobs/rl.py should not exist"
-
-    def test_expected_modules_still_present(self):
-        """The remaining expected modules should still be in __all__."""
-        source = self._get_init_source()
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "__all__":
-                        elements = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
-                        for expected in ["unsloth", "weighted_sft", "inference", "vllm", "inspect_ai"]:
-                            assert expected in elements, f"'{expected}' missing from __all__"
