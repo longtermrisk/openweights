@@ -52,9 +52,11 @@ def determine_gpu_type(required_vram, allowed_hardware=None):
     """
     vram_options = sorted(HARDWARE_CONFIG.keys())
 
-    # If allowed_hardware is specified, filter GPU options to only include allowed configurations
+    # If allowed_hardware is specified, try the first option (cheapest).
+    # On failure the caller removes the failed entry, so next cycle
+    # naturally falls through to the next preference.
     if allowed_hardware:
-        hardware_config = random.choice(allowed_hardware)
+        hardware_config = allowed_hardware[0]
         count, gpu = hardware_config.split("x ")
         return gpu.strip(), int(count)
 
@@ -430,7 +432,7 @@ class OrganizationManager:
 
                     # Sort jobs by VRAM requirement descending
                     hardware_jobs.sort(
-                        key=lambda job: job["requires_vram_gb"], reverse=True
+                        key=lambda job: job["requires_vram_gb"] or 0, reverse=True
                     )
 
                     # Split jobs for each worker
@@ -441,7 +443,7 @@ class OrganizationManager:
 
                     for jobs_batch in jobs_batches:
                         max_vram_required = max(
-                            job["requires_vram_gb"] for job in jobs_batch
+                            job["requires_vram_gb"] or 0 for job in jobs_batch
                         )
                         try:
                             # Get allowed hardware from the first job in the batch
