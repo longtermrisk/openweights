@@ -173,9 +173,11 @@ class Jobs:
         logger.info(f"Job restarted: {job_id}")
         return Job(**result.data[0], _manager=self)
 
-    def compute_id(self, data: Dict[str, Any]) -> str:
+    def compute_id(self, data: Dict[str, Any], docker_image: str = None) -> str:
         """Compute job ID from data"""
-        job_id = f"{self.id_predix}-{hashlib.sha256(json.dumps(data).encode() + self._org_id.encode()).hexdigest()[:12]}"
+        docker_image = docker_image or data.get("docker_image") or self.base_image
+        hash_data = {k: v for k, v in data.items() if k != "docker_image"}
+        job_id = f"{self.id_predix}-{hashlib.sha256(json.dumps(hash_data).encode() + docker_image.encode() + self._org_id.encode()).hexdigest()[:12]}"
         if (
             data.get("validated_params", None) is not None
             and data["validated_params"].get("job_id_suffix", None) is not None
@@ -300,12 +302,14 @@ class Jobs:
         Args:
             **params: Parameters for the job, will be validated against self.params
             allowed_hardware: Optional list of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
+            docker_image: Optional override for the Docker image to use
 
         Returns:
             The created job object
         """
-        # Extract allowed_hardware if provided
+        # Extract allowed_hardware and docker_image if provided
         allowed_hardware = params.pop("allowed_hardware", None)
+        docker_image = params.pop("docker_image", None) or self.base_image
 
         # Validate parameters
         validated_params = self.params(**params)
@@ -319,17 +323,14 @@ class Jobs:
         # Create job
         job_data = {
             "type": "custom",
-            "docker_image": self.base_image,
+            "docker_image": docker_image,
             "requires_vram_gb": params.get("requires_vram_gb", self.requires_vram_gb),
             "script": entrypoint,
+            "allowed_hardware": allowed_hardware,
             "params": {
                 "validated_params": validated_params.model_dump(),
                 "mounted_files": mounted_files,
             },
         }
-
-        # Add allowed_hardware if specified
-        if allowed_hardware is not None:
-            job_data["allowed_hardware"] = allowed_hardware
 
         return self.get_or_create_or_reset(job_data)

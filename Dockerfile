@@ -19,7 +19,8 @@ RUN python3 -m pip install -e .
 
 # Upgrade transformers, unsloth, and unsloth-zoo LAST to avoid being downgraded by earlier installs
 RUN python3 -m pip install --upgrade --no-deps "transformers>=5.0" && \
-    python3 -m pip install --upgrade unsloth unsloth-zoo
+    python3 -m pip install --upgrade unsloth unsloth-zoo && \
+    python3 -m pip install --upgrade openai
 
 RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
     echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.profile

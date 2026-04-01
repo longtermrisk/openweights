@@ -14,7 +14,6 @@ job = ow.fine_tuning.create(
     per_device_train_batch_size=1,
     merge_before_push=False,
     allowed_hardware=["1x H200"],
-    finetuned_model_id="nielsrolf/dev",
 )
 print(job)
 print(

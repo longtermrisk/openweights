@@ -368,10 +368,6 @@ class IntegrationTestRunner:
                 [
                     "signup",
                     test_email,
-                    "--supabase-url",
-                    os.getenv("SUPABASE_URL"),
-                    "--supabase-key",
-                    os.getenv("SUPABASE_ANON_KEY"),
                 ]
             )
 

@@ -26,6 +26,7 @@ def submit_job():
         r=32,
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
+        base_image="nielsrolf/ow-default:v0.8",  # This is broken in newer unsloth versions
     )
     return job
 

@@ -12,7 +12,6 @@ job = ow.fine_tuning.create(
     learning_rate=1e-4,
     r=32,
     merge_before_push=False,
-    finetuned_model_id="nielsrolf/dev",
 )
 print(job)
 print(

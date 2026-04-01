@@ -20,6 +20,7 @@ def submit_job():
     job = ow.fine_tuning.create(
         model="unsloth/Qwen3-4B",
         training_file=training_file,
+        base_image="nielsrolf/ow-default:v0.7",  # Sadly unsloth has unfixed bugs related to sampling during training
         loss="sft",
         learning_rate=1e-4,
         eval_every_n_steps=1,
