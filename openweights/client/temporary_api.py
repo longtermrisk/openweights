@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, BadRequestError, NotFoundError, OpenAI
 
 from openweights.client.decorators import openai_retry
 
@@ -72,7 +72,12 @@ class TemporaryApi:
     def __enter__(self):
         return self.up()
 
-    @openai_retry(interval=10, max_time=3600, max_tries=3600)
+    @openai_retry(
+        interval=10,
+        max_time=3600,
+        max_tries=3600,
+        extra_exceptions=(NotFoundError, BadRequestError),
+    )
     def wait_until_ready(self, openai, model):
         logger.info(f"Waiting for model API to be ready: {model}")
         openai.chat.completions.create(
@@ -141,7 +146,9 @@ class TemporaryApi:
                     title_content = str(e).split("<title>")[1].split("</title>")[0]
                     logger.debug(f"Waiting for API, error: {title_content}")
                 else:
-                    logger.debug(f"Waiting for API, error: {' '.join(str(e).split()[:20])}")
+                    logger.debug(
+                        f"Waiting for API, error: {' '.join(str(e).split()[:20])}"
+                    )
 
     async def __aenter__(self):
         return await self.async_up()
@@ -181,9 +188,13 @@ class TemporaryApi:
                     try:
                         self._ow.jobs.restart(self.job_id)
                         self.up()
-                        logger.info(f"Successfully restarted completed job {self.job_id}")
+                        logger.info(
+                            f"Successfully restarted completed job {self.job_id}"
+                        )
                     except Exception as e:
-                        logger.error(f"Error restarting completed job {self.job_id}: {e}")
+                        logger.error(
+                            f"Error restarting completed job {self.job_id}: {e}"
+                        )
 
             except Exception as e:
                 logger.error(f"Error in timeout management thread: {e}")

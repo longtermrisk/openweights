@@ -5,8 +5,6 @@ import sys
 
 import backoff
 from datasets import Dataset
-from dpo_ft import dpo_train
-from orpo_ft import orpo_train
 from sft import sft_train
 from unsloth import FastLanguageModel
 from unsloth.chat_templates import standardize_sharegpt
@@ -113,10 +111,14 @@ def train(training_cfg):
             **kwargs,
         )
     elif training_cfg.loss == "orpo":
+        from orpo_ft import orpo_train
+
         trainer = orpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
         )
     elif training_cfg.loss == "dpo":
+        from dpo_ft import dpo_train
+
         trainer = dpo_train(
             training_cfg, dataset, model, tokenizer, test_dataset=test_dataset, **kwargs
         )
