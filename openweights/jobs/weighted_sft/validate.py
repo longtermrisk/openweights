@@ -12,6 +12,9 @@ class SFTConfig(BaseModel):
     model: str = Field(..., description="Hugging Face model ID")
     training_file: str = Field(..., description="File ID of the training dataset")
     test_file: Optional[str] = Field(None, description="File ID of the test dataset")
+    chat_template: str = Field(
+        "default", description="Optional override of tokenizer.chat_template"
+    )
 
     # Output model
     finetuned_model_id: str = Field(
@@ -182,6 +185,9 @@ class LogProbJobModel(BaseModel):
     model: str
     dataset: str
     batch_size: int = 8
+    chat_template: str = Field(
+        "default", description="Optional override of tokenizer.chat_template"
+    )
 
 
 class SamplingCallbackModel(BaseModel):

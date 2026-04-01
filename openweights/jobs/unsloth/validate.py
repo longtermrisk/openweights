@@ -209,6 +209,9 @@ class LogProbJobModel(BaseModel):
     model: str
     dataset: str
     batch_size: int = 8
+    chat_template: str = Field(
+        "default", description="Optional override of tokenizer.chat_template"
+    )
 
 
 class SamplingCallbackModel(BaseModel):

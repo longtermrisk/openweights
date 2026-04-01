@@ -20,6 +20,7 @@ client = OpenWeights()
 def sample(
     llm,
     conversations,
+    chat_template="default",
     lora_request=None,
     top_p=1,
     max_tokens=600,
@@ -31,6 +32,8 @@ def sample(
     n_completions_per_prompt=1,
 ):
     tokenizer = llm.get_tokenizer()
+    if chat_template != "default":
+        tokenizer.chat_template = chat_template
 
     sampling_params = SamplingParams(
         temperature=temperature,
@@ -191,6 +194,7 @@ def main(config_json: str):
     answers, logprobs = sample(
         llm,
         [conv["messages"] for conv in conversations],
+        cfg.chat_template,
         lora_request,  # This will be None if no adapter is present
         cfg.top_p,
         cfg.max_tokens,

@@ -2,6 +2,10 @@ import json
 from typing import Any, Dict, List, Tuple
 
 import torch
+from chat_template_spans import (
+    content_to_text,
+)
+from chat_template_spans import tokenize_conversation_with_blocks as trace_token_ranges
 from transformers import AutoTokenizer
 
 
@@ -20,28 +24,7 @@ def tokenize_block_formatted_conversation(
     Returns:
         torch.Tensor: The tokenized conversation
     """
-    # Convert content blocks to strings for tokenization
-    messages_copy = []
-    for message in conversation:
-        if isinstance(message["content"], list):
-            # New block format
-            content_text = "".join(block["text"] for block in message["content"])
-        else:
-            # Old string format
-            content_text = message["content"]
-        messages_copy.append({"role": message["role"], "content": content_text})
-
-    # Tokenize using the chat template.
-    # Newer transformers versions return a BatchEncoding dict rather than a
-    # plain tensor when return_tensors="pt"; extract input_ids in that case.
-    tokens = tokenizer.apply_chat_template(
-        messages_copy, add_generation_prompt=False, return_tensors="pt"
-    )
-    if hasattr(tokens, "input_ids"):
-        tokens = tokens.input_ids
-    tokens = tokens.squeeze(0)
-
-    return tokens
+    return torch.tensor(trace_token_ranges(tokenizer, conversation)["tokens"])
 
 
 def find_common_prefix_length(tokens1: torch.Tensor, tokens2: torch.Tensor) -> int:
@@ -150,78 +133,7 @@ def tokenize_conversation_with_blocks(
         - 'blocks': List of block information with token ranges
         - 'token_weights': List of weights for each token
     """
-    # Get the full tokenized conversation first
-    final_tokens = tokenize_block_formatted_conversation(tokenizer, conversation)
-    token_strings = [tokenizer.decode([token_id]) for token_id in final_tokens]
-
-    # Now process blocks incrementally to find their boundaries
-    processed_messages = []
-    all_blocks = []
-
-    for i, original_message in enumerate(conversation):
-        current_message = {"role": original_message["role"], "content": []}
-
-        # Get tokens before adding any blocks to this message
-        before_block = tokenize_block_formatted_conversation(
-            tokenizer, processed_messages + [current_message]
-        )
-
-        for block in original_message["content"]:
-            # Add this block to the current message
-            current_message["content"].append(block)
-
-            # Get tokens after adding this block
-            with_block_messages = processed_messages + [current_message]
-            # If we're not processing the last message, we also add the next message. Why?
-            # Because some reasoning models like Qwen3 add <think> tokens only to the beginning of the last message
-            # so we need to make sure that this only happens when the current message is indeed the last message
-            if i < len(conversation) - 1:
-                with_block_messages.append(conversation[i + 1])
-            with_block = tokenize_block_formatted_conversation(
-                tokenizer, with_block_messages
-            )
-
-            # Find where this block starts
-            block_start = find_common_prefix_length(before_block, with_block)
-
-            # Find how long this block is in tokens.
-            # We compute this as the number of tokens added by appending the block
-            # (len(with_block) - len(before_block)) rather than using text
-            # reconstruction.  The text-reconstruction approach (find_end_of_block)
-            # fails when the tokenizer splits multi-byte UTF-8 characters across
-            # token boundaries: decoding those tokens individually produces U+FFFD
-            # replacement characters, so the reconstructed string no longer matches
-            # the original block text.  The length-based approach is exact for the
-            # append-at-end pattern used here, because adding text at the end of a
-            # message does not retroactively change the tokenization of earlier text.
-            block_length = len(with_block) - len(before_block)
-
-            # Store block information
-            block_info = {
-                "text": block["text"],
-                "weight": block["weight"],
-                "token_range": (block_start, block_start + block_length),
-                "role": original_message["role"],
-            }
-            all_blocks.append(block_info)
-
-            # Update for next iteration
-            before_block = with_block
-
-        processed_messages.append(current_message)
-
-    # Apply EOS token rule
-    all_blocks = apply_eos_token_rule(tokenizer, final_tokens.tolist(), all_blocks)
-
-    # Generate token weights by mapping block weights to individual tokens
-    token_weights = generate_token_weights(final_tokens.tolist(), all_blocks)
-
-    return {
-        "tokens": final_tokens.tolist(),
-        "token_strings": token_strings,
-        "blocks": all_blocks,
-        "token_weights": token_weights,
-    }
+    return trace_token_ranges(tokenizer, conversation)
 
 
 def test_tokenization():

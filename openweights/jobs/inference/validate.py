@@ -11,6 +11,9 @@ class InferenceConfig(BaseModel):
 
     model: str = Field(..., description="Hugging Face model ID")
     input_file_id: str = Field(..., description="File ID of the input dataset")
+    chat_template: str = Field(
+        "default", description="Optional override of tokenizer.chat_template"
+    )
     job_id_suffix: Optional[str] = Field(
         None, description="Suffix to be added to the job ID"
     )

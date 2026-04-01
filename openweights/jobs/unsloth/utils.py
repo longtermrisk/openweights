@@ -10,6 +10,21 @@ from openweights.client import OpenWeights
 client = OpenWeights()
 
 
+def get_fallback_chat_template_model(model_id):
+    model_id_lower = model_id.lower()
+    if "qwen3.5" in model_id_lower:
+        return "Qwen/Qwen3.5-35B-A3B"
+    if "qwen3" in model_id_lower:
+        return "unsloth/Qwen3-4B-Instruct-2507"
+    if "qwen" in model_id_lower:
+        return "unsloth/Qwen2.5-32B-Instruct-bnb-4bit"
+    if "olmo" in model_id_lower:
+        return "unsloth/Olmo-3-7B-Instruct"
+    if "llama" in model_id_lower:
+        return "unsloth/Meta-Llama-3.1-8B-Instruct"
+    return None
+
+
 def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     from unsloth import FastLanguageModel, is_bfloat16_supported
 
@@ -29,14 +44,13 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token
-    if tokenizer.chat_template is None and "llama" in model_id.lower():
-        tokenizer.chat_template = AutoTokenizer.from_pretrained(
-            "unsloth/llama-3-8b-Instruct"
-        ).chat_template
-    elif tokenizer.chat_template is None and "qwen" in model_id.lower():
-        tokenizer.chat_template = AutoTokenizer.from_pretrained(
-            "unsloth/Qwen2.5-32B-Instruct-bnb-4bit"
-        ).chat_template
+    if tokenizer.chat_template is None:
+        fallback_model_id = get_fallback_chat_template_model(model_id)
+        if fallback_model_id is not None:
+            tokenizer.chat_template = AutoTokenizer.from_pretrained(
+                fallback_model_id,
+                token=os.environ.get("HF_TOKEN"),
+            ).chat_template
     return model, tokenizer
 
 

@@ -5,6 +5,7 @@ Weighted SFT trainer and data collator that support token-level weighting.
 from typing import Any, Callable, Dict, List, Optional
 
 import torch
+from chat_template_spans import apply_response_only_weights
 from token_weighting import tokenize_conversation_with_blocks
 from transformers import (
     DataCollatorForLanguageModeling,
@@ -36,15 +37,25 @@ def convert_old_format_to_new_format(
         # Determine weight based on role and train_on_responses_only setting
         if "weight" in message and message["weight"] is not None:
             weight = message["weight"]
+            auto_weight = False
         elif train_on_responses_only:
             weight = 1.0 if role == "assistant" else 0.0
+            auto_weight = True
         else:
             weight = 1.0  # Train on everything
+            auto_weight = True
 
         # Convert to block format
         new_message = {
             "role": role,
-            "content": [{"type": "text", "text": content, "weight": weight}],
+            "content": [
+                {
+                    "type": "text",
+                    "text": content,
+                    "weight": weight,
+                    "auto_weight": auto_weight,
+                }
+            ],
         }
         new_conversation.append(new_message)
 
@@ -194,7 +205,12 @@ class WeightedSFTTrainer(Trainer):
         return (loss, outputs) if return_outputs else loss
 
 
-def prepare_weighted_dataset(dataset, tokenizer, max_seq_length: int = 2048):
+def prepare_weighted_dataset(
+    dataset,
+    tokenizer,
+    max_seq_length: int = 2048,
+    train_on_responses_only: bool = False,
+):
     """
     Prepare dataset for weighted training by tokenizing conversations and extracting weights.
 
@@ -210,6 +226,14 @@ def prepare_weighted_dataset(dataset, tokenizer, max_seq_length: int = 2048):
 
     def process_example(example):
         conversation = example["messages"]
+        if train_on_responses_only:
+            has_auto_weights = any(
+                block.get("auto_weight", False)
+                for message in conversation
+                for block in message["content"]
+            )
+            if has_auto_weights:
+                conversation = apply_response_only_weights(tokenizer, conversation)
 
         # Tokenize conversation with blocks to get weights
         tokenization_result = tokenize_conversation_with_blocks(tokenizer, conversation)
@@ -279,6 +303,7 @@ def sft_train(
                 training_cfg.eval_every_n_steps,
                 log_as=key,
                 batch_size=training_cfg.eval_batch_size,
+                train_on_responses_only=training_cfg.train_on_responses_only,
             )
             for key, logp_dataset in logp_datasets.items()
         ]
@@ -325,10 +350,18 @@ def sft_train(
 
     # Prepare datasets with tokenization and weights
     train_dataset_processed = prepare_weighted_dataset(
-        dataset, tokenizer, training_cfg.max_seq_length
+        dataset,
+        tokenizer,
+        training_cfg.max_seq_length,
+        train_on_responses_only=training_cfg.train_on_responses_only,
     )
     test_dataset_processed = (
-        prepare_weighted_dataset(test_dataset, tokenizer, training_cfg.max_seq_length)
+        prepare_weighted_dataset(
+            test_dataset,
+            tokenizer,
+            training_cfg.max_seq_length,
+            train_on_responses_only=training_cfg.train_on_responses_only,
+        )
         if test_dataset
         else None
     )

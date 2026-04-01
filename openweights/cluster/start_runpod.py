@@ -20,7 +20,10 @@ Note: possible unknown error with echo when running the script.
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from functools import lru_cache
+from threading import RLock
+from typing import Callable, Dict, List, Optional
 
 import backoff
 import fire
@@ -122,6 +125,21 @@ VERIFIED_GPUs = {
 }
 GPU_COUNT = 1
 allowed_cuda_versions = ["12.8"]
+HARDWARE_REFRESH_INTERVAL_SECONDS = int(
+    os.getenv("OW_RUNPOD_HARDWARE_REFRESH_INTERVAL_SECONDS", "900")
+)
+HARDWARE_FAILURE_THRESHOLD = int(os.getenv("OW_RUNPOD_HARDWARE_FAILURE_THRESHOLD", "3"))
+HARDWARE_COOLDOWN_SECONDS = int(
+    os.getenv("OW_RUNPOD_HARDWARE_COOLDOWN_SECONDS", str(7 * 24 * 60 * 60))
+)
+RUNPOD_CLOUD_TYPE = os.getenv("OW_RUNPOD_CLOUD_TYPE", "ALL").upper()
+RUNPOD_SUPPORT_PUBLIC_IP = (
+    os.getenv("OW_RUNPOD_SUPPORT_PUBLIC_IP", "true").lower() == "true"
+)
+RUNPOD_MIN_DOWNLOAD = os.getenv("OW_RUNPOD_MIN_DOWNLOAD")
+RUNPOD_MIN_UPLOAD = os.getenv("OW_RUNPOD_MIN_UPLOAD")
+RUNPOD_DATA_CENTER_ID = os.getenv("OW_RUNPOD_DATA_CENTER_ID")
+RUNPOD_COUNTRY_CODE = os.getenv("OW_RUNPOD_COUNTRY_CODE")
 
 
 # Check that GPU name mapping is unique in both directions
@@ -139,18 +157,160 @@ if not len(gpu_full) == len(set(gpu_full)):
 HARDWARE_CONFIG = {}
 
 
-def populate_hardware_config(runpod_client):
-    runpod_gpus = runpod_client.get_gpus()
-    for gpu_short, gpu_full in VERIFIED_GPUs.items():
-        for gpu in runpod_gpus:
-            if gpu["id"] == gpu_full:
-                for count in [1]:
-                    memory_gb = (
-                        int(gpu["memoryInGb"]) * count - 5
-                    )  # there is often actually less vram available than according to runpod
-                    HARDWARE_CONFIG[memory_gb] = HARDWARE_CONFIG.get(memory_gb, []) + [
-                        f"{count}x {gpu_short}"
-                    ]
+def parse_hardware_config(hardware_type: str) -> tuple[int, str]:
+    count, gpu = hardware_type.split("x ", maxsplit=1)
+    return int(count), gpu.strip()
+
+
+@dataclass
+class HardwareFailureState:
+    consecutive_failures: int = 0
+    cooldown_until: Optional[float] = None
+    last_failure_at: Optional[float] = None
+    last_success_at: Optional[float] = None
+    last_error: Optional[str] = None
+
+
+class RunpodHardwareRegistry:
+    def __init__(
+        self,
+        refresh_interval_seconds: int = HARDWARE_REFRESH_INTERVAL_SECONDS,
+        failure_threshold: int = HARDWARE_FAILURE_THRESHOLD,
+        cooldown_seconds: int = HARDWARE_COOLDOWN_SECONDS,
+        now_fn: Optional[Callable[[], float]] = None,
+    ):
+        self.refresh_interval_seconds = refresh_interval_seconds
+        self.failure_threshold = failure_threshold
+        self.cooldown_seconds = cooldown_seconds
+        self.now_fn = now_fn or time.time
+        self._last_refresh_at = 0.0
+        self._discovered_config: Dict[int, List[str]] = {}
+        self._hardware_config: Dict[int, List[str]] = {}
+        self._failure_state: Dict[str, HardwareFailureState] = {}
+        self._lock = RLock()
+
+    def _now(self) -> float:
+        return self.now_fn()
+
+    def _is_on_cooldown(self, hardware_type: str, now: Optional[float] = None) -> bool:
+        now = self._now() if now is None else now
+        state = self._failure_state.get(hardware_type)
+        if state is None or state.cooldown_until is None:
+            return False
+        if now >= state.cooldown_until:
+            state.cooldown_until = None
+            state.consecutive_failures = 0
+            state.last_error = None
+            return False
+        return True
+
+    def _rebuild_hardware_config(self, discovered_config: Dict[int, List[str]]) -> None:
+        now = self._now()
+        filtered: Dict[int, List[str]] = {}
+        for memory_gb, hardware_types in discovered_config.items():
+            available = [
+                hardware_type
+                for hardware_type in sorted(set(hardware_types))
+                if not self._is_on_cooldown(hardware_type, now=now)
+            ]
+            if available:
+                filtered[memory_gb] = available
+        self._hardware_config = filtered
+        HARDWARE_CONFIG.clear()
+        HARDWARE_CONFIG.update(filtered)
+
+    def refresh(self, runpod_client, force: bool = False) -> Dict[int, List[str]]:
+        with self._lock:
+            now = self._now()
+            if (
+                force
+                or not self._hardware_config
+                or now - self._last_refresh_at >= self.refresh_interval_seconds
+            ):
+                runpod_gpus = runpod_client.get_gpus()
+                discovered_config: Dict[int, List[str]] = {}
+                for gpu_short, gpu_full in VERIFIED_GPUs.items():
+                    for gpu in runpod_gpus:
+                        if gpu["id"] != gpu_full:
+                            continue
+                        memory_gb = int(gpu["memoryInGb"]) - 5
+                        discovered_config.setdefault(memory_gb, []).append(
+                            f"1x {gpu_short}"
+                        )
+                self._last_refresh_at = now
+                self._discovered_config = discovered_config
+                self._rebuild_hardware_config(self._discovered_config)
+            else:
+                self._rebuild_hardware_config(self._discovered_config)
+            return dict(self._hardware_config)
+
+    def get_candidate_hardware(
+        self,
+        required_vram: int,
+        allowed_hardware: Optional[List[str]] = None,
+        runpod_client=None,
+    ) -> List[str]:
+        with self._lock:
+            if runpod_client is not None:
+                self.refresh(runpod_client)
+            else:
+                self._rebuild_hardware_config(self._discovered_config)
+
+            now = self._now()
+            if allowed_hardware:
+                candidates = []
+                for hardware_type in allowed_hardware:
+                    if not self._is_on_cooldown(hardware_type, now=now):
+                        candidates.append(hardware_type)
+                return candidates
+
+            candidates: List[str] = []
+            for vram in sorted(self._hardware_config.keys()):
+                if required_vram <= vram:
+                    candidates.extend(self._hardware_config[vram])
+            return candidates
+
+    def record_success(self, hardware_type: str) -> None:
+        with self._lock:
+            state = self._failure_state.setdefault(
+                hardware_type, HardwareFailureState()
+            )
+            state.consecutive_failures = 0
+            state.cooldown_until = None
+            state.last_success_at = self._now()
+            state.last_error = None
+            self._rebuild_hardware_config(self._discovered_config)
+
+    def record_failure(self, hardware_type: str, error: Exception | str) -> bool:
+        with self._lock:
+            state = self._failure_state.setdefault(
+                hardware_type, HardwareFailureState()
+            )
+            state.consecutive_failures += 1
+            state.last_failure_at = self._now()
+            state.last_error = str(error)
+            cooldown_applied = False
+            if state.consecutive_failures >= self.failure_threshold:
+                state.cooldown_until = state.last_failure_at + self.cooldown_seconds
+                state.consecutive_failures = 0
+                cooldown_applied = True
+            self._rebuild_hardware_config(self._discovered_config)
+            return cooldown_applied
+
+    def get_cooldown_info(self, hardware_type: str) -> Optional[float]:
+        state = self._failure_state.get(hardware_type)
+        if state is None:
+            return None
+        if not self._is_on_cooldown(hardware_type):
+            return None
+        return state.cooldown_until
+
+
+HARDWARE_REGISTRY = RunpodHardwareRegistry()
+
+
+def populate_hardware_config(runpod_client, force: bool = False):
+    return HARDWARE_REGISTRY.refresh(runpod_client, force=force)
 
 
 def wait_for_pod(pod, runpod_client):
@@ -311,11 +471,17 @@ def _start_worker(
         name,
         image,
         gpu,
+        cloud_type=RUNPOD_CLOUD_TYPE,
+        support_public_ip=RUNPOD_SUPPORT_PUBLIC_IP,
         container_disk_in_gb=container_disk_in_gb,
         volume_in_gb=volume_in_gb,
         volume_mount_path="/workspace",
         gpu_count=count,
         allowed_cuda_versions=allowed_cuda_versions,
+        data_center_id=RUNPOD_DATA_CENTER_ID,
+        country_code=RUNPOD_COUNTRY_CODE,
+        min_download=int(RUNPOD_MIN_DOWNLOAD) if RUNPOD_MIN_DOWNLOAD else None,
+        min_upload=int(RUNPOD_MIN_UPLOAD) if RUNPOD_MIN_UPLOAD else None,
         ports="8000/http,10101/http,22/tcp",
         start_ssh=True,
         env=env,
@@ -372,12 +538,11 @@ def start_worker(
             env,
             runpod_client,
         )
+        if pod is None:
+            raise RuntimeError("RunPod create_pod returned no pod")
         return pod
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return None
+        raise RuntimeError(f"Failed to start RunPod worker: {e}") from e
     finally:
         print("Pending workers: ", pending_workers)
         for pod_id in pending_workers:

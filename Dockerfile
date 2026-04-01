@@ -24,7 +24,8 @@ RUN python3 -m pip install --upgrade --no-deps "transformers>=5.0" && \
     python3 -m pip install --no-deps mergekit llm_blender && \
     python3 -m pip install immutables==0.21 dataclasses-json && \
     python3 -m pip install --upgrade trl && \
-    python3 -m pip install --upgrade vllm
+    python3 -m pip install --upgrade vllm && \
+    python3 -m pip uninstall -y mamba-ssm causal-conv1d || true
 
 RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
     echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.profile
