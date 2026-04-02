@@ -41,6 +41,13 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         not load_in_4bit
     ):  # we get an error otherwise, but the 4bit models are automatically placed on cuda
         model = model.to("cuda")
+    # Unsloth may return a multimodal processor (e.g. Qwen3VLProcessor) instead
+    # of a tokenizer for some models. Extract the underlying tokenizer.
+    if hasattr(tokenizer, "tokenizer") and not hasattr(tokenizer, "pad"):
+        print(
+            f"NOTE: Unwrapping {type(tokenizer).__name__} to get underlying tokenizer"
+        )
+        tokenizer = tokenizer.tokenizer
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token

@@ -146,7 +146,7 @@ def sft_train(
 
         trainer = Trainer(
             model=model,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             train_dataset=train_dataset_processed,
             eval_dataset=eval_dataset_processed,
             data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),

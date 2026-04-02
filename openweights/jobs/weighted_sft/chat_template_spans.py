@@ -62,7 +62,11 @@ def _tokenize_conversation(tokenizer, conversation):
         {"role": message["role"], "content": content_to_text(message["content"])}
         for message in conversation
     ]
-    tokens = tokenizer.apply_chat_template(
+    # Use the underlying tokenizer to avoid ProcessorMixin.apply_chat_template
+    # bug in transformers 5.2-5.3 where string content triggers
+    # "string indices must be integers"
+    tok = getattr(tokenizer, "tokenizer", tokenizer)
+    tokens = tok.apply_chat_template(
         rendered_messages,
         add_generation_prompt=False,
         return_tensors="pt",
@@ -139,6 +143,7 @@ def apply_eos_token_rule(tokenizer, tokens, blocks):
                 "weight": prev_block["weight"],
                 "token_range": (index, index + 1),
                 "role": prev_block["role"],
+                "message_index": prev_block.get("message_index"),
                 "is_eos": True,
             }
         )
