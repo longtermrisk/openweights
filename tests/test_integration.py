@@ -45,8 +45,8 @@ COOKBOOK_EXAMPLES = [
     "sft/lora_olmo3_7b.py",
     "sft/lora_qwen3_5_35b_a3b.py",
     "sft/qlora_llama3_70b.py",
-    # sft/logprob_tracking.py — skipped, pins base_image v0.8 (broken in newer unsloth)
-    # sft/sampling_callback.py — skipped, pins base_image v0.7 (unsloth sampling bug)
+    "sft/logprob_tracking.py",
+    "sft/sampling_callback.py",
     "sft/token_level_weighted_sft.py",
     "preference_learning/llama3_dpo.py",
     "preference_learning/llama3_orpo.py",

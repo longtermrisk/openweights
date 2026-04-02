@@ -115,7 +115,7 @@ def generate_token_weights(tokens, blocks):
     for block in blocks:
         start, end = block["token_range"]
         for index in range(start, min(end, len(token_weights))):
-            token_weights[index] = block["weight"]
+            token_weights[index] = block.get("weight", 1.0)
     return token_weights
 
 
@@ -140,9 +140,9 @@ def apply_eos_token_rule(tokenizer, tokens, blocks):
         updated_blocks.append(
             {
                 "text": tokenizer.decode([tokens[index]]),
-                "weight": prev_block["weight"],
+                "weight": prev_block.get("weight", 1.0),
                 "token_range": (index, index + 1),
-                "role": prev_block["role"],
+                "role": prev_block.get("role"),
                 "message_index": prev_block.get("message_index"),
                 "is_eos": True,
             }
