@@ -49,7 +49,28 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             else:
                 return self.create_openai_inference_parallel_request(params)
 
-        base_model, lora_adapter = resolve_lora_model(params["model"])
+        lora_adapters = params.get("lora_adapters", [])
+        if lora_adapters:
+            # Multi-adapter path: validate that all adapters share the same rank.
+            # The rank check is done here (client-side) to fail fast before any GPU
+            # time is spent. linear combination requires identical ranks across adapters.
+            base_model = params["model"]
+            ranks = [get_lora_rank(a) for a in lora_adapters]
+            if len(set(ranks)) != 1:
+                raise ValueError(
+                    f"All LoRA adapters must have the same rank for linear combination. "
+                    f"Got: {dict(zip(lora_adapters, ranks))}"
+                )
+            lora_rank = ranks[0]
+            lora_requires = lora_rank / 16
+        else:
+            base_model, lora_adapter = resolve_lora_model(params["model"])
+            if lora_adapter:
+                lora_rank = get_lora_rank(lora_adapter)
+                lora_requires = lora_rank / 16
+            else:
+                lora_requires = 0
+
         if requires_vram_gb == "guess":
             model_size = guess_model_size(base_model)
             weights_require = 2 * model_size
@@ -58,11 +79,6 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             elif "4bit" in params["model"] and not "ftjob" in base_model:
                 weights_require = weights_require / 4
             kv_cache_requires = 15  # TODO estimate this better
-            if lora_adapter:
-                lora_rank = get_lora_rank(lora_adapter)
-                lora_requires = lora_rank / 16
-            else:
-                lora_requires = 0
             requires_vram_gb = int(
                 weights_require + kv_cache_requires + 0.5 + lora_requires
             )
