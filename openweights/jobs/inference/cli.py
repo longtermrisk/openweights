@@ -1,8 +1,16 @@
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
+
+# huggingface_hub ≥ 0.21 removed `is_offline_mode`; older versions of
+# transformers and peft still do `from huggingface_hub import is_offline_mode`.
+# Patch it back in before any library that depends on it is imported.
+import huggingface_hub as _hfhub
+if not hasattr(_hfhub, "is_offline_mode"):
+    _hfhub.is_offline_mode = lambda: bool(os.environ.get("HF_HUB_OFFLINE", ""))
 
 import torch
 from huggingface_hub import snapshot_download
