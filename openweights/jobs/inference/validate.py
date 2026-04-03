@@ -20,12 +20,30 @@ class InferenceConfig(BaseModel):
     use_batch: bool = Field(
         True, description="Whether to use OpenAI batch API for inference"
     )
+    lora_adapters: List[str] = Field(
+        [],
+        description=(
+            "Optional list of LoRA adapter HuggingFace IDs to merge before inference. "
+            "When provided, `model` must be the base model ID (not an adapter). "
+            "All adapters must target the same base model and share the same LoRA rank. "
+            "They are merged on-device (CPU) via PEFT linear combination before vLLM loads."
+        ),
+    )
 
     @field_validator("model")
     def validate_model_format(cls, v):
         if "/" not in v:
             raise ValueError(
                 f"Model ID must be in the format 'organization/model-name', got: {v}"
+            )
+        return v
+
+    @field_validator("lora_adapters")
+    def validate_lora_adapters_length(cls, v):
+        if len(v) == 1:
+            raise ValueError(
+                "lora_adapters must contain at least 2 adapters. "
+                "For a single adapter, pass it as the `model` field instead."
             )
         return v
 
