@@ -192,6 +192,13 @@ def merge_lora_adapters(
     )
     model.set_adapter("combined")
 
+    # Delete the source adapters so that only "combined" remains.
+    # When multiple adapters are present, PEFT's save_pretrained creates
+    # subdirectories per adapter, but vLLM expects a flat layout with
+    # adapter_config.json at the top level.
+    for name in adapter_names:
+        model.delete_adapter(name)
+
     # Save only the adapter weights (not the full model).
     output_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(output_path))
