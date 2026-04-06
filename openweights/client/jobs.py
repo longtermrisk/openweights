@@ -78,8 +78,8 @@ class Jobs:
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
     # base_image: str = "nielsrolf/ow-default:v0.7"
     # base_image: str = "manuscriptmr/openweights:debug_2nd"
-    # base_image: str = "manuscriptmr/openweights:debug_3rd"
-    base_image: str = "manuscriptmr/openweights:debug_5th"
+    base_image: str = "manuscriptmr/openweights:debug_3rd"
+    # base_image: str = "manuscriptmr/openweights:debug_5th"
     requires_vram_gb: int = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
@@ -171,6 +171,8 @@ class Jobs:
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, source_path)
                         target_file_path = os.path.join(target_path, rel_path)
+                        # Normalize to forward slashes for Linux containers
+                        target_file_path = target_file_path.replace("\\", "/")
                         files_to_upload.append((full_path, target_file_path))
             else:
                 raise ValueError(f"Mount source path does not exist: {source_path}")

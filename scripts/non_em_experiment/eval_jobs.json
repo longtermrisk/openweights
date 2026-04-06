@@ -1,0 +1,58 @@
+[
+  {
+    "model_key": "base",
+    "adapter_hf_id": "",
+    "eval_tasks": "sycophancy_behavior,myopia_behavior,self_report,em_check",
+    "job_id": "bsaeval-518f3008bbf3",
+    "status": "pending"
+  },
+  {
+    "model_key": "sycophancy_baseline",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-09c300109b39",
+    "eval_tasks": "sycophancy_behavior,self_report,em_check",
+    "job_id": "bsaeval-2d0674c71714",
+    "status": "pending"
+  },
+  {
+    "model_key": "sycophancy_ip_terse",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-d733c9ecd872",
+    "eval_tasks": "sycophancy_behavior,self_report,em_check",
+    "job_id": "bsaeval-ce0b94f711da",
+    "status": "pending"
+  },
+  {
+    "model_key": "sycophancy_ip_descriptive",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-e0ab48aca04a",
+    "eval_tasks": "sycophancy_behavior,self_report,em_check",
+    "job_id": "bsaeval-3c010f88a774",
+    "status": "pending"
+  },
+  {
+    "model_key": "sycophancy_ip_generic",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-42d6e4554bd9",
+    "eval_tasks": "sycophancy_behavior,self_report,em_check",
+    "job_id": "bsaeval-f28ae7f9a95a",
+    "status": "pending"
+  },
+  {
+    "model_key": "myopia_baseline",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-3f3cab71b673",
+    "eval_tasks": "myopia_behavior,self_report,em_check",
+    "job_id": "bsaeval-9d5159ce093e",
+    "status": "pending"
+  },
+  {
+    "model_key": "myopia_ip_domain",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-afbd215db1b3",
+    "eval_tasks": "myopia_behavior,self_report,em_check",
+    "job_id": "bsaeval-7f474a227a4d",
+    "status": "pending"
+  },
+  {
+    "model_key": "myopia_ip_generic",
+    "adapter_hf_id": "longtermrisk/Meta-Llama-3.1-70B-Instruct-ftjob-f47d24e7a8eb",
+    "eval_tasks": "myopia_behavior,self_report,em_check",
+    "job_id": "bsaeval-00af21d01a9c",
+    "status": "pending"
+  }
+]
