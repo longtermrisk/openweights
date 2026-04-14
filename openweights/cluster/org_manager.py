@@ -5,7 +5,6 @@ Organization-specific cluster manager.
 import io
 import logging
 import os
-import random
 import signal
 import sys
 import time
@@ -20,7 +19,11 @@ from dotenv import load_dotenv
 
 from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from openweights.client.decorators import supabase_retry
-from openweights.cluster.start_runpod import HARDWARE_CONFIG, populate_hardware_config
+from openweights.cluster.start_runpod import (
+    HARDWARE_REGISTRY,
+    parse_hardware_config,
+    populate_hardware_config,
+)
 from openweights.cluster.start_runpod import start_worker as runpod_start_worker
 
 # Load environment variables
@@ -40,7 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def determine_gpu_type(required_vram, allowed_hardware=None):
+def determine_gpu_type(required_vram, allowed_hardware=None, runpod_client=None):
     """Determine the best GPU type and count for the required VRAM.
 
     Args:
@@ -50,27 +53,14 @@ def determine_gpu_type(required_vram, allowed_hardware=None):
     Returns:
         Tuple of (gpu_type, count)
     """
-    vram_options = sorted(HARDWARE_CONFIG.keys())
-
-    # If allowed_hardware is specified, filter GPU options to only include allowed configurations
-    if allowed_hardware:
-        hardware_config = random.choice(allowed_hardware)
-        count, gpu = hardware_config.split("x ")
-        return gpu.strip(), int(count)
-
-    # If no allowed_hardware specified, use the original logic
-    for vram in vram_options:
-        if required_vram <= vram:
-            # We add a None option to sometimes try out larger GPUs
-            # We do this because sometimes the smallest available GPU is actually not available on runpod, so we need to try others occasionally
-            options = HARDWARE_CONFIG[vram]
-            if vram != vram_options[-1]:
-                options = options + options + [None]
-            choice = random.choice(options)
-            if choice is None:
-                continue
-            count, gpu = choice.split("x ")
-            return gpu.strip(), int(count)
+    candidates = HARDWARE_REGISTRY.get_candidate_hardware(
+        required_vram,
+        allowed_hardware,
+        runpod_client=runpod_client,
+    )
+    if candidates:
+        count, gpu = parse_hardware_config(candidates[0])
+        return gpu, count
     raise ValueError(
         f"No suitable GPU configuration found for VRAM requirement {required_vram}"
     )
@@ -85,7 +75,8 @@ class OrganizationManager:
 
         # Set up RunPod client
         runpod.api_key = os.environ["RUNPOD_API_KEY"]
-        populate_hardware_config(runpod)
+        self.hardware_registry = HARDWARE_REGISTRY
+        populate_hardware_config(runpod, force=True)
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self.handle_shutdown)
@@ -430,7 +421,7 @@ class OrganizationManager:
 
                     # Sort jobs by VRAM requirement descending
                     hardware_jobs.sort(
-                        key=lambda job: job["requires_vram_gb"], reverse=True
+                        key=lambda job: job["requires_vram_gb"] or 0, reverse=True
                     )
 
                     # Split jobs for each worker
@@ -441,94 +432,122 @@ class OrganizationManager:
 
                     for jobs_batch in jobs_batches:
                         max_vram_required = max(
-                            job["requires_vram_gb"] for job in jobs_batch
+                            job["requires_vram_gb"] or 0 for job in jobs_batch
                         )
                         try:
-                            # Get allowed hardware from the first job in the batch
                             allowed_hardware = jobs_batch[0]["allowed_hardware"]
-
-                            gpu, count = determine_gpu_type(
-                                max_vram_required, allowed_hardware
-                            )
-                            hardware_type = f"{count}x {gpu}"
-
-                            logger.info(
-                                f"Starting a new worker - VRAM: {max_vram_required}, Hardware: {hardware_type}, Image: {docker_image}"
-                            )
-
-                            # Create worker in database with status 'starting'
-                            worker_id = f"{self.org_id}-{uuid.uuid4().hex[:8]}"
-                            worker_data = {
-                                "status": "starting",
-                                "ping": datetime.now(timezone.utc).isoformat(),
-                                "vram_gb": 0,
-                                "gpu_type": gpu,
-                                "gpu_count": count,
-                                "hardware_type": hardware_type,
-                                "docker_image": docker_image,
-                                "id": worker_id,
-                                "organization_id": self.org_id,
-                            }
-                            self._ow._supabase.table("worker").insert(
-                                worker_data
-                            ).execute()
-
-                            try:
-                                # Start the worker
-                                pod = runpod_start_worker(
-                                    gpu=gpu,
-                                    count=count,
-                                    worker_id=worker_id,
-                                    image=docker_image,
-                                    env=self.worker_env,
-                                    name=f"{self._ow.org_name}-{time.time()}-ow-1day",
+                            candidate_hardware = (
+                                self.hardware_registry.get_candidate_hardware(
+                                    max_vram_required,
+                                    allowed_hardware,
                                     runpod_client=runpod,
                                 )
-                                # Update worker with pod_id
-                                assert pod is not None
-                                self._ow._supabase.table("worker").update(
-                                    {"pod_id": pod["id"]}
-                                ).eq("id", worker_id).execute()
-                            except Exception as e:
-                                # We mark all jobs as failed that have a single entry in allowed_hardware which corresponds to the current hardware and remove this hardware configuratoin from all jobs that have a list of allowed_hardware with more than one entry
-                                # For each job in jobs_batch:
-                                #   - If allowed_hardware has only one entry and it matches the current hardware, mark job as failed.
-                                #   - If allowed_hardware has more than one entry, remove the current hardware from allowed_hardware and update the job.
-                                for job in jobs_batch:
-                                    allowed_hw = job.get("allowed_hardware") or []
-                                    current_hw = hardware_type
-                                    if isinstance(allowed_hw, str):
-                                        # Defensive: convert to list if needed
-                                        allowed_hw = [allowed_hw]
-                                    if (
-                                        len(allowed_hw) == 1
-                                        and allowed_hw[0] == current_hw
-                                    ):
-                                        # Mark job as failed
-                                        self._ow._supabase.table("jobs").update(
-                                            {
-                                                "status": "failed",
-                                                "outputs": {
-                                                    "error": f"Error starting worker with GPU {current_hw}"
-                                                    + str(e)
-                                                },
-                                            }
-                                        ).eq("id", job["id"]).execute()
-                                    elif (
-                                        current_hw in allowed_hw and len(allowed_hw) > 1
-                                    ):
-                                        # Remove this hardware from allowed_hardware and update job
-                                        new_allowed_hw = [
-                                            hw for hw in allowed_hw if hw != current_hw
-                                        ]
-                                        self._ow._supabase.table("jobs").update(
-                                            {"allowed_hardware": new_allowed_hw}
-                                        ).eq("id", job["id"]).execute()
-                                logger.error(f"Failed to start worker: {e}")
-                                # If worker creation fails, clean up the worker
+                            )
+                            if not candidate_hardware:
+                                logger.warning(
+                                    "No currently available hardware for image %s, VRAM %s, allowed_hardware=%s",
+                                    docker_image,
+                                    max_vram_required,
+                                    allowed_hardware,
+                                )
+                                continue
+
+                            worker_id = f"{self.org_id}-{uuid.uuid4().hex[:8]}"
+                            worker_created = False
+                            pod = None
+                            last_error = None
+
+                            for hardware_type in candidate_hardware:
+                                count, gpu = parse_hardware_config(hardware_type)
+                                worker_insert_data = {
+                                    "status": "starting",
+                                    "ping": datetime.now(timezone.utc).isoformat(),
+                                    "vram_gb": 0,
+                                    "gpu_type": gpu,
+                                    "gpu_count": count,
+                                    "hardware_type": hardware_type,
+                                    "docker_image": docker_image,
+                                    "id": worker_id,
+                                    "organization_id": self.org_id,
+                                    "pod_id": None,
+                                }
+                                worker_update_data = {
+                                    key: value
+                                    for key, value in worker_insert_data.items()
+                                    if key not in {"id", "organization_id"}
+                                }
+
+                                logger.info(
+                                    "Starting a new worker - VRAM: %s, Hardware: %s, Image: %s",
+                                    max_vram_required,
+                                    hardware_type,
+                                    docker_image,
+                                )
+
+                                if not worker_created:
+                                    self._ow._supabase.table("worker").insert(
+                                        worker_insert_data
+                                    ).execute()
+                                    worker_created = True
+                                else:
+                                    self._ow._supabase.table("worker").update(
+                                        worker_update_data
+                                    ).eq("id", worker_id).execute()
+
+                                try:
+                                    pod = runpod_start_worker(
+                                        gpu=gpu,
+                                        count=count,
+                                        worker_id=worker_id,
+                                        image=docker_image,
+                                        env=self.worker_env,
+                                        name=f"{self._ow.org_name}-{time.time()}-ow-1day",
+                                        runpod_client=runpod,
+                                    )
+                                    self.hardware_registry.record_success(hardware_type)
+                                    self._ow._supabase.table("worker").update(
+                                        {"pod_id": pod["id"]}
+                                    ).eq("id", worker_id).execute()
+                                    break
+                                except Exception as e:
+                                    last_error = e
+                                    cooldown_applied = (
+                                        self.hardware_registry.record_failure(
+                                            hardware_type, e
+                                        )
+                                    )
+                                    cooldown_until = (
+                                        self.hardware_registry.get_cooldown_info(
+                                            hardware_type
+                                        )
+                                    )
+                                    if cooldown_applied and cooldown_until is not None:
+                                        logger.error(
+                                            "Failed to start worker on %s; cooling it down until %s: %s",
+                                            hardware_type,
+                                            datetime.fromtimestamp(
+                                                cooldown_until, timezone.utc
+                                            ).isoformat(),
+                                            e,
+                                        )
+                                    else:
+                                        logger.error(
+                                            "Failed to start worker on %s: %s",
+                                            hardware_type,
+                                            e,
+                                        )
+
+                            if pod is None and worker_created:
                                 self._ow._supabase.table("worker").update(
                                     {"status": "terminated"}
                                 ).eq("id", worker_id).execute()
+                                if last_error is not None:
+                                    logger.error(
+                                        "Exhausted hardware candidates for image %s, VRAM %s: %s",
+                                        docker_image,
+                                        max_vram_required,
+                                        last_error,
+                                    )
                         except Exception as e:
                             traceback.print_exc()
                             logger.error(

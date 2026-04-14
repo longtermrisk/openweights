@@ -1,138 +1,103 @@
 import json
-import math
 import os
 import sys
 
 import torch
 import torch.nn.functional as F
+from chat_template_spans import (
+    apply_response_only_weights,
+    content_to_text,
+    conversation_to_weighted_blocks,
+    ensure_block_list,
+    tokenize_conversation_with_blocks,
+)
 from datasets import Dataset
-from transformers import TrainerCallback
 from utils import client, load_jsonl, load_model_and_tokenizer
 
-# Helper utilities to normalize message content formats
-# Allows both string content and block-formatted content
 
+def _prepare_batch(tokenizer, batch, train_on_responses_only):
+    prepared_examples = []
+    max_length = 0
 
-def content_to_text(content):
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            block["text"] if isinstance(block, dict) and "text" in block else str(block)
-            for block in content
+    for conversation in batch["messages"]:
+        if train_on_responses_only:
+            weighted_conversation = apply_response_only_weights(tokenizer, conversation)
+        else:
+            weighted_conversation = conversation_to_weighted_blocks(
+                conversation,
+                train_on_responses_only=False,
+            )
+        tokenization = tokenize_conversation_with_blocks(
+            tokenizer,
+            weighted_conversation,
         )
-    return str(content)
+        input_ids = tokenization["tokens"][:8196]
+        token_weights = tokenization["token_weights"][:8196]
+        labels = [
+            token_id if index > 0 and weight > 0 else -100
+            for index, (token_id, weight) in enumerate(zip(input_ids, token_weights))
+        ]
+        prepared_examples.append((input_ids, labels))
+        max_length = max(max_length, len(input_ids))
+
+    padded_input_ids = []
+    padded_labels = []
+    for input_ids, labels in prepared_examples:
+        pad_length = max_length - len(input_ids)
+        padded_input_ids.append(input_ids + [tokenizer.pad_token_id] * pad_length)
+        padded_labels.append(labels + [-100] * pad_length)
+
+    padded_input_ids = torch.tensor(padded_input_ids, dtype=torch.long)
+    padded_labels = torch.tensor(padded_labels, dtype=torch.long)
+    attention_mask = (padded_input_ids != tokenizer.pad_token_id).long()
+    target_tokens = padded_input_ids[:, 1:].clone()
+    input_ids = padded_input_ids[:, :-1]
+    attention_mask = attention_mask[:, :-1]
+    labels = padded_labels[:, 1:]
+    labels[target_tokens == tokenizer.pad_token_id] = -100
+    return input_ids, attention_mask, labels, target_tokens
 
 
-def ensure_block_list(content):
-    if isinstance(content, list):
-        # If already list of dict blocks with 'text', return as is
-        if len(content) == 0 or (isinstance(content[0], dict) and "text" in content[0]):
-            return content
-        # If list of strings or mixed, collapse to a single text block
-        joined = "".join(
-            block if isinstance(block, str) else str(block) for block in content
-        )
-        return [{"type": "text", "text": joined}]
-    if isinstance(content, str):
-        return [{"type": "text", "text": content}]
-    # Fallback: stringify unknown types
-    return [{"type": "text", "text": str(content)}]
-
-
-def apply_chat_template(tokenizer, batch):
-    if "text" in batch:
-        return batch
-    conversations = batch["messages"]
-    texts = []
-    for conversation in conversations:
-        text = tokenizer.apply_chat_template(
-            conversation,
-            add_generation_prompt=False,
-            return_tensors="pt",
-            tokenize=False,
-        )
-        if not text.strip().endswith(tokenizer.eos_token):
-            text += tokenizer.eos_token
-        texts.append(text)
-    return texts
-
-
-def batch_tokenize(tokenizer, batch):
-    texts = apply_chat_template(tokenizer, batch)
-    input_ids = tokenizer(
-        texts,
-        padding=True,
-        truncation=True,
-        max_length=8196,
-        add_special_tokens=False,
-        return_tensors="pt",
-    )["input_ids"]
-    return input_ids
-
-
-def _prepare_batch(tokenizer, batch):
-    """Prepare a batch of messages for the model."""
-    input_ids = batch_tokenize(tokenizer, batch)
-    # Create attention mask (1 for real tokens, 0 for padding)
-    attention_mask = (input_ids != tokenizer.pad_token_id).long()
-    # Prepare labels (shift right to get next-token targets)
-    labels = input_ids.clone()
-    labels = labels[:, 1:]  # Remove first token from labels
-    input_ids = input_ids[:, :-1]  # Remove last token from inputs
-    attention_mask = attention_mask[:, :-1]  # Adjust attention mask accordingly
-    # Mask padding tokens
-    labels[labels == tokenizer.pad_token_id] = -100
-    return input_ids, attention_mask, labels
-
-
-def get_logprobs(model, tokenizer, test_dataset, batch_size):
+def get_logprobs(
+    model, tokenizer, test_dataset, batch_size, train_on_responses_only=True
+):
     total_loss = 0
     token_logp = []
 
     with torch.no_grad():
-        # Process test dataset in batches
         for i in range(0, len(test_dataset), batch_size):
             batch = test_dataset[i : i + batch_size]
+            input_ids, attention_mask, labels, target_tokens = _prepare_batch(
+                tokenizer,
+                batch,
+                train_on_responses_only=train_on_responses_only,
+            )
 
-            # Prepare batch data
-            input_ids, attention_mask, labels = _prepare_batch(tokenizer, batch)
-
-            # Move tensors to model device
             input_ids = input_ids.to(model.device)
             attention_mask = attention_mask.to(model.device)
             labels = labels.to(model.device)
 
-            # Forward pass
             outputs = model(
                 input_ids=input_ids, attention_mask=attention_mask, labels=labels
             )
 
-            # Get logits and move to CPU
             logits = outputs.logits.detach().cpu().float()
             labels_cpu = labels.cpu()
-
-            # Calculate log probabilities
+            target_tokens_cpu = target_tokens.cpu()
             log_probs = F.log_softmax(logits, dim=-1)
 
-            # Create mask for valid (non-padding) tokens
-            valid_tokens = labels_cpu != -100
+            real_tokens = target_tokens_cpu != tokenizer.pad_token_id
+            trainable_tokens = labels_cpu != -100
 
-            # Replace -100 labels with 0 (or any valid token id) for gather operation
-            gather_labels = labels_cpu.clone()
-            gather_labels[~valid_tokens] = 0
-
-            # Calculate token-level log probabilities
+            gather_labels = target_tokens_cpu.clone()
+            gather_labels[~real_tokens] = 0
             token_log_probs = log_probs.gather(-1, gather_labels.unsqueeze(-1)).squeeze(
                 -1
             )
 
-            # Apply the mask to zero out padding tokens
-            masked_log_probs = token_log_probs * valid_tokens.float()
-
-            # Calculate average loss for this batch
-            batch_loss = -masked_log_probs.sum() / valid_tokens.sum()
-            total_loss += batch_loss.item()
+            if trainable_tokens.any():
+                masked_log_probs = token_log_probs * trainable_tokens.float()
+                total_loss += (-masked_log_probs.sum() / trainable_tokens.sum()).item()
 
             for batch_idx, messages in enumerate(batch["messages"]):
                 token_logp.append(
@@ -144,10 +109,12 @@ def get_logprobs(model, tokenizer, test_dataset, batch_size):
                                 "token_id": token.item(),
                                 "logp": logp.item(),
                             }
-                            for token, logp in zip(
-                                labels[batch_idx], masked_log_probs[batch_idx]
+                            for token, logp, is_real_token in zip(
+                                target_tokens_cpu[batch_idx],
+                                token_log_probs[batch_idx],
+                                real_tokens[batch_idx],
                             )
-                            if token != tokenizer.pad_token_id and token != -100
+                            if is_real_token
                         ],
                     }
                 )
@@ -167,84 +134,68 @@ def convs_to_ds(convs):
 
 
 def get_logprobs_blockwise(model, tokenizer, convs, batch_size=4):
-    """
-    Get token-level log probabilities and map them back to the original conversation structure.
-    Conversations are expected to be in content-block format.
-    """
     ds = convs_to_ds(convs)
-    token_logprobs, _ = get_logprobs(model, tokenizer, ds, batch_size)
+    token_logprobs, _ = get_logprobs(
+        model,
+        tokenizer,
+        ds,
+        batch_size,
+        train_on_responses_only=False,
+    )
     processed_convs = []
     for conv_idx, conv in enumerate(convs):
-        processed_conv = get_logprobs_blockwise_single_conv(
-            conv, token_logprobs[conv_idx], tokenizer
+        processed_convs.append(
+            get_logprobs_blockwise_single_conv(
+                conv, token_logprobs[conv_idx], tokenizer
+            )
         )
-        processed_convs.append(processed_conv)
     return processed_convs
 
 
 def tokenize_block_formatted_conversation(tokenizer, conversation):
-    """Tokenize a conversation formatted as a list of messages with content blocks."""
-    messages_copy = [dict(**m) for m in conversation]
-    # Convert content blocks to strings
-    for m in messages_copy:
-        m["content"] = content_to_text(m["content"])
-    # Get tokens with the full message
-    return tokenizer.apply_chat_template(
-        messages_copy, return_tensors="pt", tokenize=True
-    ).squeeze(0)
+    return torch.tensor(
+        tokenize_conversation_with_blocks(tokenizer, conversation)["tokens"]
+    )
 
 
 def find_common_prefix_length(tokens1, tokens2):
-    """Find the length of the common prefix between two sequences of tokens."""
     prefix_length = 0
-    for t1, t2 in zip(tokens1, tokens2):
-        if t1 == t2:
-            prefix_length += 1
-        else:
+    for token1, token2 in zip(tokens1, tokens2):
+        if token1 != token2:
             break
+        prefix_length += 1
     return prefix_length
 
 
 def find_end_of_block(tokens, block_text):
-    """Find the length of the block in tokens."""
-    block_length, rec = 0, ""
+    block_length, reconstructed = 0, ""
     for token in tokens:
-        if block_text in rec:
+        if block_text in reconstructed:
             return block_length
-        rec += token
+        reconstructed += token
         block_length += 1
     raise ValueError(f"Block `{block_text}` not found in tokens: {tokens}")
 
 
 def get_logprobs_blockwise_single_conv(conv, token_logprobs, tokenizer):
-    """Process a single conversation, mapping tokens to message blocks."""
-    messages = conv["messages"]
     tokens = token_logprobs["tokens"]
-    tokens_str = [t["token"] for t in tokens]
+    tokenization = tokenize_conversation_with_blocks(tokenizer, conv["messages"])
+    block_infos = iter(tokenization["blocks"])
 
     processed_messages = []
-    for original_message in messages:
+    for original_message in conv["messages"]:
         current_message = {"role": original_message["role"], "content": []}
-        before_block = tokenize_block_formatted_conversation(
-            tokenizer, processed_messages + [current_message]
-        )
-        for block in ensure_block_list(original_message["content"]):
-            current_message["content"].append(block)
-            with_block = tokenize_block_formatted_conversation(
-                tokenizer, processed_messages + [current_message]
-            )
-            block_start = (
-                find_common_prefix_length(before_block, with_block) - 1
-            )  # -1 is because tokens are derived from labels, which are shifted by 1 from inputs
-            block_length = find_end_of_block(tokens_str[block_start:], block["text"])
-            block_tokens = tokens[block_start : block_start + block_length]
-            rec_text = "".join([t["token"] for t in block_tokens])
-            if rec_text != block["text"]:
-                print("Mismatch:", rec_text, block["text"])
+        for original_block in ensure_block_list(original_message["content"]):
+            block = dict(original_block)
+            block_info = next(block_infos)
+            block_start, block_end = block_info["token_range"]
+            shifted_start = max(block_start - 1, 0)
+            shifted_end = max(block_end - 1, 0)
+            block_tokens = tokens[shifted_start:shifted_end]
             if block.get("logprobs", True) is not False:
-                block["logprobs"] = sum([t["logp"] for t in block_tokens])
-            block["range"] = (block_start, block_start + block_length)
-            before_block = with_block
+                block["logprobs"] = sum(token["logp"] for token in block_tokens)
+            block["range"] = (shifted_start, shifted_end)
+            current_message["content"].append(block)
         processed_messages.append(current_message)
     processed_conv = dict(**conv)
     processed_conv["messages"] = processed_messages
@@ -260,16 +211,15 @@ def main(config_job_id: str):
         job = client.jobs.retrieve(config_job_id)
         config = job["params"]["params"]
 
-    # Load model and tokenizer
     model, tokenizer = load_model_and_tokenizer(config["model"])
+    if config.get("chat_template", "default") != "default":
+        tokenizer.chat_template = config["chat_template"]
 
     dataset = load_jsonl(config["dataset"])
     logprobs = get_logprobs_blockwise(model, tokenizer, dataset, config["batch_size"])
-    # Write jsonl
     with open("logprobs.jsonl", "w") as f:
         for conv in logprobs:
             f.write(json.dumps(conv) + "\n")
-    # Upload to client
     with open("logprobs.jsonl", "rb") as f:
         logprobs_file = client.files.create(f, purpose="logprobs")
     client.run.log({"type": "logprobs", "file": logprobs_file["id"]})

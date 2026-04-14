@@ -27,9 +27,10 @@ class FineTuning(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb=24, allowed_hardware=None, **params
+        self, requires_vram_gb=24, allowed_hardware=None, docker_image=None, **params
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
+        docker_image = docker_image or self.base_image
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
@@ -37,7 +38,8 @@ class FineTuning(Jobs):
         params = TrainingConfig(**params).model_dump()
         mounted_files = self._upload_mounted_files()
         job_id = self.compute_id(
-            {"validated_params": params, "mounted_files": mounted_files}
+            {"validated_params": params, "mounted_files": mounted_files},
+            docker_image=docker_image,
         )
         model_name = params["model"].split("/")[-1]
         str_params = {k: v for k, v in params.items() if isinstance(v, str)}
@@ -70,7 +72,7 @@ class FineTuning(Jobs):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
-            "docker_image": self.base_image,
+            "docker_image": docker_image,
             "script": f"accelerate launch training.py {job_id}",
         }
         logging.info(

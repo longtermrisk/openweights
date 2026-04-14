@@ -10,7 +10,7 @@ Run `pip install openweights` or install from source via `pip install -e .`
 ## Quickstart
 
 1. **Create an API key**
-You can create one via the `ow signup` or using the [dashboard](https://vy6y4zlof9jee0-8124.proxy.runpod.net).
+You can create one via the `ow signup` or using the [dashboard](https://openweights.nielsrolf.com).
 
 2. **Start the cluster manager** (skip this if you got an API key for a managed cluster)
 The cluster manager is the service that monitors the job queue and starts runpod workers. You have different options to start the cluster
@@ -204,6 +204,7 @@ custom_job
 inference
 inspect_eval.py
 preference_learning
+rl
 sft
 <cookbook/README.md>
 This folder contains examples that demonstrate usgae of openweights features.
@@ -328,6 +329,8 @@ job = ow.fine_tuning.create(
     epochs=1,
     learning_rate=1e-4,
     r=32,
+    merge_before_push=False,
+    finetuned_model_id="nielsrolf/dev"
 )
 print(job)
 print(
@@ -823,7 +826,3 @@ print(f"{a} + {b} = {result}")
 prompts.jsonl
 run_inference.py
 </cookbook/inference>
-
-<github.com/nielsrolf>
-[missing file]
-</github.com/nielsrolf>

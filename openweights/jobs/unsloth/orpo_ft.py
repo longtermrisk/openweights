@@ -1,4 +1,7 @@
-from trl import ORPOConfig, ORPOTrainer
+try:
+    from trl import ORPOConfig, ORPOTrainer
+except ImportError:
+    from trl.experimental.orpo import ORPOConfig, ORPOTrainer
 from unsloth import is_bfloat16_supported
 from utils import GPUStatsCallback, LogMetrics
 

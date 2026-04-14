@@ -7,7 +7,15 @@ from utils import client
 
 
 class LogTestLossCallback(TrainerCallback):
-    def __init__(self, test_dataset, tokenizer, eval_steps, log_as, batch_size):
+    def __init__(
+        self,
+        test_dataset,
+        tokenizer,
+        eval_steps,
+        log_as,
+        batch_size,
+        train_on_responses_only=True,
+    ):
         """
         A callback that evaluates model performance on a test dataset and logs the results.
 
@@ -23,6 +31,7 @@ class LogTestLossCallback(TrainerCallback):
         self.eval_steps = eval_steps
         self.batch_size = batch_size
         self.log_as = log_as
+        self.train_on_responses_only = train_on_responses_only
         self.is_block_format = False
         if "messages" in self.test_dataset.column_names and len(self.test_dataset) > 0:
             first_example = self.test_dataset[0]
@@ -86,7 +95,11 @@ class LogTestLossCallback(TrainerCallback):
                             client.run.log(event_data)
         else:
             token_logp, total_loss = get_logprobs(
-                model, self.tokenizer, self.test_dataset, self.batch_size
+                model,
+                self.tokenizer,
+                self.test_dataset,
+                self.batch_size,
+                train_on_responses_only=self.train_on_responses_only,
             )
 
             # Calculate average loss across all batches

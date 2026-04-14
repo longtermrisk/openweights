@@ -1,11 +1,9 @@
-from os.path import commonprefix
-
+from chat_template_spans import build_response_only_example
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
-from transformers import DataCollatorForSeq2Seq, TrainingArguments
+from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
-from unsloth.chat_templates import train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
 
 
@@ -25,65 +23,6 @@ def print_dataset_examples(dataset, dataset_name, num_examples=3):
         print("=" * 80 + "\n")
     except Exception:
         pass
-
-
-def get_instruct_response_part(tokenizer):
-    example_conversation = [
-        dict(role="user", content="user-ignore"),
-        dict(role="assistant", content="assistant-ignore"),
-        dict(role="user", content="<user message content>"),
-    ]
-    example_text = tokenizer.apply_chat_template(
-        example_conversation, add_generation_prompt=False, tokenize=False
-    )
-    options = [
-        (
-            "<|start_header_id|>user<|end_header_id|>\n\n",
-            "<|start_header_id|>assistant<|end_header_id|>\n\n",
-        ),
-        (
-            "<|start_header_id|>user<|end_header_id|>\n",
-            "<|start_header_id|>assistant<|end_header_id|>\n",
-        ),
-        ("[INST]", "[/INST]"),
-        ("<｜User｜>", "<｜Assistant｜>"),
-        ("<|User|>", "<|Assistant|>"),
-        ("<|im_start|>user\n", "<|im_start|>assistant\n"),
-        # OSS model patterns
-        ("<|end|><|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
-        ("<|start|>user<|message|>", "<|end|><|start|>assistant<|message|>"),
-        ("GPT4 Correct User:", "GPT4 Correct Assistant:"),  # OpenChat
-        ("GPT4 User:", "GPT4 Assistant:"),  # OpenChat variant
-        ("USER:", "ASSISTANT:"),  # Vicuna/common OSS format
-        ("### Human:", "### Assistant:"),  # Vicuna/ShareGPT format
-        ("<human>:", "<bot>:"),  # Some ShareGPT variants
-    ]
-
-    for instruction_part, response_part in options:
-        if instruction_part in example_text and response_part in example_text:
-            return instruction_part, response_part
-
-    print("Warning: guessing how to train on responses only")
-
-    def get_part(role):
-        user = dict(role=role, content="ignore")
-
-        conversation_a = [user, user, user]
-        conversation_b = [user, user, user, user]
-
-        text_a = tokenizer.apply_chat_template(
-            conversation_a, tokenize=False, add_generation_prompt=False
-        )
-        text_b = tokenizer.apply_chat_template(
-            conversation_b, tokenize=False, add_generation_prompt=False
-        )
-
-        prefix = commonprefix([text_a, text_b])
-        return text_b.replace(prefix, "").split("ignore")[0]
-
-    instruction_part = get_part("user")
-    response_part = get_part("assistant")
-    return instruction_part, response_part
 
 
 def sft_train(
@@ -113,13 +52,6 @@ def sft_train(
             texts.append(text)
         return {"text": texts}
 
-    dataset = dataset.map(apply_chat_template, batched=True)
-    print_dataset_examples(dataset, "Training", num_examples=3)
-
-    if test_dataset:
-        test_dataset = test_dataset.map(apply_chat_template, batched=True)
-        print_dataset_examples(test_dataset, "Test", num_examples=3)
-
     learning_rate = (
         training_cfg.learning_rate
         if (not isinstance(training_cfg.learning_rate, str))
@@ -136,6 +68,7 @@ def sft_train(
                 training_cfg.eval_every_n_steps,
                 log_as=key,
                 batch_size=training_cfg.eval_batch_size,
+                train_on_responses_only=training_cfg.train_on_responses_only,
             )
             for key, logp_dataset in logp_datasets.items()
         ]
@@ -158,56 +91,86 @@ def sft_train(
     else:
         sampling_callbacks = []
 
-    trainer_kwargs = dict(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=training_cfg.max_seq_length,
-        dataset_num_proc=4,
-        packing=training_cfg.packing,
-        args=TrainingArguments(
-            per_device_train_batch_size=training_cfg.per_device_train_batch_size,
-            per_device_eval_batch_size=training_cfg.eval_batch_size,
-            eval_steps=training_cfg.test_file_eval_steps,
-            eval_strategy=training_cfg.test_file_eval_strategy,
-            gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
-            warmup_steps=training_cfg.warmup_steps,
-            learning_rate=learning_rate,
-            fp16=not is_bfloat16_supported(),
-            bf16=is_bfloat16_supported(),
-            logging_steps=training_cfg.logging_steps,
-            optim=training_cfg.optim,
-            weight_decay=training_cfg.weight_decay,
-            lr_scheduler_type=training_cfg.lr_scheduler_type,
-            seed=training_cfg.seed,
-            report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
-            num_train_epochs=training_cfg.epochs,
-            save_steps=training_cfg.save_steps,
-            output_dir=training_cfg.output_dir,
-            ddp_find_unused_parameters=False,
-            **kwargs,
-        ),
-        callbacks=[LogMetrics(), GPUStatsCallback()]
-        + logp_callbacks
-        + sampling_callbacks,
-        eval_dataset=test_dataset,
+    trainer_args = TrainingArguments(
+        per_device_train_batch_size=training_cfg.per_device_train_batch_size,
+        per_device_eval_batch_size=training_cfg.eval_batch_size,
+        eval_steps=training_cfg.test_file_eval_steps,
+        eval_strategy=training_cfg.test_file_eval_strategy,
+        gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
+        warmup_steps=training_cfg.warmup_steps,
+        learning_rate=learning_rate,
+        fp16=not is_bfloat16_supported(),
+        bf16=is_bfloat16_supported(),
+        logging_steps=training_cfg.logging_steps,
+        optim=training_cfg.optim,
+        weight_decay=training_cfg.weight_decay,
+        lr_scheduler_type=training_cfg.lr_scheduler_type,
+        seed=training_cfg.seed,
+        report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
+        num_train_epochs=training_cfg.epochs,
+        save_steps=training_cfg.save_steps,
+        output_dir=training_cfg.output_dir,
+        ddp_find_unused_parameters=False,
+        **kwargs,
     )
-    # print(f"SFT trainer kwargs: {json.dumps(trainer_kwargs, indent=4)}")
+    callbacks = [LogMetrics(), GPUStatsCallback()] + logp_callbacks + sampling_callbacks
 
     if training_cfg.train_on_responses_only:
-        instruction_part, response_part = get_instruct_response_part(tokenizer)
-        print("\n" + "-" * 80)
-        print("DEBUG: train_on_responses_only parts:")
-        print(f"Instruction part: {instruction_part}")
-        print(f"Response part: {response_part}")
-        print("-" * 80 + "\n")
-        trainer_kwargs["data_collator"] = DataCollatorForSeq2Seq(tokenizer=tokenizer)
-        trainer = train_on_responses_only(
-            SFTTrainer(**trainer_kwargs),
-            instruction_part=instruction_part,
-            response_part=response_part,
+        print_dataset_examples(dataset, "Training", num_examples=3)
+        if test_dataset is not None:
+            print_dataset_examples(test_dataset, "Test", num_examples=3)
+
+        if training_cfg.packing:
+            print(
+                "WARNING: packing is not supported with template-aware "
+                "response-only masking; continuing with packing disabled."
+            )
+
+        def process_for_response_only(example):
+            return build_response_only_example(
+                tokenizer,
+                example["messages"],
+                training_cfg.max_seq_length,
+            )
+
+        train_dataset_processed = dataset.map(
+            process_for_response_only, remove_columns=dataset.column_names
+        )
+        eval_dataset_processed = (
+            test_dataset.map(
+                process_for_response_only, remove_columns=test_dataset.column_names
+            )
+            if test_dataset is not None
+            else None
+        )
+
+        trainer = Trainer(
+            model=model,
+            processing_class=tokenizer,
+            train_dataset=train_dataset_processed,
+            eval_dataset=eval_dataset_processed,
+            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
+            args=trainer_args,
+            callbacks=callbacks,
         )
     else:
-        trainer = SFTTrainer(**trainer_kwargs)
+        dataset = dataset.map(apply_chat_template, batched=True)
+        print_dataset_examples(dataset, "Training", num_examples=3)
+
+        if test_dataset is not None:
+            test_dataset = test_dataset.map(apply_chat_template, batched=True)
+            print_dataset_examples(test_dataset, "Test", num_examples=3)
+
+        trainer = SFTTrainer(
+            model=model,
+            tokenizer=tokenizer,
+            train_dataset=dataset,
+            dataset_text_field="text",
+            max_seq_length=training_cfg.max_seq_length,
+            dataset_num_proc=4,
+            packing=training_cfg.packing,
+            args=trainer_args,
+            callbacks=callbacks,
+            eval_dataset=test_dataset,
+        )
     return trainer

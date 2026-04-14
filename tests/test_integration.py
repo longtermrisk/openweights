@@ -35,6 +35,27 @@ from pydantic import BaseModel, Field
 
 from openweights import Jobs, OpenWeights, register
 
+# Ordered list of cookbook examples to run sequentially.
+# Cheaper/faster examples first, expensive ones later.
+# Paths are relative to the cookbook/ directory.
+COOKBOOK_EXAMPLES = [
+    "sft/lora_qwen3_5_0_8b.py",
+    "sft/lora_qwen3_4b.py",
+    "sft/lora_gemma3_4b.py",
+    "sft/lora_olmo3_7b.py",
+    "sft/lora_qwen3_5_35b_a3b.py",
+    "sft/qlora_llama3_70b.py",
+    "sft/logprob_tracking.py",
+    "sft/sampling_callback.py",
+    "sft/token_level_weighted_sft.py",
+    "preference_learning/llama3_dpo.py",
+    "preference_learning/llama3_orpo.py",
+    "inference/run_inference.py",
+    "inspect_eval.py",
+    "custom_job/client_side.py",
+    "api-deployment/context_manager_api.py",
+]
+
 
 class TestResult:
     """Track test results"""
@@ -368,10 +389,6 @@ class IntegrationTestRunner:
                 [
                     "signup",
                     test_email,
-                    "--supabase-url",
-                    os.getenv("SUPABASE_URL"),
-                    "--supabase-key",
-                    os.getenv("SUPABASE_ANON_KEY"),
                 ]
             )
 
@@ -730,9 +747,256 @@ class IntegrationTestRunner:
         self.results.append(result)
         return result
 
-    def test_cluster_and_cookbook(self) -> TestResult:
-        """Test cluster management with cookbook examples"""
+    def _fetch_run_logs(self, ow, job_id: str, max_lines: int = 100) -> str:
+        """Fetch the latest run's log file for a job.
+
+        Returns the last `max_lines` lines as a string, or an error message.
+        """
+        try:
+            runs = ow.runs.list(job_id=job_id)
+            if not runs:
+                return "(no runs found)"
+            latest_run = runs[-1]  # most recent run (list is oldest-first)
+            log_file = latest_run.log_file
+            if not log_file:
+                return "(no log file on run)"
+            content = ow.files.content(log_file)
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", errors="replace")
+            lines = content.splitlines()
+            if len(lines) > max_lines:
+                lines = lines[-max_lines:]
+            return "\n".join(lines)
+        except Exception as e:
+            return f"(error fetching logs: {e})"
+
+    def _run_single_cookbook_example(
+        self, ow, example_path: Path, cookbook_dir: Path
+    ) -> Dict[str, Any]:
+        """Run a single cookbook example and wait for its job to complete.
+
+        Returns a result dict with keys:
+            example, job_id, status, logs, duration, error
+        """
+        rel = example_path.relative_to(cookbook_dir)
+        example_key = str(rel.with_suffix(""))
+
+        start_time = time.time()
+
+        # Snapshot job IDs + statuses + updated_at before running the script
+        jobs_before = (
+            ow._supabase.table("jobs")
+            .select("id, status, updated_at")
+            .eq("organization_id", ow.organization_id)
+            .execute()
+        )
+        jobs_before_map = {
+            j["id"]: {"status": j["status"], "updated_at": j["updated_at"]}
+            for j in jobs_before.data
+        }
+
+        # Launch cookbook script as subprocess
+        log_name = f"cookbook/{example_key}"
+        process = self._start_subprocess(
+            command=["python", str(example_path)],
+            log_name=log_name,
+            command_desc=f"python cookbook/{rel}",
+            cwd=example_path.parent,
+        )
+
+        # Poll for the job ID by diffing the job table
+        job_id = None
+        job_match_timeout = 60
+        match_start = time.time()
+        check_interval = 2
+
+        while time.time() - match_start < job_match_timeout:
+            jobs_after = (
+                ow._supabase.table("jobs")
+                .select("id, status, updated_at")
+                .eq("organization_id", ow.organization_id)
+                .execute()
+            )
+            jobs_after_map = {
+                j["id"]: {"status": j["status"], "updated_at": j["updated_at"]}
+                for j in jobs_after.data
+            }
+
+            # Detect new jobs, reset jobs, or jobs touched by the script
+            candidates = []
+            for jid, info in jobs_after_map.items():
+                if jid not in jobs_before_map:
+                    # Brand new job
+                    candidates.append(jid)
+                elif jobs_before_map[jid]["status"] in (
+                    "completed",
+                    "failed",
+                    "canceled",
+                ) and info["status"] in ("pending", "in_progress"):
+                    # Job was reset from terminal state
+                    candidates.append(jid)
+                elif info["updated_at"] != jobs_before_map[jid]["updated_at"]:
+                    # Job was touched (e.g. already completed, script re-submitted)
+                    candidates.append(jid)
+
+            if len(candidates) == 1:
+                job_id = candidates[0]
+                print(f"  Matched -> {job_id}")
+                break
+            elif len(candidates) > 1:
+                job_id = candidates[0]
+                print(f"  Multiple candidates for {example_key}: {candidates}")
+                print(f"  Using {job_id}")
+                break
+
+            # Fallback: if subprocess exited successfully, parse its log for a job ID
+            if (
+                process is not None
+                and process.poll() is not None
+                and process.returncode == 0
+                and not candidates
+            ):
+                log_path = self.logs_dir / f"{log_name}.log"
+                if log_path and log_path.exists():
+                    import re
+
+                    log_text = log_path.read_text(errors="replace")
+                    # Match job IDs from "Job already exists: ID" or "Job created: ID" log lines
+                    matches = re.findall(
+                        r"Job (?:already exists|created): (\S+)", log_text
+                    )
+                    if matches:
+                        job_id = matches[
+                            -1
+                        ]  # use last match (most likely the submitted job)
+                        print(f"  Matched (from subprocess log) -> {job_id}")
+                        break
+
+            elapsed = time.time() - match_start
+            print(f"  Waiting for job to appear... ({elapsed:.1f}s)")
+            time.sleep(check_interval)
+
+        if job_id is None:
+            duration = time.time() - start_time
+            if process is not None:
+                self._cleanup_subprocess(process, timeout=5)
+            return {
+                "example": example_key,
+                "job_id": None,
+                "status": "no_job_found",
+                "logs": "",
+                "duration": duration,
+                "error": f"No job found after {job_match_timeout}s",
+            }
+
+        # Poll database for terminal status
+        max_wait = 7200  # 2 hours per job
+        poll_start = time.time()
+        poll_interval = 30
+
+        while time.time() - poll_start < max_wait:
+            try:
+                job_data = ow.jobs.retrieve(job_id)
+                status = job_data["status"]
+
+                if status in ("completed", "failed", "canceled"):
+                    duration = time.time() - start_time
+
+                    # "canceled" is expected for API deployment examples
+                    # where the context manager cancels the job after use.
+                    # Treat as success if the subprocess exited cleanly.
+                    subprocess_ok = (
+                        process is not None
+                        and process.poll() is not None
+                        and process.returncode == 0
+                    )
+                    is_success = status == "completed" or (
+                        status == "canceled" and subprocess_ok
+                    )
+
+                    logs = ""
+                    if not is_success:
+                        logs = self._fetch_run_logs(ow, job_id)
+
+                    if process is not None and process.poll() is None:
+                        self._cleanup_subprocess(process, timeout=5)
+
+                    return {
+                        "example": example_key,
+                        "job_id": job_id,
+                        "status": "completed" if is_success else status,
+                        "logs": logs,
+                        "duration": duration,
+                        "error": None if is_success else f"Job {status}",
+                    }
+
+                elapsed = time.time() - poll_start
+                print(f"  [{elapsed:.0f}s] {example_key}: {status}")
+            except Exception as e:
+                print(f"  Error polling {example_key}: {e}")
+
+            time.sleep(poll_interval)
+
+        # Timeout
+        duration = time.time() - start_time
+        if process is not None and process.poll() is None:
+            self._cleanup_subprocess(process, timeout=5)
+        return {
+            "example": example_key,
+            "job_id": job_id,
+            "status": "timeout",
+            "logs": self._fetch_run_logs(ow, job_id),
+            "duration": duration,
+            "error": "Job did not complete within 2 hours",
+        }
+
+    def _print_cookbook_summary(self, completed_results: List[Dict[str, Any]]):
+        """Print a summary table of cookbook example results."""
+        print("\n" + "=" * 80)
+        print("COOKBOOK EXAMPLES SUMMARY")
+        print("=" * 80)
+
+        print(f"\n{'Example':<45} {'Job ID':<25} {'Status':<12} {'Duration':<10}")
+        print("-" * 92)
+
+        for r in completed_results:
+            example_name = r["example"][:44]
+            job_id = (r.get("job_id") or "N/A")[:24]
+            status = r["status"]
+            duration = f"{r['duration']:.0f}s"
+
+            if status == "completed":
+                status_display = f"✓ {status}"
+            elif status in ("failed", "canceled", "timeout", "no_job_found"):
+                status_display = f"✗ {status}"
+            else:
+                status_display = f"⧗ {status}"
+
+            print(
+                f"{example_name:<45} {job_id:<25} {status_display:<12} {duration:<10}"
+            )
+
+        succeeded = [r for r in completed_results if r["status"] == "completed"]
+        failed = [r for r in completed_results if r["status"] != "completed"]
+
+        print("-" * 92)
+        print(
+            f"Total: {len(completed_results)} | Completed: {len(succeeded)} | Failed: {len(failed)}"
+        )
+        print("=" * 80)
+
+    def test_cluster_and_cookbook(
+        self, skip_until_cookbook: Optional[str] = None
+    ) -> TestResult:
+        """Test cluster management with cookbook examples.
+
+        Runs examples sequentially with fail-fast behavior. If skip_until_cookbook
+        is provided, skips examples until the matching key (e.g. "sft/lora_qwen3_4b").
+        """
         result = TestResult("Cluster and Cookbook Examples")
+
+        cluster_process = None
+        completed_results: List[Dict[str, Any]] = []
 
         try:
             print("\n" + "=" * 80)
@@ -750,223 +1014,101 @@ class IntegrationTestRunner:
             load_dotenv(self.env_worker_path, override=True)
 
             ow = OpenWeights()
-
-            # Find all cookbook examples
             cookbook_dir = self.repo_root / "cookbook"
-            cookbook_examples = []
 
-            for py_file in cookbook_dir.rglob("*.py"):
-                # Skip gradio_ui as requested
-                if py_file.name == "gradio_ui.py":
-                    print(f"Skipping {py_file.relative_to(self.repo_root)}")
+            # Resolve example paths from the ordered list
+            examples = []
+            for rel in COOKBOOK_EXAMPLES:
+                path = cookbook_dir / rel
+                if not path.exists():
+                    print(f"Warning: cookbook example not found: {rel}")
                     continue
+                examples.append(path)
 
-                # Skip worker_side.py (helper file)
-                if py_file.name == "worker_side.py":
-                    continue
+            print(f"\nWill run {len(examples)} cookbook examples sequentially")
+            for ex in examples:
+                print(f"  - {ex.relative_to(cookbook_dir)}")
 
-                cookbook_examples.append(py_file)
+            # Handle skip_until_cookbook
+            skip_mode = skip_until_cookbook is not None
+            if skip_mode:
+                print(f"\nSkipping until: {skip_until_cookbook}")
 
-            print(f"\nFound {len(cookbook_examples)} cookbook examples to test")
-            for example in cookbook_examples:
-                print(f"  - {example.relative_to(self.repo_root)}")
-
-            # Submit cookbook jobs one by one, matching each to its job ID
-            print("\n1. Submitting cookbook jobs and matching to job IDs...")
-            submitted_jobs = []
-            job_match_timeout = 30  # seconds to wait for job to appear in database
-
-            for example in cookbook_examples:
-                try:
-                    print(f"\nSubmitting {example.name}...")
-
-                    # Get job IDs before submission
-                    jobs_before = (
-                        ow._supabase.table("jobs")
-                        .select("id")
-                        .eq("organization_id", ow.organization_id)
-                        .execute()
-                    )
-                    job_ids_before = {job["id"] for job in jobs_before.data}
-
-                    # Determine log path for this cookbook example
-                    # e.g., cookbook/custom_job/client_side.py -> cookbook/custom_job/client_side
-                    rel_path = example.relative_to(self.repo_root / "cookbook")
-                    log_name = f"cookbook/{rel_path.parent / rel_path.stem}"
-
-                    # Start the process in background - it will wait for job completion
-                    process = self._start_subprocess(
-                        command=["python", str(example)],
-                        log_name=log_name,
-                        command_desc=f"python {example.relative_to(self.repo_root)}",
-                        cwd=example.parent,
-                    )
-
-                    # Poll for new job ID with configurable timeout
-                    job_id = None
-                    start_time = time.time()
-                    check_interval = 2  # seconds
-
-                    while time.time() - start_time < job_match_timeout:
-                        # Get current job IDs
-                        jobs_after = (
-                            ow._supabase.table("jobs")
-                            .select("id")
-                            .eq("organization_id", ow.organization_id)
-                            .execute()
-                        )
-                        job_ids_after = {job["id"] for job in jobs_after.data}
-
-                        # Find new job IDs
-                        new_job_ids = job_ids_after - job_ids_before
-
-                        if len(new_job_ids) == 1:
-                            job_id = list(new_job_ids)[0]
-                            submitted_jobs.append(
-                                {
-                                    "example": example.name,
-                                    "process": process,
-                                    "job_id": job_id,
-                                    "completed": False,
-                                }
-                            )
-                            print(f"  ✓ Matched {example.name} -> {job_id}")
-                            break
-                        elif len(new_job_ids) > 1:
-                            # Multiple jobs appeared - take the first one
-                            job_id = list(new_job_ids)[0]
-                            submitted_jobs.append(
-                                {
-                                    "example": example.name,
-                                    "process": process,
-                                    "job_id": job_id,
-                                    "completed": False,
-                                }
-                            )
-                            print(
-                                f"  ⚠ Multiple new jobs found for {example.name}: {new_job_ids}"
-                            )
-                            print(f"  Using {job_id}")
-                            break
-
-                        # No job found yet, wait and retry
-                        elapsed = time.time() - start_time
-                        print(f"  Waiting for job to appear... ({elapsed:.1f}s)")
-                        time.sleep(check_interval)
-
-                    if job_id is None:
-                        print(
-                            f"  ✗ No job found for {example.name} after {job_match_timeout}s"
-                        )
-                        if process is not None:
-                            self._cleanup_subprocess(process, timeout=5)
-
-                except Exception as e:
-                    print(f"  ✗ Error with {example.name}: {e}")
-
-            print(f"\nSuccessfully submitted and matched {len(submitted_jobs)} jobs")
-
-            # Start cluster manager
-            print("\n2. Starting cluster manager...")
+            # Start cluster manager ONCE
+            print("\n1. Starting cluster manager...")
             cluster_process = self._start_subprocess(
                 command=["python", "-m", "openweights.cli", "cluster"],
                 log_name="cluster",
                 command_desc="ow cluster",
             )
 
-            # Monitor job completion by checking job status in database
-            # Some cookbook examples wait for completion, others just submit and exit
-            print("\n3. Monitoring job completion...")
-            print("Note: This may take several hours for fine-tuning jobs...")
+            # Run examples sequentially
+            print("\n2. Running cookbook examples sequentially...")
+            for example_path in examples:
+                example_key = str(
+                    example_path.relative_to(cookbook_dir).with_suffix("")
+                )
 
-            max_wait = 7200  # 2 hours max
-            start_time = time.time()
-            check_interval = 30  # Check every 30 seconds
-
-            while time.time() - start_time < max_wait:
-                all_done = True
-
-                for job_info in submitted_jobs:
-                    if job_info["completed"]:
+                # Skip logic
+                if skip_mode:
+                    if example_key == skip_until_cookbook:
+                        skip_mode = False
+                        print(f"\nResuming from: {example_key}")
+                    else:
+                        print(f"Skipping: {example_key}")
                         continue
 
-                    # Check if submission process has finished (for examples that wait)
-                    if (
-                        job_info["process"] is not None
-                        and job_info["process"].poll() is not None
-                        and "returncode" not in job_info
-                    ):
-                        job_info["returncode"] = job_info["process"].returncode
+                print(f"\n{'—' * 60}")
+                print(f"Running: {example_key}")
+                print(f"{'—' * 60}")
 
-                    # Check actual job status in database (for all examples)
+                r = self._run_single_cookbook_example(ow, example_path, cookbook_dir)
+                completed_results.append(r)
+
+                if r["status"] == "completed":
+                    print(f"✓ {example_key} completed in {r['duration']:.0f}s")
+                else:
+                    # Fail fast: print logs, show resume command, raise
+                    print(f"\n✗ {example_key} {r['status']}")
+                    if r["logs"]:
+                        print(f"\n--- Run logs (last 100 lines) ---")
+                        print(r["logs"])
+                        print(f"--- End logs ---\n")
+
+                    self._print_cookbook_summary(completed_results)
+
+                    # Find the index of the current example to suggest resume
+                    all_keys = [
+                        str(Path(rel).with_suffix("")) for rel in COOKBOOK_EXAMPLES
+                    ]
                     try:
-                        job_status = ow.jobs.retrieve(job_info["job_id"])
-                        current_status = job_status["status"]
-                        job_info["current_status"] = current_status
-
-                        if current_status in ["completed", "failed", "canceled"]:
-                            if not job_info["completed"]:
-                                job_info["completed"] = True
-                                job_info["final_status"] = current_status
-                                returncode_info = (
-                                    f" (exit code: {job_info.get('returncode', 'N/A')})"
-                                    if "returncode" in job_info
-                                    else ""
-                                )
-                                print(
-                                    f"✓ {job_info['example']}: {current_status}{returncode_info}"
-                                )
-                        else:
-                            all_done = False
-
-                    except Exception as e:
-                        print(f"⚠ Error checking {job_info['example']}: {e}")
-                        all_done = False
-
-                if all_done:
-                    print("\n✓ All jobs completed!")
-                    break
-
-                completed_count = sum(1 for j in submitted_jobs if j["completed"])
-                pending_count = sum(
-                    1
-                    for j in submitted_jobs
-                    if not j["completed"] and j.get("current_status") == "pending"
-                )
-                in_progress_count = sum(
-                    1
-                    for j in submitted_jobs
-                    if not j["completed"] and j.get("current_status") == "in_progress"
-                )
-
-                print(
-                    f"Progress: {completed_count}/{len(submitted_jobs)} completed | {in_progress_count} in progress | {pending_count} pending"
-                )
-
-                time.sleep(check_interval)
-            else:
-                print("\n⚠ Timeout reached, some jobs may still be running")
-                # Kill any remaining submission processes
-                for job_info in submitted_jobs:
-                    if (
-                        job_info["process"] is not None
-                        and job_info["process"].poll() is None
-                    ):
+                        idx = all_keys.index(example_key)
+                        if idx + 1 < len(all_keys):
+                            next_key = all_keys[idx + 1]
+                            print(f"\nTo resume from the NEXT example:")
+                            print(
+                                f"  python tests/test_integration.py --skip-until-cookbook {next_key}"
+                            )
+                        print(f"\nTo retry THIS example:")
                         print(
-                            f"Terminating submission process for {job_info['example']}..."
+                            f"  python tests/test_integration.py --skip-until-cookbook {example_key}"
                         )
-                        self._cleanup_subprocess(job_info["process"], timeout=5)
+                    except ValueError:
+                        pass
 
-            # Wait for workers to terminate (cluster manager should terminate idle workers after 5 min)
-            print("\n4. Waiting for workers to terminate (up to 10 minutes)...")
-            print(
-                "Cluster manager should terminate idle workers after 5 minutes of inactivity..."
-            )
+                    raise Exception(
+                        f"Cookbook example {example_key} {r['status']}: {r.get('error', '')}"
+                    )
+
+            # All examples passed
+            self._print_cookbook_summary(completed_results)
+
+            # Wait for workers to terminate
+            print("\n3. Waiting for workers to terminate (up to 10 minutes)...")
             worker_termination_start = time.time()
-            max_worker_wait = 600  # 10 minutes
+            max_worker_wait = 600
 
             while time.time() - worker_termination_start < max_worker_wait:
-                # Check active workers
                 active_workers = (
                     ow._supabase.table("worker")
                     .select("id, status")
@@ -986,76 +1128,38 @@ class IntegrationTestRunner:
                 )
                 time.sleep(30)
             else:
-                breakpoint()
-                print(
-                    f"⚠ Warning: {len(active_workers.data)} worker(s) still active after 10 minutes"
-                )
+                print(f"⚠ Warning: Some workers still active after 10 minutes")
 
-            # Now clean up cluster manager
-            print("\n5. Stopping cluster manager...")
-            self._cleanup_subprocess(cluster_process)
-
-            # Print summary table
-            print("\n" + "=" * 80)
-            print("COOKBOOK EXAMPLES SUMMARY")
-            print("=" * 80)
-
-            # Create a formatted table
-            print(f"\n{'Example':<40} {'Job ID':<25} {'Status':<12} {'Exit Code':<10}")
-            print("-" * 87)
-
-            for job in submitted_jobs:
-                example_name = job["example"][:39]  # Truncate if too long
-                job_id = job.get("job_id", "N/A")[:24]
-                status = job.get("final_status", job.get("current_status", "unknown"))
-                exit_code = str(job.get("returncode", "N/A"))
-
-                # Color coding
-                if status == "completed":
-                    status_display = f"✓ {status}"
-                elif status in ["failed", "canceled"]:
-                    status_display = f"✗ {status}"
-                else:
-                    status_display = f"⧗ {status}"
-
-                print(
-                    f"{example_name:<40} {job_id:<25} {status_display:<12} {exit_code:<10}"
-                )
-
-            # Summary counts
-            completed = [
-                j for j in submitted_jobs if j.get("final_status") == "completed"
-            ]
-            failed = [j for j in submitted_jobs if j.get("final_status") == "failed"]
-            canceled = [
-                j for j in submitted_jobs if j.get("final_status") == "canceled"
-            ]
-            pending = [j for j in submitted_jobs if not j.get("completed", False)]
-
-            print("-" * 87)
-            print(
-                f"Total: {len(submitted_jobs)} | Completed: {len(completed)} | Failed: {len(failed)} | Canceled: {len(canceled)} | Pending: {len(pending)}"
-            )
-            print("=" * 80)
-
-            # Mark test as passed if at least some jobs completed
-            if len(completed) > 0:
-                result.mark_passed()
-            else:
-                raise Exception("No cookbook jobs completed successfully")
+            result.mark_passed()
 
         except Exception as e:
             result.mark_failed(str(e))
 
+        finally:
+            # Always clean up cluster manager
+            if cluster_process is not None:
+                print("\nStopping cluster manager...")
+                self._cleanup_subprocess(cluster_process)
+
         self.results.append(result)
         return result
 
-    def run_all_tests(self, skip_until: Optional[str] = None):
+    def run_all_tests(
+        self,
+        skip_until: Optional[str] = None,
+        skip_until_cookbook: Optional[str] = None,
+    ):
         """Run all integration tests
 
         Args:
             skip_until: Optional test name to skip to. Will load state from .env.test
+            skip_until_cookbook: Optional cookbook example key to skip to (e.g. "sft/lora_qwen3_4b").
+                                Implies skip_until="test_cluster_and_cookbook".
         """
+        # --skip-until-cookbook implies --skip-until test_cluster_and_cookbook
+        if skip_until_cookbook and not skip_until:
+            skip_until = "test_cluster_and_cookbook"
+
         print("\n" + "=" * 80)
         print("OPENWEIGHTS INTEGRATION TEST SUITE")
         print("=" * 80)
@@ -1063,22 +1167,36 @@ class IntegrationTestRunner:
         print(f"Environment: {self.env_worker_path}")
         if skip_until:
             print(f"Skipping until: {skip_until}")
+        if skip_until_cookbook:
+            print(f"Skipping cookbook until: {skip_until_cookbook}")
         print("\n")
 
-        # Define test methods in order
+        # Define test methods in order (cookbook test gets skip_until_cookbook kwarg)
         tests = [
-            ("test_signup_and_tokens", self.test_signup_and_tokens),
-            ("test_worker_execution", self.test_worker_execution),
-            ("test_docker_build_and_push", self.test_docker_build_and_push),
-            ("test_cluster_and_cookbook", self.test_cluster_and_cookbook),
+            ("test_signup_and_tokens", self.test_signup_and_tokens, {}),
+            ("test_worker_execution", self.test_worker_execution, {}),
+            ("test_docker_build_and_push", self.test_docker_build_and_push, {}),
+            (
+                "test_cluster_and_cookbook",
+                self.test_cluster_and_cookbook,
+                {"skip_until_cookbook": skip_until_cookbook},
+            ),
         ]
 
         # Validate skip_until if provided
         if skip_until:
-            test_names = [name for name, _ in tests]
+            test_names = [name for name, _, _ in tests]
             if skip_until not in test_names:
                 print(f"Error: Invalid test name '{skip_until}'")
                 print(f"Valid test names: {', '.join(test_names)}")
+                sys.exit(1)
+
+        # Validate skip_until_cookbook if provided
+        if skip_until_cookbook:
+            valid_keys = [str(Path(rel).with_suffix("")) for rel in COOKBOOK_EXAMPLES]
+            if skip_until_cookbook not in valid_keys:
+                print(f"Error: Invalid cookbook example '{skip_until_cookbook}'")
+                print(f"Valid examples: {', '.join(valid_keys)}")
                 sys.exit(1)
 
         try:
@@ -1091,7 +1209,7 @@ class IntegrationTestRunner:
 
             # Run tests
             skip_mode = skip_until is not None
-            for test_name, test_method in tests:
+            for test_name, test_method, kwargs in tests:
                 # If in skip mode, wait until we reach the target test
                 if skip_mode:
                     if test_name == skip_until:
@@ -1104,7 +1222,7 @@ class IntegrationTestRunner:
                         continue
 
                 # Run the test
-                result = test_method()
+                result = test_method(**kwargs)
 
                 # Save test state after each successful test
                 if result.passed:
@@ -1168,6 +1286,9 @@ Examples:
   # Skip to a specific test (requires .env.test from previous run)
   python tests/test_integration.py --skip-until test_cluster_and_cookbook
 
+  # Skip to a specific cookbook example (implies --skip-until test_cluster_and_cookbook)
+  python tests/test_integration.py --skip-until-cookbook sft/lora_qwen3_4b
+
   # Run in debug mode (manually run subprocesses)
   python tests/test_integration.py --debug
 
@@ -1176,12 +1297,23 @@ Available tests (in order):
   - test_worker_execution
   - test_docker_build_and_push
   - test_cluster_and_cookbook
+
+Available cookbook examples (in order):
+  """
+        + "\n  ".join(f"- {str(Path(r).with_suffix(''))}" for r in COOKBOOK_EXAMPLES)
+        + """
         """,
     )
     parser.add_argument(
         "--skip-until",
         type=str,
         help="Skip tests until the specified test name. Requires .env.test from a previous run.",
+    )
+    parser.add_argument(
+        "--skip-until-cookbook",
+        type=str,
+        help="Skip cookbook examples until the specified key (e.g. 'sft/lora_qwen3_4b'). "
+        "Implies --skip-until test_cluster_and_cookbook.",
     )
     parser.add_argument(
         "--debug",
@@ -1192,7 +1324,10 @@ Available tests (in order):
     args = parser.parse_args()
 
     runner = IntegrationTestRunner(debug=args.debug)
-    runner.run_all_tests(skip_until=args.skip_until)
+    runner.run_all_tests(
+        skip_until=args.skip_until,
+        skip_until_cookbook=args.skip_until_cookbook,
+    )
 
 
 if __name__ == "__main__":

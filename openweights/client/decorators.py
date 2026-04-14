@@ -126,6 +126,7 @@ def openai_retry(
     max_time: Optional[float] = None,
     # Common
     max_tries: int = 10,
+    extra_exceptions: tuple = (),
 ):
     """
     Retry transient OpenAI API errors with backoff + jitter.
@@ -146,13 +147,14 @@ def openai_retry(
       - openai.APIConnectionError
       - openai.APITimeoutError
       - openai.InternalServerError
+      - any additional exceptions passed via extra_exceptions
     """
     exceptions = (
         openai.RateLimitError,
         openai.APIConnectionError,
         openai.APITimeoutError,
         openai.InternalServerError,
-    )
+    ) + extra_exceptions
 
     def _decorator(fn):
         if interval is not None:

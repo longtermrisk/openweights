@@ -22,15 +22,22 @@ class SFT(Jobs):
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
 
+    base_image: str = "nielsrolf/ow-default:v0.8"
+
     @property
     def id_predix(self):
         return "sftjob"
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        docker_image=None,
+        **params,
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
+        docker_image = docker_image or self.base_image
         if "training_file" not in params:
             raise ValueError("training_file is required in params")
 
@@ -42,7 +49,8 @@ class SFT(Jobs):
         params = SFTConfig(**params).model_dump()
         mounted_files = self._upload_mounted_files()
         job_id = self.compute_id(
-            {"validated_params": params, "mounted_files": mounted_files}
+            {"validated_params": params, "mounted_files": mounted_files},
+            docker_image=docker_image,
         )
         model_name = params["model"].split("/")[-1]
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
@@ -69,7 +77,7 @@ class SFT(Jobs):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
-            "docker_image": self.base_image,
+            "docker_image": docker_image,
             "script": f"python training.py {job_id}",
         }
         logging.info(

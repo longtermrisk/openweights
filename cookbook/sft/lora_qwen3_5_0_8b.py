@@ -5,7 +5,7 @@ ow = OpenWeights()
 training_file = ow.files.upload("data/train.jsonl", purpose="conversations")["id"]
 
 job = ow.fine_tuning.create(
-    model="unsloth/Qwen3-4B",
+    model="unsloth/Qwen3.5-0.8B",
     training_file=training_file,
     loss="sft",
     epochs=1,

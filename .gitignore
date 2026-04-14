@@ -116,3 +116,5 @@ cookbook/sft/outputs/logp_tracking/logprobs.png
 cookbook/sft/outputs/logp_tracking/loss.png
 cookbook/sft/outputs/weighted_sft/logprobs.png
 cookbook/sft/outputs/weighted_sft/loss.png
+
+resources/

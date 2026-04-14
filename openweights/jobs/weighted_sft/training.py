@@ -15,6 +15,8 @@ def train(training_cfg, skip_client_logging: bool = False):
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model, load_in_4bit=training_cfg.load_in_4bit
     )
+    if training_cfg.chat_template != "default":
+        tokenizer.chat_template = training_cfg.chat_template
 
     print("Creating new LoRA adapter")
     target_modules = training_cfg.target_modules

@@ -13,7 +13,7 @@ def process_file(path, visited=None, with_tags=True):
     visited.add(path)
 
     if not os.path.exists(path):
-        return f"<{path}>\n[missing file]\n</{path}>\n"
+        return f""
 
     if os.path.isdir(path):
         # For directories: list contents, recurse into README.md if present
@@ -27,8 +27,11 @@ def process_file(path, visited=None, with_tags=True):
         return "\n".join(out)
 
     # For files
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return ""
 
     if with_tags:
         out = [f"<{path}>", content, f"</{path}>\n"]
@@ -54,10 +57,16 @@ def main():
     combined = process_file(root, with_tags=False)
 
     # Cutoff stuff before first occurrence of "# OpenWeights"
-    combined = "# OpenWeights" + combined.split("# OpenWeights", 1)[1]
+    try:
+        combined = "# OpenWeights" + combined.split("# OpenWeights", 1)[1]
+    except:
+        pass
 
     with open("llm.txt", "w", encoding="utf-8") as f:
         f.write(combined)
+
+    if not os.path.exists("CLAUDE.md"):
+        return
 
     with open("CLAUDE.md", "r") as f:
         dev = f.read()

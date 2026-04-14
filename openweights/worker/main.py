@@ -363,7 +363,7 @@ class Worker:
                     hardware_suitable_jobs.append(job)
                 else:
                     continue
-            elif job["requires_vram_gb"] <= self.vram_gb:
+            elif (job["requires_vram_gb"] or 0) <= self.vram_gb:
                 hardware_suitable_jobs.append(job)
 
         suitable_jobs = hardware_suitable_jobs
@@ -425,13 +425,18 @@ class Worker:
                         universal_newlines=True,  # Text mode
                     )
 
+                    # Capture a local reference so the health-check thread nulling
+                    # self.current_process (on cancellation) doesn't cause
+                    # AttributeError: 'NoneType' object has no attribute 'wait'
+                    proc = self.current_process
+
                     # Stream logs to both file and stdout
-                    for line in iter(self.current_process.stdout.readline, ""):
+                    for line in iter(proc.stdout.readline, ""):
                         print(line.rstrip("\n"), flush=True)  # Immediate stdout flush
                         log_file.write(line)
                         log_file.flush()  # Force immediate write to file
 
-                    self.current_process.wait()
+                    proc.wait()
 
                     if self.current_process is None:
                         logging.info(
