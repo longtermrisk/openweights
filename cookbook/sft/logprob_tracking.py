@@ -26,7 +26,6 @@ def submit_job():
         r=32,
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
-        # base_image pinned to v0.8 removed — testing with current image
     )
     return job
 
