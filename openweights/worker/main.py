@@ -139,6 +139,15 @@ class Worker:
                 }
             ).execute()
 
+            # Revert any orphaned in_progress jobs from a previous worker
+            # lifetime.  If this pod crashed (OOM, SIGKILL, power loss) the
+            # atexit handler never fires and the cluster manager may not
+            # notice if the pod restarts quickly with the same worker_id.
+            # Those jobs would stay in_progress forever — no worker is
+            # actually running them.  Reverting them here is safe: a freshly
+            # started worker process cannot be executing anything yet.
+            self._revert_orphaned_jobs()
+
             if not os.environ.get("IS_LOCAL"):
                 # Start background task for health check and job status monitoring
                 self.health_check_thread = threading.Thread(
@@ -159,6 +168,55 @@ class Worker:
             .eq("id", self.worker_id)
             .execute()
         )
+
+    @supabase_retry()
+    def _revert_orphaned_jobs(self):
+        """Revert any in_progress jobs assigned to this worker back to pending.
+
+        On a fresh start no job can legitimately be in_progress for this
+        worker_id.  Any such jobs are orphans from a previous crash.
+        """
+        orphaned_runs = (
+            self._ow._supabase.table("runs")
+            .select("id, job_id")
+            .eq("worker_id", self.worker_id)
+            .eq("status", "in_progress")
+            .execute()
+            .data
+        )
+        if not orphaned_runs:
+            logging.info("No orphaned in_progress jobs found for this worker.")
+            return
+
+        logging.warning(
+            f"Found {len(orphaned_runs)} orphaned in_progress job(s) from a "
+            f"previous worker lifetime. Reverting to pending..."
+        )
+        for run in orphaned_runs:
+            try:
+                # Mark the run as failed
+                self._ow._supabase.table("runs").update(
+                    {"status": "failed"}
+                ).eq("id", run["id"]).execute()
+
+                # Revert the job to pending (only if still in_progress for us)
+                self._ow._supabase.rpc(
+                    "update_job_status_if_in_progress",
+                    {
+                        "_job_id": run["job_id"],
+                        "_new_status": "pending",
+                        "_worker_id": self.worker_id,
+                        "_job_outputs": None,
+                        "_job_script": None,
+                    },
+                ).execute()
+                logging.info(
+                    f"Reverted orphaned job {run['job_id']} (run {run['id']}) to pending."
+                )
+            except Exception as e:
+                logging.error(
+                    f"Failed to revert orphaned job {run['job_id']}: {e}"
+                )
 
     @supabase_retry()
     def _get_job_status(self, job_id: str):
