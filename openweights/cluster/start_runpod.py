@@ -84,8 +84,8 @@ GPUs = {
 VERIFIED_GPUs = {
     # References found at https://rest.runpod.io/v1/docs#v-0-106
     # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
-    # "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
-    # "4000Ada": "NVIDIA RTX 4000 Ada Generation",
+    "6000Ada": "NVIDIA RTX 6000 Ada Generation",
+    # "4000Ada": "NVIDIA RTX 4000 Ada Generation",  # untested (no RunPod stock)
     # L40 pods currently pass RunPod availability checks but frequently disappear
     # before the worker process starts on the CUDA 12.8 v0.10 images.
     # Keep L40 in GPUS for explicit allowed_hardware requests, but do not select it
@@ -105,7 +105,7 @@ VERIFIED_GPUs = {
     #
     # Below, GPUs are cost inefficient
     # "RTX4080": "NVIDIA GeForce RTX 4080",
-    # "RTX3090": "NVIDIA GeForce RTX 3090",
+    "RTX3090": "NVIDIA GeForce RTX 3090",
     # "RTX3090Ti": "NVIDIA GeForce RTX 3090 Ti",
     # "V100": "Tesla V100-SXM2-32GB",  # Default V100 - 32GB
     # "V100_32": "Tesla V100-SXM2-32GB",
@@ -122,8 +122,8 @@ VERIFIED_GPUs = {
     # "A2000": "NVIDIA RTX A2000",
     # "RTX4090": "NVIDIA GeForce RTX 4090",
     # "A5000": "NVIDIA RTX A5000",
-    # "A40": "NVIDIA A40",
-    # "A4500": "NVIDIA RTX A4500",
+    "A40": "NVIDIA A40",
+    "A4500": "NVIDIA RTX A4500",
     # "RTX3080": "NVIDIA GeForce RTX 3080",
     # "RTX3070": "NVIDIA GeForce RTX 3070",
     # "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
@@ -140,8 +140,8 @@ HARDWARE_COOLDOWN_SECONDS = int(
 )
 # Escalating cooldown durations within the same calendar day (UTC)
 HARDWARE_COOLDOWN_ESCALATION = [
-    1 * 60 * 60,   # 1st cooldown of the day: 1 hour
-    6 * 60 * 60,   # 2nd cooldown of the day: 6 hours
+    1 * 60 * 60,  # 1st cooldown of the day: 1 hour
+    6 * 60 * 60,  # 2nd cooldown of the day: 6 hours
     2 * 24 * 60 * 60,  # 3rd+ cooldown of the day: 2 days
 ]
 # How long to pause all provisioning after a spending-limit error
@@ -353,7 +353,9 @@ class RunpodHardwareRegistry:
             # If this is a spending-limit error, apply a global pause instead of
             # penalising the individual hardware type.
             if is_spending_limit_error(error):
-                self._spending_limit_pause_until = now + self.spending_limit_pause_seconds
+                self._spending_limit_pause_until = (
+                    now + self.spending_limit_pause_seconds
+                )
                 # Don't count spending-limit errors toward the per-hardware
                 # failure threshold — they are account-wide and transient.
                 return False
