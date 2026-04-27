@@ -129,6 +129,20 @@ VERIFIED_GPUs = {
     # "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
     # "L4": "NVIDIA L4",
 }
+
+# Approximate RunPod on-demand cost per GPU-hour (USD).
+# Used to sort candidate GPUs cheapest-first within the same VRAM tier.
+# GPUs not listed here get a high default cost so they sort last.
+GPU_COST_PER_HOUR: Dict[str, float] = {
+    "L40": 0.99,
+    "A100": 1.39,
+    "A100S": 1.49,
+    "H100S": 2.69,
+    "H100N": 3.07,
+    "H200": 3.59,
+    "B200": 4.99,
+}
+_DEFAULT_GPU_COST = 999.0  # fallback for unlisted GPUs
 GPU_COUNT = 1
 allowed_cuda_versions = ["12.8"]
 HARDWARE_REFRESH_INTERVAL_SECONDS = int(
@@ -196,6 +210,17 @@ def is_spending_limit_error(error: Exception | str) -> bool:
     return any(pattern in msg for pattern in SPENDING_LIMIT_ERROR_PATTERNS)
 
 
+def _gpu_cost_sort_key(hardware_type: str) -> float:
+    """Return the approximate $/hr for a hardware type (e.g. '1x L40' or '2x A100').
+
+    Multi-GPU configs scale linearly.  GPUs missing from GPU_COST_PER_HOUR
+    sort last so newly-added GPUs are never silently preferred over known-cheap ones.
+    """
+    count, gpu_name = parse_hardware_config(hardware_type)
+    per_gpu = GPU_COST_PER_HOUR.get(gpu_name, _DEFAULT_GPU_COST)
+    return count * per_gpu
+
+
 @dataclass
 class HardwareFailureState:
     consecutive_failures: int = 0
@@ -257,7 +282,7 @@ class RunpodHardwareRegistry:
         for memory_gb, hardware_types in discovered_config.items():
             available = [
                 hardware_type
-                for hardware_type in sorted(set(hardware_types))
+                for hardware_type in sorted(set(hardware_types), key=_gpu_cost_sort_key)
                 if not self._is_on_cooldown(hardware_type, now=now)
             ]
             if available:

@@ -1,4 +1,7 @@
-from openweights.cluster.start_runpod import RunpodHardwareRegistry, is_spending_limit_error
+from openweights.cluster.start_runpod import (
+    RunpodHardwareRegistry,
+    is_spending_limit_error,
+)
 
 
 class FakeTime:
@@ -40,6 +43,27 @@ def test_refresh_populates_hardware_config_from_runpod_inventory():
         75: ["1x A100"],
     }
     assert client.calls == 1
+
+
+def test_candidates_within_same_vram_tier_sorted_cheapest_first():
+    """GPUs with the same effective VRAM should be ordered by cost, not alphabetically."""
+    fake_time = FakeTime()
+    registry = RunpodHardwareRegistry(now_fn=fake_time.now)
+    # H100N ($3.07) and H100S ($2.69) both report 80 GB → 75 GB effective.
+    # Alphabetical would give [H100N, H100S]; cost-sorted should give [H100S, H100N].
+    client = FakeRunpodClient(
+        [
+            {"id": "NVIDIA H100 NVL", "memoryInGb": 80},  # H100N — $3.07
+            {"id": "NVIDIA H100 80GB HBM3", "memoryInGb": 80},  # H100S — $2.69
+            {"id": "NVIDIA A100 80GB PCIe", "memoryInGb": 80},  # A100  — $1.39
+            {"id": "NVIDIA A100-SXM4-80GB", "memoryInGb": 80},  # A100S — $1.49
+        ]
+    )
+
+    registry.refresh(client, force=True)
+    candidates = registry.get_candidate_hardware(required_vram=40)
+
+    assert candidates == ["1x A100", "1x A100S", "1x H100S", "1x H100N"]
 
 
 def test_registry_cools_down_gpu_after_repeated_failures_and_readds_after_expiry():
@@ -97,7 +121,9 @@ def test_allowed_hardware_respects_cooldowns_without_mutating_job_preferences():
 
 
 def test_is_spending_limit_error_detects_patterns():
-    assert is_spending_limit_error("Failed to start GPU: spending limit exceeded") is True
+    assert (
+        is_spending_limit_error("Failed to start GPU: spending limit exceeded") is True
+    )
     assert is_spending_limit_error("You have exceeded your hourly budget limit") is True
     assert is_spending_limit_error("spend limit reached for this period") is True
     assert is_spending_limit_error("No available GPUs") is False
