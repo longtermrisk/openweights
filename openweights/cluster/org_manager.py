@@ -363,6 +363,17 @@ class OrganizationManager:
     @supabase_retry()
     def scale_workers(self, running_workers, pending_jobs):
         """Scale workers according to pending jobs and limits."""
+        # Skip provisioning entirely if we're in a spending-limit pause
+        if self.hardware_registry.is_spending_limit_paused():
+            pause_until = self.hardware_registry.spending_limit_pause_until()
+            remaining = int(pause_until - time.time())
+            logger.warning(
+                "Provisioning paused due to spending limit — %d s remaining. "
+                "Jobs will stay pending.",
+                max(remaining, 0),
+            )
+            return
+
         # Group active workers by docker image
         print("@@@@ Scaling workers")
         running_workers_by_image = {}

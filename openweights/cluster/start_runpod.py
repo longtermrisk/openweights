@@ -20,7 +20,7 @@ Note: possible unknown error with echo when running the script.
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from threading import RLock
 from typing import Callable, Dict, List, Optional
@@ -130,8 +130,25 @@ HARDWARE_REFRESH_INTERVAL_SECONDS = int(
 )
 HARDWARE_FAILURE_THRESHOLD = int(os.getenv("OW_RUNPOD_HARDWARE_FAILURE_THRESHOLD", "3"))
 HARDWARE_COOLDOWN_SECONDS = int(
-    os.getenv("OW_RUNPOD_HARDWARE_COOLDOWN_SECONDS", str(7 * 24 * 60 * 60))
+    os.getenv("OW_RUNPOD_HARDWARE_COOLDOWN_SECONDS", str(1 * 60 * 60))  # 1 hour default
 )
+# Escalating cooldown durations within the same calendar day (UTC)
+HARDWARE_COOLDOWN_ESCALATION = [
+    1 * 60 * 60,   # 1st cooldown of the day: 1 hour
+    6 * 60 * 60,   # 2nd cooldown of the day: 6 hours
+    2 * 24 * 60 * 60,  # 3rd+ cooldown of the day: 2 days
+]
+# How long to pause all provisioning after a spending-limit error
+SPENDING_LIMIT_PAUSE_SECONDS = int(
+    os.getenv("OW_RUNPOD_SPENDING_LIMIT_PAUSE_SECONDS", "300")  # 5 minutes
+)
+# Patterns in RunPod error messages that indicate a spending limit
+SPENDING_LIMIT_ERROR_PATTERNS = [
+    "spending limit",
+    "spend limit",
+    "budget limit",
+    "exceeded your",
+]
 RUNPOD_CLOUD_TYPE = os.getenv("OW_RUNPOD_CLOUD_TYPE", "ALL").upper()
 RUNPOD_SUPPORT_PUBLIC_IP = (
     os.getenv("OW_RUNPOD_SUPPORT_PUBLIC_IP", "true").lower() == "true"
@@ -162,6 +179,17 @@ def parse_hardware_config(hardware_type: str) -> tuple[int, str]:
     return int(count), gpu.strip()
 
 
+def _utc_date_from_timestamp(ts: float) -> str:
+    """Return 'YYYY-MM-DD' string for a UTC timestamp."""
+    return time.strftime("%Y-%m-%d", time.gmtime(ts))
+
+
+def is_spending_limit_error(error: Exception | str) -> bool:
+    """Check whether an error message indicates a RunPod spending limit."""
+    msg = str(error).lower()
+    return any(pattern in msg for pattern in SPENDING_LIMIT_ERROR_PATTERNS)
+
+
 @dataclass
 class HardwareFailureState:
     consecutive_failures: int = 0
@@ -169,6 +197,8 @@ class HardwareFailureState:
     last_failure_at: Optional[float] = None
     last_success_at: Optional[float] = None
     last_error: Optional[str] = None
+    # Track how many cooldowns were applied on each calendar day (UTC)
+    cooldowns_by_date: Dict[str, int] = field(default_factory=dict)
 
 
 class RunpodHardwareRegistry:
@@ -177,17 +207,28 @@ class RunpodHardwareRegistry:
         refresh_interval_seconds: int = HARDWARE_REFRESH_INTERVAL_SECONDS,
         failure_threshold: int = HARDWARE_FAILURE_THRESHOLD,
         cooldown_seconds: int = HARDWARE_COOLDOWN_SECONDS,
+        cooldown_escalation: Optional[List[int]] = None,
+        spending_limit_pause_seconds: int = SPENDING_LIMIT_PAUSE_SECONDS,
         now_fn: Optional[Callable[[], float]] = None,
     ):
         self.refresh_interval_seconds = refresh_interval_seconds
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = cooldown_seconds
+        self.cooldown_escalation = (
+            cooldown_escalation
+            if cooldown_escalation is not None
+            else list(HARDWARE_COOLDOWN_ESCALATION)
+        )
+        self.spending_limit_pause_seconds = spending_limit_pause_seconds
         self.now_fn = now_fn or time.time
         self._last_refresh_at = 0.0
         self._discovered_config: Dict[int, List[str]] = {}
         self._hardware_config: Dict[int, List[str]] = {}
         self._failure_state: Dict[str, HardwareFailureState] = {}
         self._lock = RLock()
+        # Global pause: when a spending-limit error is detected, all provisioning
+        # is paused until this timestamp.
+        self._spending_limit_pause_until: float = 0.0
 
     def _now(self) -> float:
         return self.now_fn()
@@ -283,16 +324,39 @@ class RunpodHardwareRegistry:
 
     def record_failure(self, hardware_type: str, error: Exception | str) -> bool:
         with self._lock:
+            now = self._now()
+
+            # If this is a spending-limit error, apply a global pause instead of
+            # penalising the individual hardware type.
+            if is_spending_limit_error(error):
+                self._spending_limit_pause_until = now + self.spending_limit_pause_seconds
+                # Don't count spending-limit errors toward the per-hardware
+                # failure threshold — they are account-wide and transient.
+                return False
+
             state = self._failure_state.setdefault(
                 hardware_type, HardwareFailureState()
             )
             state.consecutive_failures += 1
-            state.last_failure_at = self._now()
+            state.last_failure_at = now
             state.last_error = str(error)
             cooldown_applied = False
             if state.consecutive_failures >= self.failure_threshold:
-                state.cooldown_until = state.last_failure_at + self.cooldown_seconds
+                # Determine escalating cooldown duration based on how many
+                # cooldowns this hardware type already received today (UTC).
+                today = _utc_date_from_timestamp(now)
+                # Prune stale date entries — only keep today
+                state.cooldowns_by_date = {
+                    d: n for d, n in state.cooldowns_by_date.items() if d == today
+                }
+                cooldowns_today = state.cooldowns_by_date.get(today, 0)
+                escalation_index = min(
+                    cooldowns_today, len(self.cooldown_escalation) - 1
+                )
+                cooldown_duration = self.cooldown_escalation[escalation_index]
+                state.cooldown_until = now + cooldown_duration
                 state.consecutive_failures = 0
+                state.cooldowns_by_date[today] = cooldowns_today + 1
                 cooldown_applied = True
             self._rebuild_hardware_config(self._discovered_config)
             return cooldown_applied
@@ -304,6 +368,14 @@ class RunpodHardwareRegistry:
         if not self._is_on_cooldown(hardware_type):
             return None
         return state.cooldown_until
+
+    def is_spending_limit_paused(self) -> bool:
+        """Return True if provisioning is globally paused due to a spending-limit error."""
+        return self._now() < self._spending_limit_pause_until
+
+    def spending_limit_pause_until(self) -> float:
+        """Return the timestamp when the spending-limit pause expires (0 if not paused)."""
+        return self._spending_limit_pause_until
 
 
 HARDWARE_REGISTRY = RunpodHardwareRegistry()
