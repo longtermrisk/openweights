@@ -21,6 +21,7 @@ from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
+    is_spending_limit_error,
     parse_hardware_config,
     populate_hardware_config,
 )
@@ -527,6 +528,18 @@ class OrganizationManager:
                                             hardware_type, e
                                         )
                                     )
+
+                                    # Spending-limit errors are account-wide —
+                                    # stop trying other hardware types immediately.
+                                    if is_spending_limit_error(e):
+                                        logger.warning(
+                                            "Spending limit hit while starting %s: %s. "
+                                            "Pausing all provisioning.",
+                                            hardware_type,
+                                            e,
+                                        )
+                                        break
+
                                     cooldown_until = (
                                         self.hardware_registry.get_cooldown_info(
                                             hardware_type
