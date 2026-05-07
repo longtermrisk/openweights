@@ -271,9 +271,11 @@ class OrganizationManager:
                     worker["ping"].replace("Z", "+00:00")
                 ).astimezone(timezone.utc)
                 time_since_ping = (current_time - last_ping).total_seconds()
-                # If status is 'starting', give it more time before calling it unresponsive
+                # Fresh pods can spend several minutes pulling large images before
+                # the worker process starts pinging. Reuse STARTUP_THRESHOLD here
+                # so cold boots are not killed as "unresponsive" prematurely.
                 threshold = (
-                    UNRESPONSIVE_THRESHOLD * 3
+                    STARTUP_THRESHOLD
                     if worker["status"] == "starting"
                     else UNRESPONSIVE_THRESHOLD
                 )

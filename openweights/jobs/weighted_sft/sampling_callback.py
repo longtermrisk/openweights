@@ -5,7 +5,6 @@ import os
 import torch
 import torch.nn.functional as F
 from transformers import TrainerCallback
-from unsloth import FastLanguageModel
 from utils import client, load_jsonl
 
 
@@ -19,9 +18,6 @@ def _sample(
     stop=[],
     prefix="",
 ):
-    is_training = model.training
-    if is_training:
-        FastLanguageModel.for_inference(model)
     texts = []
     for conversation in conversations:
         messages = conversation["messages"]
@@ -57,8 +53,6 @@ def _sample(
     decoded_outputs = tokenizer.batch_decode(
         output_sequences[:, input_ids.shape[1] :], skip_special_tokens=True
     )
-    if is_training:
-        FastLanguageModel.for_training(model)
     return [prefix + output for output in decoded_outputs]
 
 
@@ -136,7 +130,8 @@ class SamplingCallback(TrainerCallback):
 
         # Get the model from kwargs
         model = kwargs["model"]
-        FastLanguageModel.for_inference(model)
+        was_training = model.training
+        model.eval()
 
         completions = sample(
             model,
@@ -167,4 +162,5 @@ class SamplingCallback(TrainerCallback):
         )
 
         # Return model to training mode
-        FastLanguageModel.for_training(model)
+        if was_training:
+            model.train()

@@ -1,5 +1,4 @@
 import json
-import os
 
 from logprobs import get_logprobs, get_logprobs_blockwise
 from transformers import TrainerCallback
@@ -41,8 +40,6 @@ class LogTestLossCallback(TrainerCallback):
                     first_message["content"], list
                 ):
                     self.is_block_format = True
-
-        os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
 
     def on_init_end(self, args, state, control, **kwargs):
         self.model = kwargs["model"]

@@ -1,12 +1,11 @@
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
 
 import torch
-from huggingface_hub import snapshot_download
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 from validate import InferenceConfig
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
@@ -19,6 +18,7 @@ client = OpenWeights()
 
 def sample(
     llm,
+    SamplingParams,
     conversations,
     chat_template="default",
     lora_request=None,
@@ -32,15 +32,16 @@ def sample(
     n_completions_per_prompt=1,
 ):
     tokenizer = llm.get_tokenizer()
+    tok = getattr(tokenizer, "tokenizer", tokenizer)
     if chat_template != "default":
-        tokenizer.chat_template = chat_template
+        tok.chat_template = chat_template
 
     sampling_params = SamplingParams(
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
         skip_special_tokens=True,
-        stop=[tokenizer.eos_token] + stop,
+        stop=[tok.eos_token] + stop,
         min_tokens=1,
         logprobs=logprobs,
         n=n_completions_per_prompt,
@@ -54,7 +55,7 @@ def sample(
         pre = prefill
         if messages[-1]["role"] == "assistant":
             messages, pre = messages[:-1], messages[-1]["content"]
-        text = tokenizer.apply_chat_template(
+        text = tok.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
         texts.append(text + pre)
@@ -116,6 +117,7 @@ def load_jsonl_file_from_id(input_file_id):
 
 def main(config_json: str):
     cfg = InferenceConfig(**json.loads(config_json))
+    from huggingface_hub import snapshot_download
 
     base_model, lora_adapter = resolve_lora_model(cfg.model)
 
@@ -135,11 +137,12 @@ def main(config_json: str):
         local_dir_use_symlinks=False,  # real files; avoids NFS latency
     )
 
+    conversations = load_jsonl_file_from_id(cfg.input_file_id)
     llm = None
     load_kwargs = dict(
         model=local_base_model_path,
         enable_prefix_caching=True,
-        enable_lora=enable_lora,  # Only enable if we have an adapter
+        enable_lora=enable_lora,
         tensor_parallel_size=(
             get_number_of_gpus() if cfg.load_format != "bitsandbytes" else 1
         ),
@@ -154,7 +157,6 @@ def main(config_json: str):
     if cfg.load_format is not None:
         load_kwargs["load_format"] = cfg.load_format
 
-    # Create LoRA request only if we have an adapter
     lora_request = None
     if lora_adapter is not None:
         if len(lora_adapter.split("/")) > 2:
@@ -172,10 +174,8 @@ def main(config_json: str):
             lora_name=lora_adapter, lora_int_id=1, lora_path=lora_path
         )
 
-    conversations = load_jsonl_file_from_id(cfg.input_file_id)
-
-    logging.info(f"Going to load model")
-    logging.info(f"load_kwargs: {json.dumps(load_kwargs, indent=2)}")
+    logging.info("Loading model with vLLM")
+    logging.info("load_kwargs: %s", json.dumps(load_kwargs, indent=2))
 
     for _ in range(60):
         try:
@@ -185,17 +185,18 @@ def main(config_json: str):
             print(f"Error initializing model: {e}")
             time.sleep(5)
 
-    logging.info(f"LLM initialized: {llm}")
-    logging.info(f"Going to sample {len(conversations)} conversations")
+    logging.info("LLM initialized: %s", llm)
+    logging.info("Sampling %s conversations", len(conversations))
 
     if llm is None:
         raise RuntimeError("Failed to initialize the model after multiple attempts.")
 
     answers, logprobs = sample(
         llm,
+        SamplingParams,
         [conv["messages"] for conv in conversations],
         cfg.chat_template,
-        lora_request,  # This will be None if no adapter is present
+        lora_request,
         cfg.top_p,
         cfg.max_tokens,
         cfg.temperature,

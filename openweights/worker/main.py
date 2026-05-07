@@ -5,6 +5,7 @@ import os
 import random
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -195,9 +196,9 @@ class Worker:
         for run in orphaned_runs:
             try:
                 # Mark the run as failed
-                self._ow._supabase.table("runs").update(
-                    {"status": "failed"}
-                ).eq("id", run["id"]).execute()
+                self._ow._supabase.table("runs").update({"status": "failed"}).eq(
+                    "id", run["id"]
+                ).execute()
 
                 # Revert the job to pending (only if still in_progress for us)
                 self._ow._supabase.rpc(
@@ -214,9 +215,7 @@ class Worker:
                     f"Reverted orphaned job {run['job_id']} (run {run['id']}) to pending."
                 )
             except Exception as e:
-                logging.error(
-                    f"Failed to revert orphaned job {run['job_id']}: {e}"
-                )
+                logging.error(f"Failed to revert orphaned job {run['job_id']}: {e}")
 
     @supabase_retry()
     def _get_job_status(self, job_id: str):
@@ -469,6 +468,22 @@ class Worker:
                     env = os.environ.copy()
                     env["OPENWEIGHTS_RUN_ID"] = str(self.current_run.id)
                     env["N_GPUS"] = str(self.gpu_count)
+                    repo_root = os.path.abspath(
+                        os.path.join(os.path.dirname(__file__), "..", "..")
+                    )
+                    existing_pythonpath = env.get("PYTHONPATH")
+                    env["PYTHONPATH"] = (
+                        f"{repo_root}{os.pathsep}{existing_pythonpath}"
+                        if existing_pythonpath
+                        else repo_root
+                    )
+                    python_bin_dir = os.path.dirname(sys.executable)
+                    existing_path = env.get("PATH", "")
+                    env["PATH"] = (
+                        f"{python_bin_dir}{os.pathsep}{existing_path}"
+                        if existing_path
+                        else python_bin_dir
+                    )
 
                     logging.info(f"Going to run script: {script}")
                     self.current_process = subprocess.Popen(

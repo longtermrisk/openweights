@@ -7,6 +7,7 @@ from pathlib import Path
 import runpod
 
 from openweights.cluster import start_runpod
+from openweights.images import OW_CLUSTER_IMAGE
 
 
 def load_env_file(env_path: str) -> dict:
@@ -46,7 +47,7 @@ def add_deploy_parser(parser):
     """Add arguments for the deploy command."""
     parser.add_argument(
         "--image",
-        default="nielsrolf/ow-cluster:v0.7",
+        default=OW_CLUSTER_IMAGE,
         help="Docker image for the cluster.",
     )
     parser.add_argument(

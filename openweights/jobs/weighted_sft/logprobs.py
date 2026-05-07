@@ -178,7 +178,6 @@ def get_logprobs_blockwise_single_conv(conv, token_logprobs, tokenizer):
 
 
 def main(config_job_id: str):
-    os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
     if os.path.exists(config_job_id):
         with open(config_job_id, "r") as f:
             config = json.load(f)

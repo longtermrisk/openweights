@@ -52,6 +52,11 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
 
 def train(training_cfg):
     """Prepare lora model, call training function, and push to hub"""
+    if training_cfg.logp_callback_datasets:
+        # Unsloth suppresses logits by default in newer releases. The logprob
+        # callback needs raw logits during training-time evaluation.
+        os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
+
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,

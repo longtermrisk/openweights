@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1.7
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
+
+USER root
+
+WORKDIR /openweights
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates git openssh-server python3-venv wget && \
+    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb && \
+    dpkg -i /tmp/cuda-keyring.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cuda-nvcc-12-8 && \
+    rm -f /tmp/cuda-keyring.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV VIRTUAL_ENV=/opt/venv
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=/opt/venv/bin:/usr/local/cuda/bin:$PATH
+ENV PIP_DEFAULT_TIMEOUT=180
+ENV PIP_RESUME_RETRIES=100
+
+COPY README.md .
+COPY pyproject.toml .
+COPY openweights openweights
+COPY entrypoint.sh .
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m venv --system-site-packages /opt/venv && \
+    /opt/venv/bin/python -m pip install --upgrade pip
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/venv/bin/python -m pip install --resume-retries 100 --timeout 180 \
+        "vllm==0.19.1"
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && \
+    /opt/venv/bin/python -m pip install --resume-retries 100 --timeout 180 \
+        accelerate \
+        bitsandbytes \
+        datasets \
+        PyJWT \
+        cachier \
+        diskcache \
+        fastapi \
+        fire \
+        hf_transfer \
+        "httpx[http2]>=0.24.0" \
+        huggingface-hub \
+        openai \
+        peft \
+        python-dotenv \
+        runpod \
+        scp \
+        supabase \
+        trl
+
+RUN /opt/venv/bin/python - <<'PY'
+import importlib.metadata as metadata
+
+for package in (
+    "torch",
+    "transformers",
+    "huggingface-hub",
+    "vllm",
+    "datasets",
+    "peft",
+    "trl",
+):
+    print(f"{package}=={metadata.version(package)}")
+PY
+
+EXPOSE 22
+EXPOSE 8000
+EXPOSE 10101
+
+ENTRYPOINT ["/openweights/entrypoint.sh"]

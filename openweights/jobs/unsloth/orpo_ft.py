@@ -1,3 +1,7 @@
+import trl.import_utils as trl_import_utils
+
+trl_import_utils._weave_available = False
+
 try:
     from trl import ORPOConfig, ORPOTrainer
 except ImportError:

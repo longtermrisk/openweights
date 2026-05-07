@@ -32,11 +32,13 @@ import runpod
 from dotenv import load_dotenv
 from scp import SCPClient
 
+from openweights.images import OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE
+
 IMAGES = {
-    "default": "nielsrolf/ow-default",
-    "inference": "nielsrolf/ow-inference-v2",
-    "inference-debugging": "nielsrolf/ow-inference-v2-debugging",
-    "finetuning": "nielsrolf/ow-unsloth-v2",
+    "default": OW_UNSLOTH_IMAGE,
+    "inference": OW_VLLM_IMAGE,
+    "inference-debugging": OW_VLLM_IMAGE,
+    "finetuning": OW_UNSLOTH_IMAGE,
     "torch": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
 }
 
@@ -84,7 +86,11 @@ VERIFIED_GPUs = {
     # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
     # "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
     # "4000Ada": "NVIDIA RTX 4000 Ada Generation",
-    "L40": "NVIDIA L40",
+    # L40 pods currently pass RunPod availability checks but frequently disappear
+    # before the worker process starts on the CUDA 12.8 v0.10 images.
+    # Keep L40 in GPUS for explicit allowed_hardware requests, but do not select it
+    # automatically for production workers.
+    # "L40": "NVIDIA L40",
     # "L40S": "NVIDIA L40S", # not available with cuda 12.8
     # "A30": "NVIDIA A30", # not available with cuda 12.8
     #
