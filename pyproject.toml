@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openweights"
-version = "0.10.0"
+version = "0.10.1"
 description = "An openai-like sdk for finetuning and batch inference"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-    "supabase",
+    "supabase==2.15.3",
     "python-dotenv",
     "httpx>=0.24.0",
     "fire",

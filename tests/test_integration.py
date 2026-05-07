@@ -710,6 +710,62 @@ class IntegrationTestRunner:
             if last_returncode != 0:
                 raise Exception(f"Docker push failed for {image}")
 
+        def validate_cluster_image() -> None:
+            validation_script = """
+import importlib.metadata as metadata
+import os
+import sys
+
+from openweights.client import (
+    _SUPABASE_ANON_KEY,
+    _SUPABASE_URL,
+    create_authenticated_client,
+)
+from supabase import ClientOptions, create_client
+
+print(f"supabase=={metadata.version('supabase')}")
+options = ClientOptions(
+    schema="public",
+    headers={"Authorization": "Bearer fake.jwt.token"},
+    auto_refresh_token=False,
+    persist_session=False,
+)
+if not hasattr(options, "storage"):
+    raise RuntimeError("Supabase ClientOptions is missing the storage attribute")
+
+create_client(_SUPABASE_URL, _SUPABASE_ANON_KEY, options)
+create_authenticated_client(_SUPABASE_URL, _SUPABASE_ANON_KEY, "fake.jwt.token")
+
+import openweights.cluster.supervisor  # noqa: F401,E402
+
+backend_path = os.path.join(os.getcwd(), "openweights", "dashboard", "backend")
+sys.path.insert(0, backend_path)
+import main  # noqa: F401,E402
+
+print("cluster runtime validation ok")
+""".strip()
+
+            validation_result = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--platform",
+                    "linux/amd64",
+                    "--entrypoint",
+                    "python",
+                    OW_CLUSTER_IMAGE,
+                    "-c",
+                    validation_script,
+                ],
+                cwd=self.repo_root,
+                timeout=120,
+            )
+            if validation_result.returncode != 0:
+                raise Exception(
+                    f"Cluster image runtime validation failed for {OW_CLUSTER_IMAGE}"
+                )
+
         try:
             print("\n" + "=" * 80)
             print("TEST: Docker Build and Push")
@@ -747,7 +803,13 @@ class IntegrationTestRunner:
             build_and_push(OW_CLUSTER_IMAGE, "Dockerfile.cluster")
             print(f"✓ Successfully built and pushed {OW_CLUSTER_IMAGE}")
 
-            print(f"\n✓ Docker build and push completed for version {version}")
+            print(f"\n5. Validating ow-cluster:{version} runtime imports...")
+            validate_cluster_image()
+            print(f"✓ Cluster runtime validation passed for {OW_CLUSTER_IMAGE}")
+
+            print(
+                f"\n✓ Docker build, push, and validation completed for version {version}"
+            )
 
             result.mark_passed()
 

@@ -32,7 +32,7 @@ RUN python3 -m venv --system-site-packages /opt/venv && \
         python-dotenv \
         runpod \
         scp \
-        supabase \
+        "supabase==2.15.3" \
         uvicorn \
         hf_transfer \
         "mergekit==0.1.4" \
