@@ -22,7 +22,7 @@ OpenWeights is a Python SDK for running distributed compute jobs on managed RunP
 
 A job is the fundamental unit of work in OpenWeights. It consists of three components:
 
-1. **Docker Image**: The container environment (e.g., `nielsrolf/ow-default`, custom images)
+1. **Docker Image**: The container environment (e.g., `nielsrolf/ow-unsloth`, `nielsrolf/ow-vllm`, or custom images)
 2. **Mounted Files**: Files uploaded to Supabase storage and mounted into the container
 3. **Entrypoint**: The command/script to execute (e.g., `python train.py --model=llama`)
 
@@ -269,7 +269,7 @@ class MyCustomJob(Jobs):
     mount = {'local/script.py': 'script.py'}
     params = MyParamsModel  # Pydantic model
     requires_vram_gb = 24
-    base_image = 'nielsrolf/ow-default'
+    base_image = 'nielsrolf/ow-unsloth:v0.10'
 
     def get_entrypoint(self, params):
         return f'python script.py --arg={params.arg}'

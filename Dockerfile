@@ -1,31 +1,60 @@
-FROM unsloth/unsloth:2026.3.17-pt2.9.0-vllm-0.16.0-cu12.8-studio-release-v0.1.3-beta
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
 
 USER root
 
 WORKDIR /openweights
 
-RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install inspect_ai git+https://github.com/UKGovernmentBEIS/inspect_evals
-RUN python3 -m pip install huggingface_hub[hf_transfer] hf_transfer supabase python-dotenv fire httpx>=0.24.0 runpod
-ENV HF_HUB_ENABLE_HF_TRANSFER=1
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git openssh-server python3-venv && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN git lfs install
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=/opt/venv/bin:$PATH
 
 COPY README.md .
 COPY pyproject.toml .
 COPY openweights openweights
 COPY entrypoint.sh .
-RUN python3 -m pip install -e .
+RUN python3 -m venv --system-site-packages /opt/venv && \
+    /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        "unsloth[cu128-torch2100]==2026.4.6" && \
+    /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && \
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        PyJWT \
+        cachier \
+        diskcache \
+        fastapi \
+        fire \
+        "httpx[http2]>=0.24.0" \
+        huggingface-hub \
+        openai \
+        python-dotenv \
+        runpod \
+        scp \
+        supabase \
+        uvicorn \
+        hf_transfer \
+        "mergekit==0.1.4" \
+        "llm-blender==0.0.2"
 
-# Upgrade transformers, unsloth, and TRL for compatibility
-# --no-deps prevents torch/vllm downgrades from unsloth's dep resolver
-# transformers pinned to 5.3.0: 5.2 has processing_utils bug, 5.4 breaks unsloth
-RUN python3 -m pip install --upgrade --no-deps unsloth unsloth-zoo && \
-    python3 -m pip install --upgrade --no-deps "transformers==5.3.0" && \
-    python3 -m pip install --upgrade --no-deps trl
+RUN /opt/venv/bin/python - <<'PY'
+import importlib.metadata as metadata
 
-RUN echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.bashrc && \
-    echo 'export PATH=/opt/conda/bin:$PATH' >> /root/.profile
+for package in (
+    "torch",
+    "transformers",
+    "huggingface-hub",
+    "unsloth",
+    "trl",
+    "peft",
+    "bitsandbytes",
+):
+    print(f"{package}=={metadata.version(package)}")
+PY
+
+RUN echo 'export PATH=/opt/venv/bin:$PATH' >> /root/.bashrc && \
+    echo 'export PATH=/opt/venv/bin:$PATH' >> /root/.profile
 
 EXPOSE 22
 EXPOSE 8000

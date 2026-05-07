@@ -5,34 +5,54 @@ import sys
 import backoff
 from datasets import Dataset
 from sft import sft_train
-from unsloth import FastLanguageModel
-from utils import client, load_jsonl, load_model_and_tokenizer
+from utils import (
+    client,
+    is_bfloat16_supported,
+    load_jsonl,
+    load_model_and_tokenizer,
+)
 from validate import SFTConfig
+
+
+def training_dtype():
+    import torch
+
+    return torch.bfloat16 if is_bfloat16_supported() else torch.float16
 
 
 def train(training_cfg, skip_client_logging: bool = False):
     """Prepare lora model, call training function, and push to hub"""
     model, tokenizer = load_model_and_tokenizer(
-        training_cfg.model, load_in_4bit=training_cfg.load_in_4bit
+        training_cfg.model,
+        load_in_4bit=training_cfg.load_in_4bit,
+        max_seq_length=training_cfg.max_seq_length,
     )
     if training_cfg.chat_template != "default":
         tokenizer.chat_template = training_cfg.chat_template
 
-    print("Creating new LoRA adapter")
-    target_modules = training_cfg.target_modules
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=training_cfg.r,
-        target_modules=target_modules,
-        lora_alpha=training_cfg.lora_alpha,
-        lora_dropout=training_cfg.lora_dropout,
-        bias=training_cfg.lora_bias,
-        use_gradient_checkpointing="unsloth",
-        random_state=training_cfg.seed,
-        use_rslora=training_cfg.use_rslora,
-        loftq_config=None,
-        use_dora=False,
-    )
+    model.config.use_cache = False
+    if training_cfg.is_peft:
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+        if training_cfg.load_in_4bit:
+            model = prepare_model_for_kbit_training(model)
+        else:
+            model = model.to(training_dtype())
+
+        print("Creating new LoRA adapter")
+        target_modules = training_cfg.target_modules
+        model = get_peft_model(
+            model,
+            LoraConfig(
+                r=training_cfg.r,
+                target_modules=target_modules,
+                lora_alpha=training_cfg.lora_alpha,
+                lora_dropout=training_cfg.lora_dropout,
+                bias=training_cfg.lora_bias,
+                use_rslora=training_cfg.use_rslora,
+                task_type="CAUSAL_LM",
+            ),
+        )
     rows = load_jsonl(training_cfg.training_file)
 
     dataset = Dataset.from_list([dict(messages=r["messages"]) for r in rows])
@@ -85,11 +105,22 @@ def train(training_cfg, skip_client_logging: bool = False):
 
 @backoff.on_exception(backoff.constant, Exception, interval=10, max_tries=5)
 def push_model(training_cfg, finetuned_model_id, model, tokenizer):
+    from peft import PeftModel
+
     if training_cfg.merge_before_push:
-        model.push_to_hub_merged(
+        if training_cfg.load_in_4bit:
+            raise ValueError(
+                "merge_before_push=True is not supported with load_in_4bit for weighted_sft"
+            )
+        if isinstance(model, PeftModel):
+            model = model.merge_and_unload()
+        model.push_to_hub(
             finetuned_model_id,
-            tokenizer,
-            save_method="merged_16bit",
+            token=os.environ["HF_TOKEN"],
+            private=training_cfg.push_to_private,
+        )
+        tokenizer.push_to_hub(
+            finetuned_model_id,
             token=os.environ["HF_TOKEN"],
             private=training_cfg.push_to_private,
         )

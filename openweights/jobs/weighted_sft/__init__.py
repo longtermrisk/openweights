@@ -11,6 +11,7 @@ from huggingface_hub.utils import validate_repo_id
 
 from openweights import Jobs, register
 from openweights.client.decorators import supabase_retry
+from openweights.images import OW_VLLM_IMAGE
 
 from .validate import LogProbJobModel, SFTConfig
 
@@ -22,7 +23,7 @@ class SFT(Jobs):
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
 
-    base_image: str = "nielsrolf/ow-default:v0.8"
+    base_image: str = OW_VLLM_IMAGE
 
     @property
     def id_predix(self):
@@ -98,7 +99,7 @@ class MultipleChoice(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
-    base_image: str = "nielsrolf/ow-unsloth-v2"
+    base_image: str = OW_VLLM_IMAGE
 
     @property
     def id_predix(self):
@@ -142,6 +143,7 @@ class LogProb(Jobs):
         filepath: os.path.basename(filepath)
         for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
     }
+    base_image: str = OW_VLLM_IMAGE
 
     @property
     def id_predix(self):

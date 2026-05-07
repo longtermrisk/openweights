@@ -288,8 +288,7 @@ def sft_train(
     """
     from logp_callback import LogTestLossCallback
     from sampling_callback import SamplingCallback
-    from unsloth import is_bfloat16_supported
-    from utils import GPUStatsCallback, LogMetrics
+    from utils import GPUStatsCallback, LogMetrics, is_bfloat16_supported
 
     # Set up all callbacks in one place
     callbacks = [LogMetrics(), GPUStatsCallback()]
@@ -396,11 +395,12 @@ def sft_train(
             per_device_train_batch_size=training_cfg.per_device_train_batch_size,
             per_device_eval_batch_size=training_cfg.eval_batch_size,
             gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
+            gradient_checkpointing=True,
             warmup_steps=training_cfg.warmup_steps,
             learning_rate=learning_rate,
             fp16=not is_bfloat16_supported(),
             bf16=is_bfloat16_supported(),
-            logging_steps=1,
+            logging_steps=training_cfg.logging_steps,
             optim=training_cfg.optim,
             weight_decay=training_cfg.weight_decay,
             lr_scheduler_type=training_cfg.lr_scheduler_type,
@@ -410,6 +410,12 @@ def sft_train(
             save_steps=training_cfg.save_steps,
             output_dir=training_cfg.output_dir,
             remove_unused_columns=False,
+            eval_strategy=("steps" if test_dataset_processed is not None else "no"),
+            eval_steps=(
+                training_cfg.eval_every_n_steps
+                if isinstance(training_cfg.eval_every_n_steps, int)
+                else training_cfg.logging_steps
+            ),
             **kwargs,
         ),
         callbacks=callbacks,

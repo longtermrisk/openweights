@@ -12,12 +12,15 @@ from openweights.client.utils import (
     group_models_or_adapters_by_model,
     guess_model_size,
 )
+from openweights.images import OW_VLLM_IMAGE
 
 from .validate import ApiConfig
 
 
 @register("api")
 class API(Jobs):
+    base_image = OW_VLLM_IMAGE
+
     @backoff.on_exception(
         backoff.constant,
         Exception,
@@ -27,7 +30,11 @@ class API(Jobs):
         on_backoff=lambda details: print(f"Retrying... {details['exception']}"),
     )
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        docker_image=None,
+        **params,
     ) -> Dict[str, Any]:
         """Create an inference job"""
         params = ApiConfig(**params).model_dump()
@@ -97,7 +104,7 @@ class API(Jobs):
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
             "script": script,
-            "docker_image": self.base_image,
+            "docker_image": docker_image or self.base_image,
         }
         return self.get_or_create_or_reset(data)
 

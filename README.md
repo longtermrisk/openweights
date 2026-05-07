@@ -68,7 +68,7 @@ class MyCustomJob(Jobs):
     }
     params: Type[BaseModel] = MyParams  # Your Pydantic model for params
     requires_vram_gb: int = 24
-    base_image: str = 'nielsrolf/ow-default' # optional
+    base_image: str = 'nielsrolf/ow-unsloth:v0.10' # optional
 
     def get_entrypoint(self, validated_params: BaseModel) -> str:
         # Get the entrypoint command for the job.
@@ -124,22 +124,6 @@ with ow.api.deploy(model):            # async with ow.api.deploy(model) also wor
     print(completion.choices[0].message)       # when this context manager exits, it calls api.down()
 ```
 [More details](cookbook/api-deployment/)
-
-
-### Inspect-AI
-```python
-from openweights import OpenWeights
-ow = OpenWeights()
-
-job = ow.inspect_ai.create(
-    model='meta-llama/Llama-3.3-70B-Instruct',
-    eval_name='inspect_evals/gpqa_diamond',
-    options='--top-p 0.9', # Can be any options that `inspect eval` accepts - we simply pass them on without validation
-)
-
-if job.status == 'completed':
-    job.download('output')
-```
 
 ---
 

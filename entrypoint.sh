@@ -22,7 +22,7 @@ echo "[$(date)] Hugging Face login completed"
 # Generate SSH host keys and start SSH service
 echo "[$(date)] Setting up SSH service"
 ssh-keygen -A
-service ssh start
+/usr/sbin/sshd || service ssh start
 echo "[$(date)] SSH service started"
 
 # Start background services

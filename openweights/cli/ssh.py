@@ -15,6 +15,7 @@ from openweights.cli.common import (
     ssh_exec,
     wait_for_ssh,
 )
+from openweights.images import OW_UNSLOTH_IMAGE
 
 
 def parse_existing_ssh(existing: str, key_path: str) -> SSHSpec:
@@ -86,7 +87,7 @@ def add_ssh_parser(parser):
         "--env-file", default=None, help="Path to .env to export and pass to provider."
     )
     parser.add_argument(
-        "--image", default="nielsrolf/ow-default:v0.9", help="Provider image name."
+        "--image", default=OW_UNSLOTH_IMAGE, help="Provider image name."
     )
     parser.add_argument("--gpu", default="L40", help="GPU type for provider.")
     parser.add_argument("--count", type=int, default=1, help="GPU count.")
