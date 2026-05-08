@@ -1,10 +1,51 @@
-from chat_template_spans import build_response_only_example
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
-from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
+from transformers import PreTrainedTokenizerBase, TrainingArguments
 from trl import SFTTrainer
 from unsloth import is_bfloat16_supported
+from unsloth.chat_templates import train_on_responses_only as unsloth_train_on_responses_only
 from utils import GPUStatsCallback, LogMetrics
+
+
+def _get_chat_template_parts(tokenizer: PreTrainedTokenizerBase) -> tuple[str, str]:
+    """Auto-detect instruction and response turn headers from the tokenizer's chat template.
+
+    Renders two dummy conversations with unique sentinel strings and diffs the
+    output to locate the exact turn-delimiter substrings, making this
+    model-agnostic without hardcoding any template format.
+
+    Returns:
+        (instruction_part, response_part): strings passed to
+        unsloth.chat_templates.train_on_responses_only.
+    """
+    u_sentinel = "USER_SENTINEL_OW_3f9a"
+    a_sentinel = "ASST_SENTINEL_OW_3f9a"
+
+    # response_part: everything between the end of user content and start of assistant content
+    text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": u_sentinel}, {"role": "assistant", "content": a_sentinel}],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    u_end = text.find(u_sentinel) + len(u_sentinel)
+    a_start = text.find(a_sentinel)
+    response_part = text[u_end:a_start]
+
+    # instruction_part: everything between the end of an assistant turn and start of the next user turn
+    text2 = tokenizer.apply_chat_template(
+        [
+            {"role": "user", "content": "x"},
+            {"role": "assistant", "content": a_sentinel},
+            {"role": "user", "content": u_sentinel},
+        ],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    a_end = text2.find(a_sentinel) + len(a_sentinel)
+    u_start = text2.find(u_sentinel)
+    instruction_part = text2[a_end:u_start]
+
+    return instruction_part, response_part
 
 
 def print_dataset_examples(dataset, dataset_name, num_examples=3):
@@ -34,13 +75,12 @@ def sft_train(
     logp_datasets={},
     **kwargs,
 ):
-    # NOTE: maybe this is not needed but we should test it with train_on_responses_only: https://huggingface.co/docs/trl/en/sft_trainer#dataset-format-support
     def apply_chat_template(examples):
+        """Convert messages to text; no-op if 'text' field already present."""
         if "text" in examples:
             return examples
-        conversations = examples["messages"]
         texts = []
-        for conversation in conversations:
+        for conversation in examples["messages"]:
             text = tokenizer.apply_chat_template(
                 conversation,
                 add_generation_prompt=False,
@@ -115,62 +155,31 @@ def sft_train(
     )
     callbacks = [LogMetrics(), GPUStatsCallback()] + logp_callbacks + sampling_callbacks
 
+    dataset = dataset.map(apply_chat_template, batched=True)
+    print_dataset_examples(dataset, "Training", num_examples=3)
+    if test_dataset is not None:
+        test_dataset = test_dataset.map(apply_chat_template, batched=True)
+        print_dataset_examples(test_dataset, "Test", num_examples=3)
+
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        dataset_text_field="text",
+        max_seq_length=training_cfg.max_seq_length,
+        dataset_num_proc=4,
+        packing=training_cfg.packing,
+        args=trainer_args,
+        callbacks=callbacks,
+        eval_dataset=test_dataset,
+    )
+
     if training_cfg.train_on_responses_only:
-        print_dataset_examples(dataset, "Training", num_examples=3)
-        if test_dataset is not None:
-            print_dataset_examples(test_dataset, "Test", num_examples=3)
-
-        if training_cfg.packing:
-            print(
-                "WARNING: packing is not supported with template-aware "
-                "response-only masking; continuing with packing disabled."
-            )
-
-        def process_for_response_only(example):
-            return build_response_only_example(
-                tokenizer,
-                example["messages"],
-                training_cfg.max_seq_length,
-            )
-
-        train_dataset_processed = dataset.map(
-            process_for_response_only, remove_columns=dataset.column_names
-        )
-        eval_dataset_processed = (
-            test_dataset.map(
-                process_for_response_only, remove_columns=test_dataset.column_names
-            )
-            if test_dataset is not None
-            else None
+        instruction_part, response_part = _get_chat_template_parts(tokenizer)
+        trainer = unsloth_train_on_responses_only(
+            trainer,
+            instruction_part=instruction_part,
+            response_part=response_part,
         )
 
-        trainer = Trainer(
-            model=model,
-            processing_class=tokenizer,
-            train_dataset=train_dataset_processed,
-            eval_dataset=eval_dataset_processed,
-            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-            args=trainer_args,
-            callbacks=callbacks,
-        )
-    else:
-        dataset = dataset.map(apply_chat_template, batched=True)
-        print_dataset_examples(dataset, "Training", num_examples=3)
-
-        if test_dataset is not None:
-            test_dataset = test_dataset.map(apply_chat_template, batched=True)
-            print_dataset_examples(test_dataset, "Test", num_examples=3)
-
-        trainer = SFTTrainer(
-            model=model,
-            tokenizer=tokenizer,
-            train_dataset=dataset,
-            dataset_text_field="text",
-            max_seq_length=training_cfg.max_seq_length,
-            dataset_num_proc=4,
-            packing=training_cfg.packing,
-            args=trainer_args,
-            callbacks=callbacks,
-            eval_dataset=test_dataset,
-        )
     return trainer
