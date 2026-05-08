@@ -252,7 +252,7 @@ class ManagerSupervisor:
             except Exception as e:
                 logger.error(f"Error in supervisor loop: {e}")
 
-            time.sleep(5)  # Check every 5 minutes
+            time.sleep(20)  # Check every 20 seconds
 
 
 def main():
