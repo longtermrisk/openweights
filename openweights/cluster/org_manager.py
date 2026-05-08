@@ -21,6 +21,7 @@ from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
+    is_spending_limit_error,
     parse_hardware_config,
     populate_hardware_config,
 )
@@ -365,6 +366,17 @@ class OrganizationManager:
     @supabase_retry()
     def scale_workers(self, running_workers, pending_jobs):
         """Scale workers according to pending jobs and limits."""
+        # Skip provisioning entirely if we're in a spending-limit pause
+        if self.hardware_registry.is_spending_limit_paused():
+            pause_until = self.hardware_registry.spending_limit_pause_until()
+            remaining = int(pause_until - time.time())
+            logger.warning(
+                "Provisioning paused due to spending limit — %d s remaining. "
+                "Jobs will stay pending.",
+                max(remaining, 0),
+            )
+            return
+
         # Group active workers by docker image
         print("@@@@ Scaling workers")
         running_workers_by_image = {}
@@ -518,6 +530,18 @@ class OrganizationManager:
                                             hardware_type, e
                                         )
                                     )
+
+                                    # Spending-limit errors are account-wide —
+                                    # stop trying other hardware types immediately.
+                                    if is_spending_limit_error(e):
+                                        logger.warning(
+                                            "Spending limit hit while starting %s: %s. "
+                                            "Pausing all provisioning.",
+                                            hardware_type,
+                                            e,
+                                        )
+                                        break
+
                                     cooldown_until = (
                                         self.hardware_registry.get_cooldown_info(
                                             hardware_type
