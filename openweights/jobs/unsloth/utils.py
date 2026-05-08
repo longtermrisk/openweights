@@ -119,6 +119,44 @@ def is_peft_model(model):
     return is_peft
 
 
+def apply_training_runtime_fixes(model, *, where: str = "unsloth") -> None:
+    """Probe and (conditionally) fix model state right before ``trainer.train()``.
+
+    Background: in v0.8.x the SFT path used ``trl.SFTTrainer``, which silently
+    sets ``model.config.use_cache = False`` in its ``__init__``. The v0.9
+    rewrite of the response-only path swapped ``SFTTrainer`` for plain
+    ``transformers.Trainer``, which does not, leaving the KV cache materialised
+    through every training forward and inflating VRAM on large-vocab / long-
+    context models. This helper restores the previous behavior, and prints the
+    relevant model-runtime state so future regressions are easy to spot.
+
+    Args:
+        model: The model passed to the trainer (typically PEFT-wrapped, as
+            returned by ``FastLanguageModel.get_peft_model``).
+        where: Free-form tag included in log lines so probes from concurrent
+            workers / job types can be told apart.
+    """
+    cfg = getattr(model, "config", None)
+    use_cache_before = getattr(cfg, "use_cache", "<no-config>")
+    attn_impl = getattr(cfg, "_attn_implementation", None)
+    grad_ckpt = getattr(model, "is_gradient_checkpointing", None)
+
+    print(
+        f"[VRAM-probe:{where}] use_cache={use_cache_before!r} "
+        f"_attn_implementation={attn_impl!r} "
+        f"is_gradient_checkpointing={grad_ckpt!r}",
+        flush=True,
+    )
+
+    if cfg is not None and use_cache_before is True:
+        cfg.use_cache = False
+        print(
+            f"[VRAM-probe:{where}] flipped model.config.use_cache "
+            f"True -> False (KV cache during training is wasted VRAM)",
+            flush=True,
+        )
+
+
 def load_jsonl(file_id):
     # try seeing if file_id is a path that exists on disk
     if os.path.exists(file_id):
