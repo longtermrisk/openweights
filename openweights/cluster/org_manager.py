@@ -11,7 +11,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
 import runpod
@@ -41,6 +41,31 @@ logging.basicConfig(
     level=logging.WARNING, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def format_cooldown_remaining(until: float, now: Optional[float] = None) -> str:
+    """Format human-readable time remaining until epoch ``until``.
+
+    Args:
+        until: Unix timestamp (seconds) when the cooldown ends.
+        now: Reference ``time.time()``; defaults to the current wall time.
+
+    Returns:
+        A short duration string such as ``42m15s`` or ``3h0m0s``.
+    """
+    t_now = time.time() if now is None else now
+    rem = max(0.0, until - t_now)
+    whole = int(rem)
+    if whole >= 3600:
+        h, r = divmod(whole, 3600)
+        m, s = divmod(r, 60)
+        return f"{h}h{m}m{s}s"
+    if whole >= 60:
+        m, s = divmod(whole, 60)
+        return f"{m}m{s}s"
+    if rem >= 1.0:
+        return f"{whole}s"
+    return f"{rem:.1f}s"
 
 
 def determine_gpu_type(required_vram, allowed_hardware=None, runpod_client=None):
@@ -446,12 +471,44 @@ class OrganizationManager:
                                 )
                             )
                             if not candidate_hardware:
-                                logger.warning(
-                                    "No currently available hardware for image %s, VRAM %s, allowed_hardware=%s",
-                                    docker_image,
-                                    max_vram_required,
-                                    allowed_hardware,
-                                )
+                                if allowed_hardware:
+                                    cooldowns = (
+                                        self.hardware_registry.get_active_cooldown_end_times(
+                                            allowed_hardware
+                                        )
+                                    )
+                                    now_ts = time.time()
+                                    ladder_min = "→".join(
+                                        str(s // 60)
+                                        for s in self.hardware_registry.cooldown_ladder_seconds
+                                    )
+                                    sched = ", ".join(
+                                        f"{hw} escalation_level="
+                                        f"{self.hardware_registry.get_cooldown_escalation_level(hw)} "
+                                        f"~{format_cooldown_remaining(ts, now_ts)} left (until "
+                                        f"{datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()})"
+                                        for hw, ts in sorted(cooldowns.items())
+                                    )
+                                    logger.warning(
+                                        "Cannot start worker batch: every allowed_hardware "
+                                        "type is on provisioning failure cooldown "
+                                        "(failure_threshold=%s, cooldown_ladder_min=%s). Active cooldowns: "
+                                        "%s | image=%s requires_vram_gb=%s allowed_hardware=%s",
+                                        self.hardware_registry.failure_threshold,
+                                        ladder_min,
+                                        sched or "(no active cooldown rows; possible race)",
+                                        docker_image,
+                                        max_vram_required,
+                                        allowed_hardware,
+                                    )
+                                else:
+                                    logger.warning(
+                                        "Cannot start worker batch: no RunPod hardware "
+                                        "candidates for VRAM autoselect (requires_vram_gb=%s, "
+                                        "image=%s). Check RunPod catalog vs VERIFIED_GPUs.",
+                                        max_vram_required,
+                                        docker_image,
+                                    )
                                 continue
 
                             worker_id = f"{self.org_id}-{uuid.uuid4().hex[:8]}"
@@ -525,11 +582,17 @@ class OrganizationManager:
                                     )
                                     if cooldown_applied and cooldown_until is not None:
                                         logger.error(
-                                            "Failed to start worker on %s; cooling it down until %s: %s",
+                                            "Failed to start worker on %s; cooling down "
+                                            "~%s remaining until %s (UTC), "
+                                            "escalation_level=%s: %s",
                                             hardware_type,
+                                            format_cooldown_remaining(cooldown_until),
                                             datetime.fromtimestamp(
                                                 cooldown_until, timezone.utc
                                             ).isoformat(),
+                                            self.hardware_registry.get_cooldown_escalation_level(
+                                                hardware_type
+                                            ),
                                             e,
                                         )
                                     else:
