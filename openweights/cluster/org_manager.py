@@ -588,8 +588,16 @@ class OrganizationManager:
             pending_jobs = self.get_pending_jobs()
 
             # Log status
+            status_counts: dict[str, int] = {}
+            for w in running_workers:
+                status_counts[w["status"]] = status_counts.get(w["status"], 0) + 1
+            status_breakdown = (
+                ", ".join(f"{k}={v}" for k, v in sorted(status_counts.items())) or "none"
+            )
             logger.info(
-                f"Status: {len(running_workers)} active workers, {len(pending_jobs)} pending jobs"
+                f"[org={self._ow.org_name} ({self.org_id})] "
+                f"workers: {len(running_workers)}/{MAX_WORKERS} ({status_breakdown}), "
+                f"pending jobs: {len(pending_jobs)}"
             )
             # Scale workers if needed
             if pending_jobs:
