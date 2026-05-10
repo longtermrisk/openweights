@@ -1,3 +1,5 @@
+import pytest
+
 from openweights.cluster.start_runpod import (
     RunpodHardwareRegistry,
     is_spending_limit_error,
@@ -70,7 +72,7 @@ def test_registry_cools_down_gpu_after_repeated_failures_and_readds_after_expiry
     fake_time = FakeTime()
     registry = RunpodHardwareRegistry(
         failure_threshold=2,
-        cooldown_escalation=[10],  # single-tier: always 10s
+        cooldown_ladder_seconds=(10,),
         now_fn=fake_time.now,
     )
     client = FakeRunpodClient([{"id": "NVIDIA L40", "memoryInGb": 48}])
@@ -92,7 +94,7 @@ def test_allowed_hardware_respects_cooldowns_without_mutating_job_preferences():
     fake_time = FakeTime()
     registry = RunpodHardwareRegistry(
         failure_threshold=1,
-        cooldown_escalation=[10],
+        cooldown_ladder_seconds=(10,),
         now_fn=fake_time.now,
     )
     client = FakeRunpodClient(
@@ -110,6 +112,7 @@ def test_allowed_hardware_respects_cooldowns_without_mutating_job_preferences():
     ]
 
     registry.record_failure("1x L40", "capacity issue")
+    assert registry.get_cooldown_escalation_level("1x L40") == 1
 
     assert registry.get_candidate_hardware(24, allowed_hardware=allowed_hardware) == [
         "1x A100"
@@ -134,7 +137,7 @@ def test_spending_limit_error_triggers_global_pause_not_hardware_cooldown():
     fake_time = FakeTime(initial=1000)
     registry = RunpodHardwareRegistry(
         failure_threshold=1,
-        cooldown_escalation=[3600],
+        cooldown_ladder_seconds=(3600,),
         spending_limit_pause_seconds=300,
         now_fn=fake_time.now,
     )
@@ -162,14 +165,14 @@ def test_spending_limit_does_not_count_toward_failure_threshold():
     fake_time = FakeTime(initial=1000)
     registry = RunpodHardwareRegistry(
         failure_threshold=2,
-        cooldown_escalation=[3600],
+        cooldown_ladder_seconds=(3600,),
         spending_limit_pause_seconds=60,
         now_fn=fake_time.now,
     )
     client = FakeRunpodClient([{"id": "NVIDIA L40", "memoryInGb": 48}])
     registry.refresh(client, force=True)
 
-    # Fire 5 spending-limit errors — none should trigger cooldown
+    # Fire 5 spending-limit errors; none should trigger cooldown.
     for _ in range(5):
         result = registry.record_failure("1x L40", "spending limit hit")
         assert result is False
@@ -179,78 +182,42 @@ def test_spending_limit_does_not_count_toward_failure_threshold():
     assert registry.get_candidate_hardware(24) == ["1x L40"]
 
 
-# --- Escalating cooldown tests ---
-
-
-def test_escalating_cooldowns_within_same_day():
-    # Use a timestamp that is well within a single UTC day (noon UTC)
-    noon_utc = 1714219200.0  # 2024-04-27 12:00:00 UTC (arbitrary)
-    fake_time = FakeTime(initial=noon_utc)
-    registry = RunpodHardwareRegistry(
-        failure_threshold=1,  # cooldown after every failure
-        cooldown_escalation=[60, 360, 7200],  # 1min, 6min, 2h
-        now_fn=fake_time.now,
-    )
-    client = FakeRunpodClient([{"id": "NVIDIA L40", "memoryInGb": 48}])
-    registry.refresh(client, force=True)
-
-    # 1st cooldown of the day: 60s
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-    assert info == noon_utc + 60
-
-    # Expire cooldown
-    fake_time.advance(61)
-    assert registry.get_candidate_hardware(24) == ["1x L40"]
-
-    # 2nd cooldown of the day: 360s
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-    expected = fake_time.now() + 360
-    # The cooldown_until should be now + 360
-    assert abs(info - (noon_utc + 61 + 360)) < 1
-
-    # Expire cooldown
-    fake_time.advance(361)
-    assert registry.get_candidate_hardware(24) == ["1x L40"]
-
-    # 3rd cooldown of the day: 7200s (max tier)
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-
-    # 4th cooldown same day: still 7200s (capped at last tier)
-    fake_time.advance(7201)
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-
-
-def test_cooldown_escalation_resets_on_new_day():
-    """Escalation counter resets when the UTC date changes."""
-    # Start near end of UTC day
-    fake_time = FakeTime(initial=1714262399.0)  # 2024-04-27 23:59:59 UTC
+def test_cooldown_duration_escalates_per_provisioning_failure_wave() -> None:
+    """Later cooldown waves use later ladder rungs until the final rung repeats."""
+    fake_time = FakeTime()
     registry = RunpodHardwareRegistry(
         failure_threshold=1,
-        cooldown_escalation=[60, 3600],
+        cooldown_ladder_seconds=(100, 200, 400),
         now_fn=fake_time.now,
     )
-    client = FakeRunpodClient([{"id": "NVIDIA L40", "memoryInGb": 48}])
-    registry.refresh(client, force=True)
 
-    # 1st cooldown on day 1: 60s
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-    # Cooldown is 60s — it extends into the next day, but that's fine
+    assert registry.record_failure("1x L40", "wave1") is True
+    assert registry.get_cooldown_escalation_level("1x L40") == 1
+    until_first = registry.get_cooldown_info("1x L40")
+    assert until_first is not None
+    assert until_first == pytest.approx(100.0)
 
-    # Advance past cooldown and into the next UTC day
-    fake_time.advance(61)  # now 2024-04-28 00:01:00 UTC
+    fake_time.advance(101)
+    assert registry.get_cooldown_info("1x L40") is None
 
-    # Next failure is on a new day — should use tier 0 again (60s), not tier 1
-    registry.record_failure("1x L40", "err")
-    info = registry.get_cooldown_info("1x L40")
-    assert info is not None
-    assert abs(info - (fake_time.now() + 60)) < 1
+    assert registry.record_failure("1x L40", "wave2") is True
+    assert registry.get_cooldown_escalation_level("1x L40") == 2
+    until_second = registry.get_cooldown_info("1x L40")
+    assert until_second is not None
+    assert until_second == pytest.approx(301.0)
+
+    fake_time.advance(201)
+    assert registry.get_cooldown_info("1x L40") is None
+    assert registry.record_failure("1x L40", "wave3") is True
+    assert registry.get_cooldown_escalation_level("1x L40") == 3
+    until_third = registry.get_cooldown_info("1x L40")
+    assert until_third is not None
+    assert until_third == pytest.approx(702.0)
+
+    fake_time.advance(401)
+    assert registry.get_cooldown_info("1x L40") is None
+    assert registry.record_failure("1x L40", "wave4") is True
+    assert registry.get_cooldown_escalation_level("1x L40") == 4
+    until_fourth = registry.get_cooldown_info("1x L40")
+    assert until_fourth is not None
+    assert until_fourth == pytest.approx(1103.0)
