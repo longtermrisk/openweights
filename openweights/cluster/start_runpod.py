@@ -82,8 +82,8 @@ GPUs = {
 VERIFIED_GPUs = {
     # References found at https://rest.runpod.io/v1/docs#v-0-106
     # GPUs for compute-intensive tasks (e.g. LoRAfinetuning)
-    "6000Ada": "NVIDIA RTX 6000 Ada Generation",
-    # "4000Ada": "NVIDIA RTX 4000 Ada Generation",  # untested (no RunPod stock)
+    # "6000Ada": "NVIDIA RTX 6000 Ada Generation", # Not available with cuda 12.8
+    # "4000Ada": "NVIDIA RTX 4000 Ada Generation",
     "L40": "NVIDIA L40",
     # "L40S": "NVIDIA L40S", # not available with cuda 12.8
     # "A30": "NVIDIA A30", # not available with cuda 12.8
@@ -99,7 +99,7 @@ VERIFIED_GPUs = {
     #
     # Below, GPUs are cost inefficient
     # "RTX4080": "NVIDIA GeForce RTX 4080",
-    "RTX3090": "NVIDIA GeForce RTX 3090",
+    # "RTX3090": "NVIDIA GeForce RTX 3090",
     # "RTX3090Ti": "NVIDIA GeForce RTX 3090 Ti",
     # "V100": "Tesla V100-SXM2-32GB",  # Default V100 - 32GB
     # "V100_32": "Tesla V100-SXM2-32GB",
@@ -116,8 +116,8 @@ VERIFIED_GPUs = {
     # "A2000": "NVIDIA RTX A2000",
     # "RTX4090": "NVIDIA GeForce RTX 4090",
     # "A5000": "NVIDIA RTX A5000",
-    "A40": "NVIDIA A40",
-    "A4500": "NVIDIA RTX A4500",
+    # "A40": "NVIDIA A40",
+    # "A4500": "NVIDIA RTX A4500",
     # "RTX3080": "NVIDIA GeForce RTX 3080",
     # "RTX3070": "NVIDIA GeForce RTX 3070",
     # "RTX3080Ti": "NVIDIA GeForce RTX 3080 Ti",
