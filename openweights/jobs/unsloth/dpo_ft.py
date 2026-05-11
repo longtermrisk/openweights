@@ -1,7 +1,18 @@
 # fmt: off
+import os
+
 from unsloth import PatchDPOTrainer, is_bfloat16_supported
 
 PatchDPOTrainer()
+import transformers.utils.hub as hub
+
+if not hasattr(hub, "TRANSFORMERS_CACHE"):
+    hub.TRANSFORMERS_CACHE = os.getenv("TRANSFORMERS_CACHE")
+
+import trl.import_utils as trl_import_utils
+
+trl_import_utils._weave_available = False
+
 from trl import DPOConfig, DPOTrainer
 from utils import GPUStatsCallback, LogMetrics
 
@@ -50,6 +61,7 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
         warmup_steps=training_cfg.warmup_steps,
         learning_rate=training_cfg.learning_rate,
+        beta=training_cfg.beta,
         fp16=not is_bfloat16_supported(),
         bf16=is_bfloat16_supported(),
         logging_steps=1,
@@ -64,13 +76,15 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         **kwargs,
     )
 
+    if not hasattr(model, "warnings_issued"):
+        model.warnings_issued = {}
+
     trainer = DPOTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=dataset,
         eval_dataset=test_dataset,
         args=args,
-        beta=training_cfg.beta,
         callbacks=[LogMetrics(), GPUStatsCallback()],
     )
     return trainer

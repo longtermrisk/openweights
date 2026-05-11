@@ -8,7 +8,12 @@ from datasets import Dataset
 from sft import sft_train
 from unsloth import FastLanguageModel
 from unsloth.chat_templates import standardize_sharegpt
-from utils import client, load_jsonl, load_model_and_tokenizer
+from utils import (
+    apply_training_runtime_fixes,
+    client,
+    load_jsonl,
+    load_model_and_tokenizer,
+)
 from validate import TrainingConfig
 
 
@@ -52,6 +57,11 @@ def create_dataset(rows: list[dict], loss: str) -> Dataset:
 
 def train(training_cfg):
     """Prepare lora model, call training function, and push to hub"""
+    if training_cfg.logp_callback_datasets:
+        # Unsloth suppresses logits by default in newer releases. The logprob
+        # callback needs raw logits during training-time evaluation.
+        os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
+
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
         load_in_4bit=training_cfg.load_in_4bit,
@@ -75,6 +85,8 @@ def train(training_cfg):
         loftq_config=None,
         use_dora=False,
     )
+    apply_training_runtime_fixes(model, where=f"unsloth/{training_cfg.loss}")
+
     rows = load_jsonl(training_cfg.training_file)
     dataset = create_dataset(rows, training_cfg.loss)
 

@@ -17,10 +17,12 @@ TTL (Time To Live) Feature:
 Note: possible unknown error with echo when running the script.
 """
 
+import logging
 import os
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import lru_cache
 from threading import RLock
 from typing import Callable, Dict, List, Optional
@@ -32,11 +34,15 @@ import runpod
 from dotenv import load_dotenv
 from scp import SCPClient
 
+from openweights.images import OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE
+
+logger = logging.getLogger(__name__)
+
 IMAGES = {
-    "default": "nielsrolf/ow-default",
-    "inference": "nielsrolf/ow-inference-v2",
-    "inference-debugging": "nielsrolf/ow-inference-v2-debugging",
-    "finetuning": "nielsrolf/ow-unsloth-v2",
+    "default": OW_UNSLOTH_IMAGE,
+    "inference": OW_VLLM_IMAGE,
+    "inference-debugging": OW_VLLM_IMAGE,
+    "finetuning": OW_UNSLOTH_IMAGE,
     "torch": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
 }
 
@@ -129,9 +135,33 @@ HARDWARE_REFRESH_INTERVAL_SECONDS = int(
     os.getenv("OW_RUNPOD_HARDWARE_REFRESH_INTERVAL_SECONDS", "900")
 )
 HARDWARE_FAILURE_THRESHOLD = int(os.getenv("OW_RUNPOD_HARDWARE_FAILURE_THRESHOLD", "3"))
-HARDWARE_COOLDOWN_SECONDS = int(
-    os.getenv("OW_RUNPOD_HARDWARE_COOLDOWN_SECONDS", str(7 * 24 * 60 * 60))
+# Escalating provisioning-failure cooldowns (seconds). After each cooldown triggers,
+# the next uses the following rung; the final rung repeats for all later cooldowns.
+DEFAULT_HARDWARE_COOLDOWN_LADDER_SECONDS: tuple[int, ...] = (
+    1 * 60,
+    2 * 60,
+    5 * 60,
+    10 * 60,
+    20 * 60,
+    40 * 60,
+    80 * 60,
+    160 * 60,
+    360 * 60,
 )
+
+
+def _env_cooldown_ladder_seconds() -> tuple[int, ...]:
+    """Parse ``OW_RUNPOD_HARDWARE_COOLDOWN_LADDER_SECONDS`` (comma-separated seconds)."""
+    raw = os.getenv("OW_RUNPOD_HARDWARE_COOLDOWN_LADDER_SECONDS")
+    if raw is None or not raw.strip():
+        return DEFAULT_HARDWARE_COOLDOWN_LADDER_SECONDS
+    parts = [int(p.strip()) for p in raw.split(",") if p.strip()]
+    if not parts:
+        return DEFAULT_HARDWARE_COOLDOWN_LADDER_SECONDS
+    return tuple(parts)
+
+
+HARDWARE_COOLDOWN_LADDER_SECONDS = _env_cooldown_ladder_seconds()
 RUNPOD_CLOUD_TYPE = os.getenv("OW_RUNPOD_CLOUD_TYPE", "ALL").upper()
 RUNPOD_SUPPORT_PUBLIC_IP = (
     os.getenv("OW_RUNPOD_SUPPORT_PUBLIC_IP", "true").lower() == "true"
@@ -169,19 +199,39 @@ class HardwareFailureState:
     last_failure_at: Optional[float] = None
     last_success_at: Optional[float] = None
     last_error: Optional[str] = None
+    #: Increments each time a cooldown is applied; drives ladder duration selection.
+    cooldown_escalation_level: int = 0
 
 
 class RunpodHardwareRegistry:
+    """RunPod GPU inventory cache with escalating failure cooldowns per hardware string."""
+
     def __init__(
         self,
         refresh_interval_seconds: int = HARDWARE_REFRESH_INTERVAL_SECONDS,
         failure_threshold: int = HARDWARE_FAILURE_THRESHOLD,
-        cooldown_seconds: int = HARDWARE_COOLDOWN_SECONDS,
+        cooldown_ladder_seconds: Optional[tuple[int, ...]] = None,
         now_fn: Optional[Callable[[], float]] = None,
-    ):
+    ) -> None:
+        """Build a registry.
+
+        Args:
+            refresh_interval_seconds: Minimum interval between RunPod inventory refreshes.
+            failure_threshold: Consecutive provisioning failures before a cooldown applies.
+            cooldown_ladder_seconds: Cooldown durations (seconds) per escalation level;
+                defaults to env / built-in ladder. The last entry repeats for later levels.
+            now_fn: Injectable clock for tests (returns unix time as float).
+        """
         self.refresh_interval_seconds = refresh_interval_seconds
         self.failure_threshold = failure_threshold
-        self.cooldown_seconds = cooldown_seconds
+        resolved_ladder = (
+            cooldown_ladder_seconds
+            if cooldown_ladder_seconds is not None
+            else HARDWARE_COOLDOWN_LADDER_SECONDS
+        )
+        if not resolved_ladder:
+            raise ValueError("cooldown_ladder_seconds must be non-empty")
+        self.cooldown_ladder_seconds: tuple[int, ...] = resolved_ladder
         self.now_fn = now_fn or time.time
         self._last_refresh_at = 0.0
         self._discovered_config: Dict[int, List[str]] = {}
@@ -258,11 +308,11 @@ class RunpodHardwareRegistry:
 
             now = self._now()
             if allowed_hardware:
-                candidates = []
-                for hardware_type in allowed_hardware:
-                    if not self._is_on_cooldown(hardware_type, now=now):
-                        candidates.append(hardware_type)
-                return candidates
+                return [
+                    hw
+                    for hw in allowed_hardware
+                    if not self._is_on_cooldown(hw, now=now)
+                ]
 
             candidates: List[str] = []
             for vram in sorted(self._hardware_config.keys()):
@@ -277,6 +327,7 @@ class RunpodHardwareRegistry:
             )
             state.consecutive_failures = 0
             state.cooldown_until = None
+            state.cooldown_escalation_level = 0
             state.last_success_at = self._now()
             state.last_error = None
             self._rebuild_hardware_config(self._discovered_config)
@@ -291,9 +342,25 @@ class RunpodHardwareRegistry:
             state.last_error = str(error)
             cooldown_applied = False
             if state.consecutive_failures >= self.failure_threshold:
-                state.cooldown_until = state.last_failure_at + self.cooldown_seconds
+                ladder = self.cooldown_ladder_seconds
+                idx = min(state.cooldown_escalation_level, len(ladder) - 1)
+                duration_s = ladder[idx]
+                until_ts = state.last_failure_at + duration_s
+                state.cooldown_until = until_ts
                 state.consecutive_failures = 0
+                state.cooldown_escalation_level += 1
                 cooldown_applied = True
+                escalation_level = state.cooldown_escalation_level
+                logger.warning(
+                    "RunPod provisioning cooldown triggered: hardware=%s "
+                    "escalation_level=%s ladder_rung=%s/%s duration_s=%s until_utc=%s",
+                    hardware_type,
+                    escalation_level,
+                    idx + 1,
+                    len(ladder),
+                    duration_s,
+                    datetime.fromtimestamp(until_ts, tz=timezone.utc).isoformat(),
+                )
             self._rebuild_hardware_config(self._discovered_config)
             return cooldown_applied
 
@@ -304,6 +371,38 @@ class RunpodHardwareRegistry:
         if not self._is_on_cooldown(hardware_type):
             return None
         return state.cooldown_until
+
+    def get_cooldown_escalation_level(self, hardware_type: str) -> int:
+        """Return how many provisioning cooldown waves have completed for this hardware.
+
+        Resets to ``0`` on :meth:`record_success`. Increments each time a cooldown
+        is applied in :meth:`record_failure`.
+        """
+        with self._lock:
+            state = self._failure_state.get(hardware_type)
+            if state is None:
+                return 0
+            return state.cooldown_escalation_level
+
+    def get_active_cooldown_end_times(
+        self, hardware_types: List[str]
+    ) -> Dict[str, float]:
+        """Return ``cooldown_until`` epoch timestamps for types currently on cooldown.
+
+        Only includes entries from ``hardware_types`` that are still cooling down
+        after repeated provisioning failures.
+        """
+        with self._lock:
+            now = self._now()
+            out: Dict[str, float] = {}
+            for hw in hardware_types:
+                if not self._is_on_cooldown(hw, now=now):
+                    continue
+                state = self._failure_state.get(hw)
+                if state is None or state.cooldown_until is None:
+                    continue
+                out[hw] = state.cooldown_until
+            return out
 
 
 HARDWARE_REGISTRY = RunpodHardwareRegistry()

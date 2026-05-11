@@ -25,6 +25,7 @@ def submit_job():
         epochs=20,
         learning_rate=1e-4,
         r=32,
+        optim="adamw_torch",
         eval_every_n_steps=1,
         logp_callback_datasets={"in-distribution": logp_file},
         requires_vram_gb=16,

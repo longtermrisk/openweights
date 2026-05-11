@@ -6,6 +6,7 @@ from typing import List
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from openweights import Jobs, OpenWeights, register
+from openweights.images import OW_VLLM_IMAGE
 
 
 class MMLUProArgs(BaseModel):
@@ -34,7 +35,7 @@ class MMLUProJob(Jobs):
     # Mount our addition script
     mount = {os.path.dirname(__file__): "."}
     params = MMLUProArgs
-    base_image = "nielsrolf/ow-inference-v2"
+    base_image = OW_VLLM_IMAGE
     requires_vram_gb = 60
 
     def get_entrypoint(self, validated_params: MMLUProArgs) -> str:

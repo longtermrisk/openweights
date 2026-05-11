@@ -3,7 +3,12 @@ import os
 from functools import wraps
 
 import torch
-from transformers import AutoTokenizer, TrainerCallback
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TrainerCallback,
+)
 
 from openweights.client import OpenWeights
 
@@ -25,22 +30,43 @@ def get_fallback_chat_template_model(model_id):
     return None
 
 
-def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
-    from unsloth import FastLanguageModel, is_bfloat16_supported
+def is_bfloat16_supported():
+    return torch.cuda.is_available() and torch.cuda.is_bf16_supported()
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
+
+def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
+    torch_dtype = torch.bfloat16 if is_bfloat16_supported() else torch.float16
+    model_kwargs = {
+        "token": os.environ["HF_TOKEN"],
+        "trust_remote_code": True,
+        "low_cpu_mem_usage": False,
+    }
+    if load_in_4bit:
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch_dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
+        model_kwargs["device_map"] = "auto"
+    else:
+        model_kwargs["torch_dtype"] = torch_dtype
+
+    model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        dtype=None,
-        load_in_4bit=load_in_4bit,
-        token=os.environ["HF_TOKEN"],
-        max_seq_length=max_seq_length,
-        device_map=None,  # important: no lazy/meta map
-        low_cpu_mem_usage=False,  # force real tensors
+        **model_kwargs,
     )
-    model = model.to("cuda")
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id,
+        token=os.environ["HF_TOKEN"],
+        trust_remote_code=True,
+    )
+    if not load_in_4bit:
+        model = model.to("cuda")
     if tokenizer.pad_token is None:
         print("WARNING: tokenizer.pad_token is None. Setting it to tokenizer.eos_token")
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
     if tokenizer.chat_template is None:
         fallback_model_id = get_fallback_chat_template_model(model_id)
         if fallback_model_id is not None:
@@ -48,6 +74,11 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
                 fallback_model_id,
                 token=os.environ.get("HF_TOKEN"),
             ).chat_template
+    if getattr(model.config, "pad_token_id", None) is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+        model.generation_config.eos_token_id = tokenizer.eos_token_id
     return model, tokenizer
 
 

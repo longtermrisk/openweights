@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
+from openweights.images import OW_UNSLOTH_IMAGE
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,7 @@ class Job:
 class Jobs:
     mount: Dict[str, str] = {}  # source path -> target path mapping
     params: Type[BaseModel] = BaseModel  # Pydantic model for parameter validation
-    base_image: str = (
-        "nielsrolf/ow-default:unsloth2026.3.17-pt2.9.0-vllm-0.16.0-cu12.8-studio-release-v0.1.3-beta"
-    )
+    base_image: str = OW_UNSLOTH_IMAGE
     requires_vram_gb: int | None = 24  # Required VRAM in GB
 
     def __init__(self, ow_instance):
@@ -249,6 +248,7 @@ class Jobs:
             # Reset job to pending
             logger.info(f"Resetting job {data['id']} from {job['status']} to pending")
             data["status"] = "pending"
+            data["outputs"] = None
             result = (
                 self._ow._supabase.table("jobs")
                 .update(data)

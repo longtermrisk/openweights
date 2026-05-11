@@ -9,6 +9,7 @@ import backoff
 
 from openweights import Jobs, register
 from openweights.client.utils import get_lora_rank, guess_model_size, resolve_lora_model
+from openweights.images import OW_VLLM_IMAGE
 from openweights.jobs.inference.openai_support import OpenAIInferenceSupport
 
 from .validate import InferenceConfig
@@ -20,6 +21,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         os.path.join(os.path.dirname(__file__), "cli.py"): "cli.py",
         os.path.join(os.path.dirname(__file__), "validate.py"): "validate.py",
     }
+    base_image = OW_VLLM_IMAGE
 
     @property
     def id_prefix(self):
@@ -38,7 +40,11 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         return self.get_or_create_or_reset(data)
 
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self,
+        requires_vram_gb="guess",
+        allowed_hardware=None,
+        docker_image=None,
+        **params,
     ) -> Dict[str, Any]:
         """Create an inference job"""
         InferenceConfig(**params)
@@ -80,7 +86,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
-            "docker_image": self.base_image,
+            "docker_image": docker_image or self.base_image,
             "script": self.get_entrypoint(InferenceConfig(**params)),
         }
 

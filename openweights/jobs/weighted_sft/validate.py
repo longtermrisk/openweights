@@ -81,7 +81,7 @@ class SFTConfig(BaseModel):
         1e-4, description="Learning rate or string expression"
     )
     logging_steps: int = Field(1, description="Number of steps between logging")
-    optim: str = Field("adamw_8bit", description="Optimizer to use for training")
+    optim: str = Field("adamw_torch", description="Optimizer to use for training")
     weight_decay: float = Field(0.01, description="Weight decay rate")
     lr_scheduler_type: str = Field("linear", description="Learning rate scheduler type")
     seed: int = Field(3407, description="Random seed for reproducibility")
@@ -153,7 +153,7 @@ class SFTConfig(BaseModel):
 
     @field_validator("optim")
     def validate_optimizer(cls, v):
-        allowed_optimizers = ["adamw_8bit", "adamw", "adam", "sgd"]
+        allowed_optimizers = ["adamw_torch", "adamw", "adam", "sgd"]
         if v not in allowed_optimizers:
             raise ValueError(f"Optimizer must be one of {allowed_optimizers}")
         return v

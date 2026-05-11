@@ -22,9 +22,11 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from pydantic import BaseModel, Field
 
 from openweights import Jobs, OpenWeights, register
+from openweights.images import OW_CLUSTER_IMAGE, OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE
 
 # Ordered list of cookbook examples to run sequentially.
 # Cheaper/faster examples first, expensive ones later.
@@ -51,7 +54,7 @@ COOKBOOK_EXAMPLES = [
     "preference_learning/llama3_dpo.py",
     "preference_learning/llama3_orpo.py",
     "inference/run_inference.py",
-    "inspect_eval.py",
+    "inference/qwen36_inference.py",
     "custom_job/client_side.py",
     "api-deployment/context_manager_api.py",
 ]
@@ -93,6 +96,7 @@ class IntegrationTestRunner:
         self.test_token: Optional[str] = None
         self.initial_token: Optional[str] = None
         self.debug = debug
+        self.python_executable = sys.executable
 
         # Paths
         self.repo_root = Path(__file__).parent.parent
@@ -104,6 +108,8 @@ class IntegrationTestRunner:
         # Create logs directory structure
         self.logs_dir.mkdir(exist_ok=True)
         (self.logs_dir / "cookbook").mkdir(exist_ok=True)
+
+    DOCKER_BUILD_TIMEOUT_SECONDS = 3600
 
     def backup_env(self):
         """Backup .env.worker file"""
@@ -218,6 +224,7 @@ class IntegrationTestRunner:
         log_name: str,
         command_desc: str,
         cwd: Optional[Path] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> Optional[subprocess.Popen]:
         """Start a subprocess with logging or prompt for manual execution
 
@@ -256,13 +263,17 @@ class IntegrationTestRunner:
 
         log_file = open(log_path, "w")
 
+        process_env = self._get_env_with_token()
+        if env:
+            process_env.update(env)
+
         process = subprocess.Popen(
             command,
             cwd=cwd or self.repo_root,
             stdout=log_file,
             stderr=subprocess.STDOUT,
             text=True,
-            env=self._get_env_with_token(),
+            env=process_env,
         )
 
         # Store log file handle so it stays open
@@ -309,7 +320,7 @@ class IntegrationTestRunner:
         env: Optional[Dict[str, str]] = None,
     ) -> subprocess.CompletedProcess:
         """Run an ow CLI command"""
-        full_command = ["python", "-m", "openweights.cli"] + command
+        full_command = [self.python_executable, "-m", "openweights.cli"] + command
         command_desc = "ow " + " ".join(command)
 
         # In debug mode, ask if user wants to run manually
@@ -514,7 +525,7 @@ class IntegrationTestRunner:
             # Note: token revoke requires stdin confirmation, we'll need to handle that separately
             revoke_result = subprocess.run(
                 [
-                    "python",
+                    self.python_executable,
                     "-m",
                     "openweights.cli",
                     "token",
@@ -606,9 +617,10 @@ class IntegrationTestRunner:
             # Start worker in background
             print("\n2. Starting worker...")
             worker_process = self._start_subprocess(
-                command=["python", "-m", "openweights.cli", "worker"],
+                command=[self.python_executable, "-m", "openweights.cli", "worker"],
                 log_name="worker",
                 command_desc="ow worker",
+                env={"DOCKER_IMAGE": Jobs.base_image},
             )
 
             # Wait for job completion (timeout after 5 minutes)
@@ -661,6 +673,43 @@ class IntegrationTestRunner:
         """Test building and pushing Docker images"""
         result = TestResult("Docker Build and Push")
 
+        def build_and_push(image: str, dockerfile: Optional[str] = None) -> None:
+            build_command = [
+                "docker",
+                "buildx",
+                "build",
+                "--progress=plain",
+                "--platform",
+                "linux/amd64",
+            ]
+            if dockerfile is not None:
+                build_command.extend(["-f", dockerfile])
+            build_command.extend(["-t", image, "--load", "."])
+
+            build_result = subprocess.run(
+                build_command,
+                cwd=self.repo_root,
+                timeout=self.DOCKER_BUILD_TIMEOUT_SECONDS,
+            )
+            if build_result.returncode != 0:
+                raise Exception(f"Docker build failed for {image}")
+
+            last_returncode = 1
+            for attempt in range(1, 4):
+                push_result = subprocess.run(
+                    ["docker", "push", image],
+                    cwd=self.repo_root,
+                    timeout=self.DOCKER_BUILD_TIMEOUT_SECONDS,
+                )
+                last_returncode = push_result.returncode
+                if push_result.returncode == 0:
+                    break
+                if attempt < 3:
+                    print(f"Docker push failed for {image}; retrying ({attempt}/3)")
+                    time.sleep(10)
+            if last_returncode != 0:
+                raise Exception(f"Docker push failed for {image}")
+
         try:
             print("\n" + "=" * 80)
             print("TEST: Docker Build and Push")
@@ -683,59 +732,20 @@ class IntegrationTestRunner:
 
             print("✓ Docker is running")
 
-            # Build ow-default image (worker image) for AMD64
-            print(f"\n2. Building and pushing ow-default:{version} for AMD64...")
-            build_result = subprocess.run(
-                [
-                    "docker",
-                    "buildx",
-                    "build",
-                    "--platform",
-                    "linux/amd64",
-                    "-t",
-                    f"nielsrolf/ow-default:{version}",
-                    "--push",
-                    ".",
-                ],
-                cwd=self.repo_root,
-                capture_output=True,
-                text=True,
-                timeout=1200,  # 20 minute timeout for build+push
-            )
+            # Build ow-unsloth image for AMD64
+            print(f"\n2. Building and pushing ow-unsloth:{version} for AMD64...")
+            build_and_push(OW_UNSLOTH_IMAGE)
+            print(f"✓ Successfully built and pushed {OW_UNSLOTH_IMAGE}")
 
-            if build_result.returncode != 0:
-                raise Exception(f"Docker build failed: {build_result.stderr}")
-
-            print(f"✓ Successfully built and pushed ow-default:{version}")
+            # Build ow-vllm image for AMD64
+            print(f"\n3. Building and pushing ow-vllm:{version} for AMD64...")
+            build_and_push(OW_VLLM_IMAGE, "Dockerfile.vllm")
+            print(f"✓ Successfully built and pushed {OW_VLLM_IMAGE}")
 
             # Build ow-cluster image for AMD64
-            print(f"\n3. Building and pushing ow-cluster:{version} for AMD64...")
-            cluster_build_result = subprocess.run(
-                [
-                    "docker",
-                    "buildx",
-                    "build",
-                    "--platform",
-                    "linux/amd64",
-                    "-f",
-                    "Dockerfile.cluster",
-                    "-t",
-                    f"nielsrolf/ow-cluster:{version}",
-                    "--push",
-                    ".",
-                ],
-                cwd=self.repo_root,
-                capture_output=True,
-                text=True,
-                timeout=1200,  # 20 minute timeout for build+push
-            )
-
-            if cluster_build_result.returncode != 0:
-                raise Exception(
-                    f"Cluster Docker build failed: {cluster_build_result.stderr}"
-                )
-
-            print(f"✓ Successfully built and pushed ow-cluster:{version}")
+            print(f"\n4. Building and pushing ow-cluster:{version} for AMD64...")
+            build_and_push(OW_CLUSTER_IMAGE, "Dockerfile.cluster")
+            print(f"✓ Successfully built and pushed {OW_CLUSTER_IMAGE}")
 
             print(f"\n✓ Docker build and push completed for version {version}")
 
@@ -770,6 +780,131 @@ class IntegrationTestRunner:
         except Exception as e:
             return f"(error fetching logs: {e})"
 
+    def _cleanup_stale_cluster_workers(
+        self, ow, stale_after_seconds: int = 120
+    ) -> None:
+        """Terminate leftover workers before cookbook runs.
+
+        Interrupted integration runs can leave old workers behind. For the isolated
+        integration-test org, it is safer to terminate any existing worker rows and
+        their pods up front so retries always use a fresh image.
+        """
+        workers = (
+            ow._supabase.table("worker")
+            .select("id, status, ping, pod_id")
+            .eq("organization_id", ow.organization_id)
+            .in_("status", ["starting", "active", "shutdown"])
+            .execute()
+            .data
+        )
+
+        if not workers:
+            return
+
+        now = time.time()
+        stale_worker_ids = []
+        stale_pod_ids = []
+        for worker in workers:
+            if worker["status"] == "active":
+                stale_worker_ids.append(worker["id"])
+                if worker.get("pod_id"):
+                    stale_pod_ids.append(worker["pod_id"])
+                continue
+            try:
+                last_ping = worker.get("ping")
+                if not last_ping:
+                    stale_worker_ids.append(worker["id"])
+                    if worker.get("pod_id"):
+                        stale_pod_ids.append(worker["pod_id"])
+                    continue
+                last_ping_ts = (
+                    datetime.fromisoformat(last_ping.replace("Z", "+00:00"))
+                    .astimezone(timezone.utc)
+                    .timestamp()
+                )
+            except ValueError:
+                stale_worker_ids.append(worker["id"])
+                if worker.get("pod_id"):
+                    stale_pod_ids.append(worker["pod_id"])
+                continue
+
+            if now - last_ping_ts > stale_after_seconds:
+                stale_worker_ids.append(worker["id"])
+                if worker.get("pod_id"):
+                    stale_pod_ids.append(worker["pod_id"])
+
+        if not stale_worker_ids:
+            return
+
+        print(f"Cleaning up stale workers before cluster run: {stale_worker_ids}")
+        if stale_pod_ids and os.getenv("RUNPOD_API_KEY"):
+            import runpod
+
+            runpod.api_key = os.environ["RUNPOD_API_KEY"]
+            for pod_id in stale_pod_ids:
+                try:
+                    runpod.terminate_pod(pod_id)
+                except Exception as exc:
+                    print(f"Warning: failed to terminate stale pod {pod_id}: {exc}")
+        (
+            ow._supabase.table("worker")
+            .update({"status": "terminated"})
+            .in_("id", stale_worker_ids)
+            .execute()
+        )
+
+    def _cleanup_stale_cluster_processes(self) -> None:
+        """Terminate orphaned local cluster-manager processes from prior runs."""
+        cmd = [
+            "ps",
+            "-axo",
+            "pid=,command=",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        stale_pids: List[int] = []
+        repo_root_str = str(self.repo_root)
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            pid_str, _, command = line.partition(" ")
+            if (
+                "openweights.cli cluster" in command
+                and repo_root_str in command
+                and int(pid_str) != os.getpid()
+            ):
+                stale_pids.append(int(pid_str))
+
+        if not stale_pids:
+            return
+
+        print(f"Stopping stale cluster manager processes: {stale_pids}")
+        for pid in stale_pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            alive = []
+            for pid in stale_pids:
+                try:
+                    os.kill(pid, 0)
+                    alive.append(pid)
+                except ProcessLookupError:
+                    continue
+            if not alive:
+                return
+            time.sleep(0.2)
+
+        for pid in stale_pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                continue
+
     def _run_single_cookbook_example(
         self, ow, example_path: Path, cookbook_dir: Path
     ) -> Dict[str, Any]:
@@ -798,7 +933,7 @@ class IntegrationTestRunner:
         # Launch cookbook script as subprocess
         log_name = f"cookbook/{example_key}"
         process = self._start_subprocess(
-            command=["python", str(example_path)],
+            command=[self.python_executable, str(example_path)],
             log_name=log_name,
             command_desc=f"python cookbook/{rel}",
             cwd=example_path.parent,
@@ -849,13 +984,10 @@ class IntegrationTestRunner:
                 print(f"  Using {job_id}")
                 break
 
-            # Fallback: if subprocess exited successfully, parse its log for a job ID
-            if (
-                process is not None
-                and process.poll() is not None
-                and process.returncode == 0
-                and not candidates
-            ):
+            # Fallback: parse the subprocess log for a job ID even while it is
+            # still running. Examples that reuse an existing pending job can
+            # block waiting for completion before the DB row changes.
+            if not candidates:
                 log_path = self.logs_dir / f"{log_name}.log"
                 if log_path and log_path.exists():
                     import re
@@ -1034,10 +1166,13 @@ class IntegrationTestRunner:
             if skip_mode:
                 print(f"\nSkipping until: {skip_until_cookbook}")
 
+            self._cleanup_stale_cluster_processes()
+            self._cleanup_stale_cluster_workers(ow)
+
             # Start cluster manager ONCE
             print("\n1. Starting cluster manager...")
             cluster_process = self._start_subprocess(
-                command=["python", "-m", "openweights.cli", "cluster"],
+                command=[self.python_executable, "-m", "openweights.cli", "cluster"],
                 log_name="cluster",
                 command_desc="ow cluster",
             )

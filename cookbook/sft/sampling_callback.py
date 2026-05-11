@@ -10,10 +10,13 @@ import matplotlib.pyplot as plt
 
 from openweights import OpenWeights
 
-ow = OpenWeights()
+
+def get_client():
+    return OpenWeights()
 
 
 def submit_job():
+    ow = get_client()
     training_file = ow.files.upload(path="data/train.jsonl", purpose="conversations")[
         "id"
     ]
@@ -39,6 +42,7 @@ def submit_job():
 
 
 def wait_for_completion(job):
+    ow = get_client()
     while job.status in ["pending", "in_progress"]:
         time.sleep(5)
         job = job.refresh()
@@ -50,23 +54,25 @@ def wait_for_completion(job):
 
 
 def get_frac_responses_with_prefix(file_id, prefix="<response>"):
-    content = ow.files.content("file_id").decode("utf-8")
-    rows = [json.loads(line) for line in content.split("\n")]
+    ow = get_client()
+    content = ow.files.content(file_id).decode("utf-8")
+    rows = [json.loads(line) for line in content.splitlines() if line.strip()]
     count = 0
     for row in rows:
-        if row["completion"].startswith("<response>"):
+        if row["completion"].startswith(prefix):
             count += 1
     return count / len(rows)
 
 
 def plot_metrics(job, target_dir="outputs/sampling"):
     """We plot how many samples start with "<response>" over the course of training"""
+    ow = get_client()
     os.makedirs(target_dir, exist_ok=True)
     events = ow.events.list(run_id=job.runs[-1].id)
     steps, ys = [], []
     for event in events:
         data = event["data"]
-        if data["tag"] == "samples":
+        if data.get("tag") == "samples":
             steps += [data["step"]]
             ys += [get_frac_responses_with_prefix(data["file"])]
     plt.plot(steps, ys)
