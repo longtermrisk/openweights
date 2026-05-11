@@ -68,7 +68,7 @@ class MyCustomJob(Jobs):
     }
     params: Type[BaseModel] = MyParams  # Your Pydantic model for params
     requires_vram_gb: int = 24
-    base_image: str = 'nielsrolf/ow-unsloth:v0.10' # optional
+    base_image: str = 'nielsrolf/ow-unsloth:v0.11' # optional
 
     def get_entrypoint(self, validated_params: BaseModel) -> str:
         # Get the entrypoint command for the job.

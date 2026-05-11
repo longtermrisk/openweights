@@ -1,11 +1,13 @@
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from logp_callback import LogTestLossCallback
 from sampling_callback import SamplingCallback
 from transformers import PreTrainedTokenizerBase
 from trl import SFTConfig, SFTTrainer
 from unsloth import is_bfloat16_supported
-from unsloth.chat_templates import train_on_responses_only as unsloth_train_on_responses_only
+from unsloth.chat_templates import (
+    train_on_responses_only as unsloth_train_on_responses_only,
+)
 from utils import GPUStatsCallback, LogMetrics
 
 if TYPE_CHECKING:
@@ -60,8 +62,70 @@ def _filter_extra_training_kwargs(extra: dict[str, Any]) -> dict[str, Any]:
     filtered = {k: v for k, v in extra.items() if k in allowed}
     dropped = sorted(set(extra) - set(filtered))
     if dropped:
-        print(f"SFTTrainer args: ignoring keys not accepted by TRL SFTConfig: {dropped}")
+        print(
+            f"SFTTrainer args: ignoring keys not accepted by TRL SFTConfig: {dropped}"
+        )
     return filtered
+
+
+def _filter_sft_config_kwargs(config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and filter built-in ``SFTConfig`` kwargs across TRL releases."""
+    allowed = _sft_config_field_names()
+    normalized = dict(config)
+
+    if (
+        "max_seq_length" in normalized
+        and "max_seq_length" not in allowed
+        and "max_length" in allowed
+    ):
+        normalized["max_length"] = normalized.pop("max_seq_length")
+
+    filtered = {k: v for k, v in normalized.items() if k in allowed}
+    dropped = sorted(set(normalized) - set(filtered))
+    if dropped:
+        print(
+            f"SFTTrainer args: ignoring built-in keys not accepted by TRL SFTConfig: {dropped}"
+        )
+    return filtered
+
+
+def _token_exists(tokenizer: PreTrainedTokenizerBase, token: str | None) -> bool:
+    if not token:
+        return False
+    try:
+        vocab = tokenizer.get_vocab()
+    except Exception:
+        vocab = None
+    if vocab is not None and token not in vocab:
+        return False
+    token_id = tokenizer.convert_tokens_to_ids(token)
+    if token_id is None:
+        return False
+    unk_token_id = getattr(tokenizer, "unk_token_id", None)
+    return token_id != unk_token_id
+
+
+def _token_from_id(
+    tokenizer: PreTrainedTokenizerBase, token_id: int | None
+) -> str | None:
+    if token_id is None or token_id < 0:
+        return None
+    try:
+        token = tokenizer.convert_ids_to_tokens(token_id)
+    except Exception:
+        return None
+    if isinstance(token, str) and _token_exists(tokenizer, token):
+        return token
+    return None
+
+
+def _existing_token(
+    tokenizer: PreTrainedTokenizerBase, *tokens: str | None
+) -> str | None:
+    for token in tokens:
+        if _token_exists(tokenizer, token):
+            return token
+    return None
 
 
 def _get_chat_template_parts(tokenizer: PreTrainedTokenizerBase) -> tuple[str, str]:
@@ -80,7 +144,10 @@ def _get_chat_template_parts(tokenizer: PreTrainedTokenizerBase) -> tuple[str, s
 
     # response_part: everything between the end of user content and start of assistant content
     text = tokenizer.apply_chat_template(
-        [{"role": "user", "content": u_sentinel}, {"role": "assistant", "content": a_sentinel}],
+        [
+            {"role": "user", "content": u_sentinel},
+            {"role": "assistant", "content": a_sentinel},
+        ],
         tokenize=False,
         add_generation_prompt=False,
     )
@@ -133,6 +200,30 @@ def sft_train(
     **kwargs,
 ):
     """Build a TRL ``SFTTrainer`` for OpenWeights (optional eval callbacks, response-only loss)."""
+    eos_token = _existing_token(
+        tokenizer,
+        tokenizer.eos_token,
+        _token_from_id(tokenizer, getattr(tokenizer, "eos_token_id", None)),
+        "<|im_end|>",
+        "</s>",
+    )
+    if eos_token is None:
+        raise ValueError(
+            "Could not find a valid EOS token in the tokenizer vocabulary. "
+            "Set tokenizer.eos_token to a token that exists before starting SFT."
+        )
+    pad_token = _existing_token(
+        tokenizer,
+        tokenizer.pad_token,
+        _token_from_id(tokenizer, getattr(tokenizer, "pad_token_id", None)),
+        eos_token,
+        "<|endoftext|>",
+    )
+    tokenizer.eos_token = eos_token
+    if pad_token is not None:
+        tokenizer.pad_token = pad_token
+    print(f"SFTTrainer tokens: eos_token={eos_token!r}, pad_token={pad_token!r}")
+
     def apply_chat_template(examples):
         """Convert messages to text; no-op if 'text' field already present."""
         if "text" in examples:
@@ -145,8 +236,8 @@ def sft_train(
                 return_tensors="pt",
                 tokenize=False,
             )
-            if not text.strip().endswith(tokenizer.eos_token):
-                text += tokenizer.eos_token
+            if not text.strip().endswith(eos_token):
+                text += eos_token
             texts.append(text)
         return {"text": texts}
 
@@ -191,27 +282,42 @@ def sft_train(
 
     extra_training_kwargs = _filter_extra_training_kwargs(dict(kwargs))
     trainer_args = SFTConfig(
-        packing=training_cfg.packing,
-        per_device_train_batch_size=training_cfg.per_device_train_batch_size,
-        per_device_eval_batch_size=training_cfg.eval_batch_size,
-        eval_steps=training_cfg.test_file_eval_steps,
-        eval_strategy=training_cfg.test_file_eval_strategy,
-        gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
-        warmup_steps=training_cfg.warmup_steps,
-        learning_rate=learning_rate,
-        fp16=not is_bfloat16_supported(),
-        bf16=is_bfloat16_supported(),
-        logging_steps=training_cfg.logging_steps,
-        optim=training_cfg.optim,
-        weight_decay=training_cfg.weight_decay,
-        lr_scheduler_type=training_cfg.lr_scheduler_type,
-        seed=training_cfg.seed,
-        report_to=[],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
-        num_train_epochs=training_cfg.epochs,
-        save_steps=training_cfg.save_steps,
-        output_dir=training_cfg.output_dir,
-        ddp_find_unused_parameters=False,
-        **extra_training_kwargs,
+        **_filter_sft_config_kwargs(
+            {
+                "packing": training_cfg.packing,
+                "per_device_train_batch_size": training_cfg.per_device_train_batch_size,
+                "per_device_eval_batch_size": training_cfg.eval_batch_size,
+                "eval_steps": training_cfg.test_file_eval_steps,
+                "eval_strategy": training_cfg.test_file_eval_strategy,
+                "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
+                "warmup_steps": training_cfg.warmup_steps,
+                "learning_rate": learning_rate,
+                "fp16": not is_bfloat16_supported(),
+                "bf16": is_bfloat16_supported(),
+                "logging_steps": training_cfg.logging_steps,
+                "optim": training_cfg.optim,
+                "weight_decay": training_cfg.weight_decay,
+                "lr_scheduler_type": training_cfg.lr_scheduler_type,
+                "seed": training_cfg.seed,
+                "report_to": [],  # Explicitly disable all reporting integrations (wandb, tensorboard, etc.)
+                "num_train_epochs": training_cfg.epochs,
+                "save_steps": training_cfg.save_steps,
+                "output_dir": training_cfg.output_dir,
+                "ddp_find_unused_parameters": False,
+                "dataset_text_field": "text",
+                "dataset_num_proc": None,
+                "max_seq_length": training_cfg.max_seq_length,
+                "eos_token": eos_token,
+                "pad_token": pad_token,
+                **extra_training_kwargs,
+            }
+        )
+    )
+    trainer_args.eos_token = eos_token
+    trainer_args.pad_token = pad_token
+    print(
+        "SFTConfig tokens: "
+        f"eos_token={trainer_args.eos_token!r}, pad_token={trainer_args.pad_token!r}"
     )
     callbacks = [LogMetrics(), GPUStatsCallback()] + logp_callbacks + sampling_callbacks
 
@@ -223,12 +329,8 @@ def sft_train(
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
         train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=training_cfg.max_seq_length,
-        dataset_num_proc=4,
-        packing=training_cfg.packing,
+        processing_class=tokenizer,
         args=trainer_args,
         callbacks=callbacks,
         eval_dataset=test_dataset,

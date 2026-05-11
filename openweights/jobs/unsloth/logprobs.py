@@ -77,9 +77,7 @@ def get_logprobs(
             attention_mask = attention_mask.to(model.device)
             labels = labels.to(model.device)
 
-            outputs = model(
-                input_ids=input_ids, attention_mask=attention_mask, labels=labels
-            )
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
             logits = outputs.logits.detach().cpu().float()
             labels_cpu = labels.cpu()

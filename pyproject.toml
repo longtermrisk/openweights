@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openweights"
-version = "0.10.1"
+version = "0.11.0"
 description = "An openai-like sdk for finetuning and batch inference"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,7 +38,7 @@ dev = [
     "pre-commit",
 ]
 # Legacy aggregate worker extra kept for compatibility. New image-specific
-# extras below better reflect the split worker architecture in v0.10.
+# extras below better reflect the split worker architecture introduced in v0.10.
 worker = [
     "torch>=2.7.1",
     "transformers>=5,<6",

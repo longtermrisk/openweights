@@ -91,7 +91,7 @@ VERIFIED_GPUs = {
     "6000Ada": "NVIDIA RTX 6000 Ada Generation",
     # "4000Ada": "NVIDIA RTX 4000 Ada Generation",  # untested (no RunPod stock)
     # L40 pods currently pass RunPod availability checks but frequently disappear
-    # before the worker process starts on the CUDA 12.8 v0.10 images.
+    # before the worker process starts on the CUDA 12.8 images.
     # Keep L40 in GPUS for explicit allowed_hardware requests, but do not select it
     # automatically for production workers.
     # "L40": "NVIDIA L40",

@@ -5,9 +5,6 @@ import sys
 
 import backoff
 from datasets import Dataset
-from sft import sft_train
-from unsloth import FastLanguageModel
-from unsloth.chat_templates import standardize_sharegpt
 from utils import (
     apply_training_runtime_fixes,
     client,
@@ -29,6 +26,8 @@ def standardize_datasets(model_name: str, dataset, test_dataset=None):
     Returns:
         Tuple of (dataset, test_dataset), potentially standardized.
     """
+    from unsloth.chat_templates import standardize_sharegpt
+
     dataset = standardize_sharegpt(dataset)
     if test_dataset:
         test_dataset = standardize_sharegpt(test_dataset)
@@ -61,6 +60,8 @@ def train(training_cfg):
         # Unsloth suppresses logits by default in newer releases. The logprob
         # callback needs raw logits during training-time evaluation.
         os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
+
+    from unsloth import FastLanguageModel
 
     model, tokenizer = load_model_and_tokenizer(
         training_cfg.model,
@@ -113,6 +114,8 @@ def train(training_cfg):
     )
 
     if training_cfg.loss == "sft":
+        from sft import sft_train
+
         trainer = sft_train(
             training_cfg,
             dataset,
