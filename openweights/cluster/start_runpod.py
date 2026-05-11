@@ -309,6 +309,24 @@ class RunpodHardwareRegistry:
                 for hardware_type in allowed_hardware:
                     if not self._is_on_cooldown(hardware_type, now=now):
                         candidates.append(hardware_type)
+                    else:
+                        print(f"Hardware type {hardware_type} is on cooldown")
+                        state = self._failure_state.get(hardware_type)
+                        if state is None:
+                            print(
+                                f"Error: Hardware type {hardware_type} is not in failure state"
+                            )
+                            continue
+                        cooldown_until = state.cooldown_until
+                        if cooldown_until is None:
+                            print(
+                                f"Error: Hardware type {hardware_type} is not on cooldown"
+                            )
+                            continue
+                        print(
+                            f"Hardware type {hardware_type} is on cooldown for {cooldown_until - now} seconds"
+                        )
+                        continue
                 return candidates
 
             candidates: List[str] = []
