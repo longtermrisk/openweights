@@ -150,23 +150,28 @@ def train(training_cfg):
 
 @backoff.on_exception(backoff.constant, Exception, interval=10, max_tries=5)
 def push_model(training_cfg, finetuned_model_id, model, tokenizer):
+    # Per-job HF token override: if set in the training config, use it for all
+    # upload calls; otherwise fall back to the pod's HF_TOKEN env var. The base
+    # model *download* still uses os.environ["HF_TOKEN"] in utils.py so gated
+    # models keep working via the org's token.
+    upload_token = getattr(training_cfg, "hf_token", None) or os.environ["HF_TOKEN"]
     if training_cfg.merge_before_push:
         model.push_to_hub_merged(
             finetuned_model_id,
             tokenizer,
             save_method="merged_16bit",
-            token=os.environ["HF_TOKEN"],
+            token=upload_token,
             private=training_cfg.push_to_private,
         )
     else:
         model.push_to_hub(
             finetuned_model_id,
-            token=os.environ["HF_TOKEN"],
+            token=upload_token,
             private=training_cfg.push_to_private,
         )
         tokenizer.push_to_hub(
             finetuned_model_id,
-            token=os.environ["HF_TOKEN"],
+            token=upload_token,
             private=training_cfg.push_to_private,
         )
 
@@ -175,7 +180,7 @@ def push_model(training_cfg, finetuned_model_id, model, tokenizer):
     if os.path.exists(training_cfg.output_dir):
         from huggingface_hub import HfApi
 
-        api = HfApi(token=os.environ["HF_TOKEN"])
+        api = HfApi(token=upload_token)
 
         # Look for checkpoint folders (not .ckpt files)
         checkpoints = [
