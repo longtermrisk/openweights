@@ -263,12 +263,20 @@ def supabase_retry(
                                 # Don't increment attempt or sleep, just retry immediately
                                 continue
                             except Exception as refresh_exc:
-                                # If refresh fails, let the original error bubble up
+                                # Lazy import to avoid circular import at module load.
+                                from openweights.client import ApiTokenError
+
                                 logger.warning(
                                     "JWT refresh failed for %s: %s",
                                     fn.__name__,
                                     str(refresh_exc)[:200],
                                 )
+                                # If the API token itself is rejected (expired
+                                # / revoked / invalid), surface that specific
+                                # error so callers can handle it; otherwise let
+                                # the original auth error bubble up.
+                                if isinstance(refresh_exc, ApiTokenError):
+                                    raise refresh_exc from None
                                 raise exc
                         else:
                             # Already tried refreshing, don't retry again
