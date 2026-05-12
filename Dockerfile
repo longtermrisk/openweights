@@ -5,7 +5,8 @@ USER root
 WORKDIR /openweights
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git openssh-server python3-venv && \
+    apt-get install -y --no-install-recommends git openssh-server python3-venv \
+        psmisc procps lsof && \
     rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/venv
