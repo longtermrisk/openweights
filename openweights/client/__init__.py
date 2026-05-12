@@ -29,6 +29,24 @@ for name in ["httpx", "httpx._client", "postgrest", "gotrue", "supabase"]:
     logging.getLogger(name).setLevel(logging.WARNING)
 
 
+class ApiTokenError(Exception):
+    """Raised when the OpenWeights API token (ow_...) is rejected by the server.
+
+    Distinct from JWT expiry: this means the long-lived API token itself is
+    invalid, revoked, or has a non-null ``expires_at`` in the past. The fix is
+    operational (rotate / extend the token), not a retry.
+    """
+
+
+# Server-side messages from `exchange_api_token_for_jwt` (see
+# supabase/migrations/20250116_v1_schema.sql).
+_API_TOKEN_FATAL_MESSAGES = (
+    "API token has expired",
+    "API token has been revoked",
+    "Invalid API token",
+)
+
+
 def exchange_api_token_for_jwt(
     supabase_url: str, supabase_anon_key: str, api_token: str
 ) -> str:
@@ -41,15 +59,25 @@ def exchange_api_token_for_jwt(
 
     Returns:
         JWT token for authenticating with Supabase
+
+    Raises:
+        ApiTokenError: When the server reports the API token as expired,
+            revoked, or invalid. Callers that own the process lifecycle should
+            catch this and surface a concise message rather than a traceback.
     """
     logger.info("Exchanging API token for JWT")
-    # Create temporary client without auth
     temp_client = create_client(supabase_url, supabase_anon_key)
 
-    # Call the exchange function
-    response = temp_client.rpc(
-        "exchange_api_token_for_jwt", {"api_token": api_token}
-    ).execute()
+    try:
+        response = temp_client.rpc(
+            "exchange_api_token_for_jwt", {"api_token": api_token}
+        ).execute()
+    except Exception as exc:
+        msg = str(getattr(exc, "message", exc))
+        for fatal in _API_TOKEN_FATAL_MESSAGES:
+            if fatal in msg:
+                raise ApiTokenError(fatal) from None
+        raise
 
     if not response.data:
         raise ValueError("Failed to exchange API token for JWT")

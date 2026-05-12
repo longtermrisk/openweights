@@ -6,7 +6,6 @@ import io
 import logging
 import os
 import signal
-import sys
 import time
 import traceback
 import uuid
@@ -17,7 +16,12 @@ import requests
 import runpod
 from dotenv import load_dotenv
 
-from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
+from openweights.client import (
+    _SUPABASE_ANON_KEY,
+    _SUPABASE_URL,
+    ApiTokenError,
+    OpenWeights,
+)
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
@@ -681,9 +685,37 @@ class OrganizationManager:
         logger.info(f"Shutting down cluster management for organization {self.org_id}")
 
 
+API_TOKEN_RETRY_INTERVAL_S = 60
+
+
 def main():
-    manager = OrganizationManager()
-    manager.manage_cluster()
+    """Run the org manager, surviving API-token rejections.
+
+    If ``OPENWEIGHTS_API_KEY`` is rejected by the server (expired / revoked /
+    invalid), we don't crash the process:
+
+    * During construction (no manager yet), we retry building the
+      ``OrganizationManager`` after a backoff.
+    * After construction, ``manage_cluster`` absorbs the error in-place
+      without rebuilding the manager.
+    """
+    org_id = os.environ.get("ORGANIZATION_ID", "<unknown>")
+    while True:
+        try:
+            manager = OrganizationManager()
+        except ApiTokenError as exc:
+            logger.warning(
+                "OPENWEIGHTS_API_KEY rejected for org %s during startup: %s. "
+                "Rotate the token or clear api_tokens.expires_at. "
+                "Retrying in %ds.",
+                org_id,
+                exc,
+                API_TOKEN_RETRY_INTERVAL_S,
+            )
+            time.sleep(API_TOKEN_RETRY_INTERVAL_S)
+            continue
+        manager.manage_cluster()
+        return
 
 
 if __name__ == "__main__":
