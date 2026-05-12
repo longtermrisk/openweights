@@ -15,6 +15,30 @@ class OrganizationCreate(BaseModel):
     secrets: Dict[str, str]
 
 
+class OrganizationUpdate(BaseModel):
+    name: str
+
+
+class OrganizationSecret(BaseModel):
+    name: str
+    value: str
+
+
+class Member(BaseModel):
+    user_id: str
+    email: Optional[str] = None
+    role: str
+
+
+class MemberInvite(BaseModel):
+    email: str
+    role: str = "user"
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str
+
+
 class Job(BaseModel):
     id: str
     type: str
