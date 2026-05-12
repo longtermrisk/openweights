@@ -21,6 +21,7 @@ from openweights.client import Files, OpenWeights, Run
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
+from openweights.worker.gpu_reclaim import ForeignGpuHolderError, reclaim_gpu
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -380,6 +381,8 @@ class Worker:
                 logging.info(
                     f"Worker {self.worker_id} acquired job {job['id']}, executing..."
                 )
+                if self.gpu_count > 0 and not self._reclaim_gpu_or_release(acquired_job):
+                    continue
                 self._execute_job(acquired_job)
             except KeyboardInterrupt:
                 logging.info("Worker interrupted by user. Shutting down...")
@@ -440,6 +443,45 @@ class Worker:
                 logging.debug(f"Selecting job {j['id']} with cached model {j['model']}")
                 return j
         return suitable_jobs[0]
+
+    def _reclaim_gpu_or_release(self, job: dict) -> bool:
+        """Try to free leftover VRAM before running ``job``.
+
+        Returns ``True`` if the worker should proceed to execute ``job``.
+
+        On a foreign GPU holder we revert the job to ``pending`` so the
+        scheduler can place it on a different pod, and we shut this worker
+        down because it cannot host GPU jobs until the holder releases.
+
+        On a reclaim timeout (our own kill didn't free memory in time) we
+        revert the job and shut down too — the GPU is in a bad state.
+        """
+        try:
+            reclaim_gpu()
+            return True
+        except ForeignGpuHolderError as exc:
+            logging.error(
+                f"Foreign GPU holder detected before job {job['id']}: {exc}"
+            )
+        except RuntimeError as exc:
+            logging.error(
+                f"GPU reclaim failed before job {job['id']}: {exc}"
+            )
+        except Exception as exc:
+            logging.error(
+                f"Unexpected error during GPU reclaim before job {job['id']}: {exc}"
+            )
+            traceback.print_exc()
+            return True  # fail open: don't block jobs on diagnostic bugs
+
+        try:
+            self.update_job_status_if_in_progress(job["id"], "pending", None, None)
+        except Exception as exc:
+            logging.error(
+                f"Failed to revert job {job['id']} to pending after reclaim failure: {exc}"
+            )
+        self.shutdown_flag = True
+        return False
 
     def _execute_job(self, job):
         """Execute the job and update status in the database."""
