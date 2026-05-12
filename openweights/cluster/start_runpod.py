@@ -137,13 +137,38 @@ VERIFIED_GPUs = {
 # Approximate RunPod on-demand cost per GPU-hour (USD).
 # Used to sort candidate GPUs cheapest-first within the same VRAM tier.
 # GPUs not listed here get a high default cost so they sort last.
+# Rates are indicative (community vs secure and region vary). Entries: ascending $/hr
+# (ties broken alphabetically by key).
 GPU_COST_PER_HOUR: Dict[str, float] = {
+    "A2000": 0.20,
+    "A5000": 0.27,
+    "A4000": 0.28,
+    "2000Ada": 0.29,
+    "RTX3070": 0.30,
+    "A4500": 0.32,
+    "A4000_SFF": 0.36,
+    "RTX3080": 0.36,
+    "L4": 0.39,
+    "RTX4070Ti": 0.39,
+    "RTX3080Ti": 0.41,
+    "A40": 0.44,
+    "RTX3090": 0.46,
+    "4000Ada": 0.48,
+    "A6000": 0.49,
+    "RTX3090Ti": 0.51,
+    "RTX4080": 0.59,
+    "RTX4090": 0.69,
+    "6000Ada": 0.77,
+    "L40S": 0.86,
     "L40": 0.99,
+    "A5000_ADA": 1.02,
+    "A30": 1.05,
     "A100": 1.39,
     "A100S": 1.49,
     "H100S": 2.69,
     "H100N": 3.07,
     "H200": 3.59,
+    "MI300X": 3.99,
     "B200": 4.99,
 }
 _DEFAULT_GPU_COST = 999.0  # fallback for unlisted GPUs
