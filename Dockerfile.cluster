@@ -19,6 +19,40 @@ COPY openweights openweights
 RUN python3 -m pip install --upgrade pip && \
     python3 -m pip install -e .
 
+RUN python3 - <<'PY'
+import importlib.metadata as metadata
+import os
+import sys
+
+from openweights.client import (
+    _SUPABASE_ANON_KEY,
+    _SUPABASE_URL,
+    create_authenticated_client,
+)
+from supabase import ClientOptions, create_client
+
+print(f"supabase=={metadata.version('supabase')}")
+options = ClientOptions(
+    schema="public",
+    headers={"Authorization": "Bearer fake.jwt.token"},
+    auto_refresh_token=False,
+    persist_session=False,
+)
+if not hasattr(options, "storage"):
+    raise RuntimeError("Supabase ClientOptions is missing the storage attribute")
+
+create_client(_SUPABASE_URL, _SUPABASE_ANON_KEY, options)
+create_authenticated_client(_SUPABASE_URL, _SUPABASE_ANON_KEY, "fake.jwt.token")
+
+import openweights.cluster.supervisor  # noqa: F401,E402
+
+backend_path = os.path.join(os.getcwd(), "openweights", "dashboard", "backend")
+sys.path.insert(0, backend_path)
+import main  # noqa: F401,E402
+
+print("cluster runtime validation ok")
+PY
+
 # Copy entrypoint script
 COPY entrypoint.cluster.sh /openweights/entrypoint.cluster.sh
 RUN chmod +x /openweights/entrypoint.cluster.sh

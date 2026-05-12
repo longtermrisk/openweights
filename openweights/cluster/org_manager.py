@@ -21,6 +21,7 @@ from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from openweights.client.decorators import supabase_retry
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
+    is_spending_limit_error,
     parse_hardware_config,
     populate_hardware_config,
 )
@@ -390,6 +391,17 @@ class OrganizationManager:
     @supabase_retry()
     def scale_workers(self, running_workers, pending_jobs):
         """Scale workers according to pending jobs and limits."""
+        # Skip provisioning entirely if we're in a spending-limit pause
+        if self.hardware_registry.is_spending_limit_paused():
+            pause_until = self.hardware_registry.spending_limit_pause_until()
+            remaining = int(pause_until - time.time())
+            logger.warning(
+                "Provisioning paused due to spending limit — %d s remaining. "
+                "Jobs will stay pending.",
+                max(remaining, 0),
+            )
+            return
+
         # Group active workers by docker image
         print("@@@@ Scaling workers")
         running_workers_by_image = {}
@@ -472,10 +484,8 @@ class OrganizationManager:
                             )
                             if not candidate_hardware:
                                 if allowed_hardware:
-                                    cooldowns = (
-                                        self.hardware_registry.get_active_cooldown_end_times(
-                                            allowed_hardware
-                                        )
+                                    cooldowns = self.hardware_registry.get_active_cooldown_end_times(
+                                        allowed_hardware
                                     )
                                     now_ts = time.time()
                                     ladder_min = "→".join(
@@ -496,7 +506,8 @@ class OrganizationManager:
                                         "%s | image=%s requires_vram_gb=%s allowed_hardware=%s",
                                         self.hardware_registry.failure_threshold,
                                         ladder_min,
-                                        sched or "(no active cooldown rows; possible race)",
+                                        sched
+                                        or "(no active cooldown rows; possible race)",
                                         docker_image,
                                         max_vram_required,
                                         allowed_hardware,
@@ -575,6 +586,18 @@ class OrganizationManager:
                                             hardware_type, e
                                         )
                                     )
+
+                                    # Spending-limit errors are account-wide —
+                                    # stop trying other hardware types immediately.
+                                    if is_spending_limit_error(e):
+                                        logger.warning(
+                                            "Spending limit hit while starting %s: %s. "
+                                            "Pausing all provisioning.",
+                                            hardware_type,
+                                            e,
+                                        )
+                                        break
+
                                     cooldown_until = (
                                         self.hardware_registry.get_cooldown_info(
                                             hardware_type
@@ -655,7 +678,8 @@ class OrganizationManager:
             for w in running_workers:
                 status_counts[w["status"]] = status_counts.get(w["status"], 0) + 1
             status_breakdown = (
-                ", ".join(f"{k}={v}" for k, v in sorted(status_counts.items())) or "none"
+                ", ".join(f"{k}={v}" for k, v in sorted(status_counts.items()))
+                or "none"
             )
             logger.info(
                 f"[org={self._ow.org_name} ({self.org_id})] "
