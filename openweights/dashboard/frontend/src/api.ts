@@ -157,6 +157,95 @@ export const api = {
         }
     },
 
+    listOrganizationSecrets: async (orgId: string): Promise<{ name: string; value: string }[]> => {
+        try {
+            const config = await getAuthHeaders();
+            const response = await axios.get<{ name: string; value: string }[]>(
+                `${API_URL}/organizations/${orgId}/secrets`,
+                config
+            );
+            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    updateOrganization: async (orgId: string, name: string): Promise<Organization> => {
+        try {
+            const config = await getAuthHeaders();
+            const response = await axios.put<Organization>(
+                `${API_URL}/organizations/${orgId}`,
+                { name },
+                config
+            );
+            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    listOrganizationMembers: async (
+        orgId: string
+    ): Promise<{ user_id: string; email?: string; role: 'admin' | 'user' }[]> => {
+        try {
+            const config = await getAuthHeaders();
+            const response = await axios.get<{ user_id: string; email?: string; role: 'admin' | 'user' }[]>(
+                `${API_URL}/organizations/${orgId}/members`,
+                config
+            );
+            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    inviteOrganizationMember: async (
+        orgId: string,
+        email: string,
+        role: 'admin' | 'user' = 'user'
+    ): Promise<{ user_id: string; email?: string; role: 'admin' | 'user' }> => {
+        try {
+            const config = await getAuthHeaders();
+            const response = await axios.post<{ user_id: string; email?: string; role: 'admin' | 'user' }>(
+                `${API_URL}/organizations/${orgId}/members`,
+                { email, role },
+                config
+            );
+            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    updateOrganizationMemberRole: async (
+        orgId: string,
+        userId: string,
+        role: 'admin' | 'user'
+    ): Promise<void> => {
+        try {
+            const config = await getAuthHeaders();
+            await axios.put(
+                `${API_URL}/organizations/${orgId}/members/${userId}`,
+                { role },
+                config
+            );
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    removeOrganizationMember: async (orgId: string, userId: string): Promise<void> => {
+        try {
+            const config = await getAuthHeaders();
+            await axios.delete(
+                `${API_URL}/organizations/${orgId}/members/${userId}`,
+                config
+            );
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
     // Jobs
     getJobs: async (orgId: string, status?: string) => {
         try {

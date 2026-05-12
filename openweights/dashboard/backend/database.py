@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 from models import (
     Job,
     JobWithRuns,
+    Member,
     Organization,
     OrganizationCreate,
+    OrganizationSecret,
     Run,
     RunWithJobAndWorker,
     Token,
@@ -252,6 +254,106 @@ class Database:
             return True
         except Exception as e:
             raise ValueError(f"Failed to update secrets: {str(e)}")
+
+    def get_organization(self, organization_id: str) -> Organization:
+        """Fetch a single organization by id (RLS-enforced)."""
+        self.set_organization_id(organization_id)
+        result = (
+            self.client.from_("organizations")
+            .select("*")
+            .eq("id", organization_id)
+            .single()
+            .execute()
+        )
+        if not result.data:
+            raise ValueError("Organization not found")
+        return Organization(**result.data)
+
+    def update_organization(self, organization_id: str, name: str) -> Organization:
+        """Rename an organization (admin-only, enforced by RPC)."""
+        self.set_organization_id(organization_id)
+        result = self.client.rpc(
+            "update_organization", {"org_id": organization_id, "new_name": name}
+        ).execute()
+        if not result.data:
+            raise ValueError("Failed to update organization")
+        return self.get_organization(organization_id)
+
+    def get_organization_members(self, organization_id: str) -> List[Member]:
+        """List members of an organization."""
+        self.set_organization_id(organization_id)
+        result = self.client.rpc(
+            "get_organization_members", {"org_id": organization_id}
+        ).execute()
+        return [
+            Member(
+                user_id=m["user_id"],
+                role=m["role"],
+                email=m.get("email"),
+            )
+            for m in (result.data or [])
+        ]
+
+    def invite_organization_member(
+        self, organization_id: str, email: str, role: str
+    ) -> Member:
+        """Invite an existing auth user to the organization."""
+        self.set_organization_id(organization_id)
+        result = self.client.rpc(
+            "invite_organization_member",
+            {
+                "org_id": organization_id,
+                "member_email": email,
+                "member_role": role,
+            },
+        ).execute()
+        if not result.data:
+            raise ValueError("Failed to invite member")
+        row = result.data[0] if isinstance(result.data, list) else result.data
+        return Member(user_id=row["user_id"], email=row.get("email"), role=row["role"])
+
+    def update_organization_member_role(
+        self, organization_id: str, user_id: str, role: str
+    ) -> None:
+        """Change a member's role (admin-only, enforced by RLS)."""
+        self.set_organization_id(organization_id)
+        result = (
+            self.client.from_("organization_members")
+            .update({"role": role})
+            .eq("organization_id", organization_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if not result.data:
+            raise ValueError("Failed to update member role")
+
+    def remove_organization_member(
+        self, organization_id: str, user_id: str
+    ) -> None:
+        """Remove a member from the organization."""
+        self.set_organization_id(organization_id)
+        result = self.client.rpc(
+            "remove_organization_member",
+            {"org_id": organization_id, "member_id": user_id},
+        ).execute()
+        if not result.data:
+            raise ValueError("Failed to remove member")
+
+    def list_organization_secrets(
+        self, organization_id: str
+    ) -> List[OrganizationSecret]:
+        """List all secrets for an organization (admin-only, enforced by RLS)."""
+        self.set_organization_id(organization_id)
+        result = (
+            self.client.from_("organization_secrets")
+            .select("name, value")
+            .eq("organization_id", organization_id)
+            .execute()
+        )
+        return [
+            OrganizationSecret(name=row["name"], value=row["value"])
+            for row in (result.data or [])
+        ]
 
     async def create_token(
         self, organization_id: str, token_data: TokenCreate
