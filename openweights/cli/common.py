@@ -34,7 +34,13 @@ class StartResult:
 
 class Provider:
     def start(
-        self, image: str, gpu: str, count: int, env: Dict[str, str]
+        self,
+        image: str,
+        gpu: str,
+        count: int,
+        env: Dict[str, str],
+        min_vcpu_count: Optional[int] = None,
+        min_memory_in_gb: Optional[int] = None,
     ) -> StartResult:
         raise NotImplementedError
 
@@ -50,7 +56,13 @@ class RunpodProvider(Provider):
         self.key_path = os.path.expanduser(key_path)
 
     def start(
-        self, image: str, gpu: str, count: int, env: Dict[str, str]
+        self,
+        image: str,
+        gpu: str,
+        count: int,
+        env: Dict[str, str],
+        min_vcpu_count: Optional[int] = None,
+        min_memory_in_gb: Optional[int] = None,
     ) -> StartResult:
         if "RUNPOD_API_KEY" in env:
             os.environ["RUNPOD_API_KEY"] = env["RUNPOD_API_KEY"]
@@ -64,6 +76,8 @@ class RunpodProvider(Provider):
             env=env,
             runpod_client=runpod,
             dev_mode=True,  # keep your current choice
+            min_vcpu_count=min_vcpu_count,
+            min_memory_in_gb=min_memory_in_gb,
         )
         assert pod is not None, "Runpod start_worker returned None"
 

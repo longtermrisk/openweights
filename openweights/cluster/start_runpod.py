@@ -224,6 +224,20 @@ RUNPOD_MIN_DOWNLOAD = os.getenv("OW_RUNPOD_MIN_DOWNLOAD")
 RUNPOD_MIN_UPLOAD = os.getenv("OW_RUNPOD_MIN_UPLOAD")
 RUNPOD_DATA_CENTER_ID = os.getenv("OW_RUNPOD_DATA_CENTER_ID")
 RUNPOD_COUNTRY_CODE = os.getenv("OW_RUNPOD_COUNTRY_CODE")
+# Minimum host CPU / RAM required when placing a pod.
+#
+# RunPod treats these as machine *filters*, not allocations: they exclude hosts
+# that would give the pod less than this, but never grant more than the host's
+# per-GPU share. Both are absolute per-pod values, not per-GPU, matching the
+# semantics of RunPod's `minVcpuCount` / `minMemoryInGb` deploy fields.
+#
+# Useful for workloads that are CPU-bound rather than VRAM-bound (e.g. RL
+# environments that execute generated code for every rollout), where the
+# default placement can land on a host with far fewer cores than the job needs.
+# Setting these too high shrinks the pool of eligible hosts and makes
+# provisioning failures more likely.
+RUNPOD_MIN_VCPU_COUNT = os.getenv("OW_RUNPOD_MIN_VCPU_COUNT")
+RUNPOD_MIN_MEMORY_GB = os.getenv("OW_RUNPOD_MIN_MEMORY_GB")
 
 
 # Check that GPU name mapping is unique in both directions
@@ -640,6 +654,8 @@ def _start_worker(
     pending_workers=None,
     env=None,
     runpod_client=None,
+    min_vcpu_count=None,
+    min_memory_in_gb=None,
 ):
     client = runpod_client or runpod
     gpu = GPUs[gpu]
@@ -662,6 +678,20 @@ def _start_worker(
     )
     if worker_id is None:
         worker_id = uuid.uuid4().hex[:8]
+
+    # Explicit arguments win over the OW_RUNPOD_* environment defaults.
+    # Leaving both unset omits the fields entirely, preserving current behaviour.
+    if min_vcpu_count is None and RUNPOD_MIN_VCPU_COUNT:
+        min_vcpu_count = int(RUNPOD_MIN_VCPU_COUNT)
+    if min_memory_in_gb is None and RUNPOD_MIN_MEMORY_GB:
+        min_memory_in_gb = int(RUNPOD_MIN_MEMORY_GB)
+    if min_vcpu_count or min_memory_in_gb:
+        logger.info(
+            "Requesting host with min_vcpu_count=%s min_memory_in_gb=%s",
+            min_vcpu_count,
+            min_memory_in_gb,
+        )
+
     pod = client.create_pod(
         name,
         image,
@@ -677,6 +707,8 @@ def _start_worker(
         country_code=RUNPOD_COUNTRY_CODE,
         min_download=int(RUNPOD_MIN_DOWNLOAD) if RUNPOD_MIN_DOWNLOAD else None,
         min_upload=int(RUNPOD_MIN_UPLOAD) if RUNPOD_MIN_UPLOAD else None,
+        min_vcpu_count=min_vcpu_count,
+        min_memory_in_gb=min_memory_in_gb,
         ports="8000/http,10101/http,22/tcp",
         start_ssh=True,
         env=env,
@@ -702,6 +734,8 @@ def start_worker(
     ttl_hours=24,
     env=None,
     runpod_client=None,
+    min_vcpu_count=None,
+    min_memory_in_gb=None,
 ):
     pending_workers = []
     if dev_mode:
@@ -732,6 +766,8 @@ def start_worker(
             pending_workers,
             env,
             runpod_client,
+            min_vcpu_count,
+            min_memory_in_gb,
         )
         if pod is None:
             raise RuntimeError("RunPod create_pod returned no pod")

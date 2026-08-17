@@ -92,6 +92,22 @@ def add_ssh_parser(parser):
     parser.add_argument("--gpu", default="L40", help="GPU type for provider.")
     parser.add_argument("--count", type=int, default=1, help="GPU count.")
     parser.add_argument(
+        "--min-vcpu",
+        type=int,
+        default=None,
+        help=(
+            "Only place the pod on a host offering at least this many vCPUs "
+            "(total for the pod, not per GPU). Useful for CPU-bound workloads. "
+            "Higher values shrink the pool of eligible hosts."
+        ),
+    )
+    parser.add_argument(
+        "--min-memory-gb",
+        type=int,
+        default=None,
+        help="Only place the pod on a host offering at least this much RAM in GB.",
+    )
+    parser.add_argument(
         "--remote-cwd",
         default="/workspace",
         help="Remote working directory for the main mount.",
@@ -153,7 +169,12 @@ def handle_ssh(args) -> int:
 
         print("[ow] Starting/allocating machine...")
         start_res = provider.start(
-            image=args.image, gpu=args.gpu, count=args.count, env=provider_env
+            image=args.image,
+            gpu=args.gpu,
+            count=args.count,
+            env=provider_env,
+            min_vcpu_count=args.min_vcpu,
+            min_memory_in_gb=args.min_memory_gb,
         )
         ssh = start_res.ssh
 
