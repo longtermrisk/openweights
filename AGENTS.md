@@ -1,5 +1,10 @@
 # OpenWeights Architecture
 
+## CRITICAL Safety Rules
+
+### RunPod API Key Scope
+The RUNPOD_API_KEY in `.env.worker` has access to ALL RunPod pods across the ENTIRE account, not just the test organization's pods. **NEVER** call `runpod.get_pods()` and terminate all returned pods — this will kill other users' workloads. Always terminate pods by specific pod_id only, obtained from the worker database record for the target organization.
+
 ## Overview
 
 OpenWeights is a Python SDK for running distributed compute jobs on managed RunPod GPU infrastructure. It provides a simple, OpenAI-like API with full flexibility for custom workloads including fine-tuning, inference, evaluations, and arbitrary Python scripts.
