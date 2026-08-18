@@ -6,6 +6,7 @@ import sys
 from typing import List, Optional, Tuple
 
 from openweights.cli.common import (
+    RemoteBootstrapError,
     RunpodProvider,
     SSHSpec,
     UnisonSyncer,
@@ -16,6 +17,27 @@ from openweights.cli.common import (
     wait_for_ssh,
 )
 from openweights.images import OW_UNSLOTH_IMAGE
+
+
+def _terminate_after_failure(start_res, message: str) -> None:
+    """Report a failure, then stop the machine so it does not bill unattended.
+
+    Does nothing for --existing connections: we did not create that machine, so it is
+    not ours to terminate.
+    """
+    print(f"[ow] {message}", file=sys.stderr)
+    pod_id = start_res.provider_meta.get("pod_id")
+    if not pod_id:
+        return
+    print(f"[ow] Terminating {pod_id} so it stops billing.", file=sys.stderr)
+    try:
+        start_res.terminate()
+    except Exception as term_err:
+        print(
+            f"[ow] WARNING: could not terminate {pod_id} ({term_err}). It is still "
+            "running and billing; terminate it by hand.",
+            file=sys.stderr,
+        )
 
 
 def parse_existing_ssh(existing: str, key_path: str) -> SSHSpec:
@@ -103,6 +125,11 @@ def add_ssh_parser(parser):
         "--key-path", default="~/.ssh/id_ed25519", help="SSH private key path."
     )
     parser.add_argument(
+        "--pubkey",
+        default=None,
+        help="SSH public key to authorise on the machine. Defaults to <key-path>.pub.",
+    )
+    parser.add_argument(
         "--exclude",
         action="append",
         default=[".git", "__pycache__", ".mypy_cache", ".venv", ".env"],
@@ -142,12 +169,13 @@ def handle_ssh(args) -> int:
             def __init__(self, ssh_spec):
                 self.ssh = ssh_spec
                 self.terminate = noop_terminate
+                self.provider_meta = {}
 
         start_res = DummyStartResult(ssh)
     else:
         # Normal provisioning flow
         if args.provider == "runpod":
-            provider = RunpodProvider(key_path=args.key_path)
+            provider = RunpodProvider(key_path=args.key_path, pubkey_path=args.pubkey)
         else:
             raise SystemExit(f"Unknown provider: {args.provider}")
 
@@ -158,7 +186,11 @@ def handle_ssh(args) -> int:
         ssh = start_res.ssh
 
         print("[ow] Waiting for sshd to become ready...")
-        wait_for_ssh(ssh)
+        try:
+            wait_for_ssh(ssh)
+        except Exception as err:
+            _terminate_after_failure(start_res, str(err))
+            return 1
         print(f"[ow] SSH ready: {ssh.user}@{ssh.host}:{ssh.port}")
 
     # Determine mode: command execution, connection string only, or interactive with sync
@@ -172,12 +204,16 @@ def handle_ssh(args) -> int:
         do_editable = not args.no_editable_install
         # Collect all remote directories that need to be created
         remote_dirs = [remote for _, remote, _ in mounts]
-        bootstrap_remote(
-            ssh,
-            remote_cwd=mounts[0][1],
-            do_editable_install=do_editable,
-            additional_dirs=remote_dirs,
-        )
+        try:
+            bootstrap_remote(
+                ssh,
+                remote_cwd=mounts[0][1],
+                do_editable_install=do_editable,
+                additional_dirs=remote_dirs,
+            )
+        except RemoteBootstrapError as err:
+            _terminate_after_failure(start_res, str(err))
+            return err.returncode or 1
 
         # Execute the command in the remote working directory
         cmd_str = " ".join(args.command)
@@ -204,12 +240,16 @@ def handle_ssh(args) -> int:
     do_editable = not args.no_editable_install
     # Collect all remote directories that need to be created
     remote_dirs = [remote for _, remote, _ in mounts]
-    bootstrap_remote(
-        ssh,
-        remote_cwd=mounts[0][1],
-        do_editable_install=do_editable,
-        additional_dirs=remote_dirs,
-    )
+    try:
+        bootstrap_remote(
+            ssh,
+            remote_cwd=mounts[0][1],
+            do_editable_install=do_editable,
+            additional_dirs=remote_dirs,
+        )
+    except RemoteBootstrapError as err:
+        _terminate_after_failure(start_res, str(err))
+        return err.returncode or 1
 
     # Start bidirectional syncers
     syncers: List[UnisonSyncer] = []

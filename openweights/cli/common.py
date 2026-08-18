@@ -25,6 +25,18 @@ class SSHSpec:
     key_path: str
 
 
+class RemoteBootstrapError(RuntimeError):
+    """Remote bootstrap failed. Carries the exit code of the failing step.
+
+    Raised rather than exiting the process, so callers that provisioned the machine
+    get a chance to terminate it instead of leaving it billing.
+    """
+
+    def __init__(self, message: str, returncode: int):
+        super().__init__(message)
+        self.returncode = returncode
+
+
 @dataclass
 class StartResult:
     ssh: SSHSpec
@@ -43,11 +55,30 @@ class RunpodProvider(Provider):
     """
     Thin wrapper around your start_runpod.py module.
     - Expects RUNPOD_API_KEY in env (or via the shell environment).
-    - Uses key at key_path.
+    - Uses key at key_path, and authorises the matching public key on the pod.
     """
 
-    def __init__(self, key_path: str):
+    def __init__(self, key_path: str, pubkey_path: Optional[str] = None):
         self.key_path = os.path.expanduser(key_path)
+        self.pubkey_path = os.path.expanduser(pubkey_path or f"{key_path}.pub")
+
+    def _read_public_key(self) -> Optional[str]:
+        """The key to authorise on the pod, or None to leave authorized_keys alone.
+
+        Returning None keeps the old behaviour of relying on keys registered on the
+        RunPod account, which is the only thing that works if the caller has no local
+        public key.
+        """
+        if not os.path.exists(self.pubkey_path):
+            print(
+                f"[ow] WARNING: no SSH public key at {self.pubkey_path}, so the pod will "
+                "only accept keys already registered on the RunPod account. Pass "
+                "--pubkey if you cannot log in.",
+                file=sys.stderr,
+            )
+            return None
+        with open(self.pubkey_path) as f:
+            return f.read().strip()
 
     def start(
         self, image: str, gpu: str, count: int, env: Dict[str, str]
@@ -64,6 +95,7 @@ class RunpodProvider(Provider):
             env=env,
             runpod_client=runpod,
             dev_mode=True,  # keep your current choice
+            public_key=self._read_public_key(),
         )
         assert pod is not None, "Runpod start_worker returned None"
 
@@ -334,14 +366,27 @@ def wait_for_ssh(ssh: SSHSpec, deadline_s: int = 180):
         f"{ssh.user}@{ssh.host}",
         "true",
     ]
+    last_error = ""
     while True:
-        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+        )
         if proc.returncode == 0:
             return
+        stderr_lines = (proc.stderr or "").strip().splitlines()
+        if stderr_lines:
+            last_error = stderr_lines[-1].strip()
         if time.time() - start > deadline_s:
-            raise RuntimeError(
-                f"SSH not reachable at {ssh.host}:{ssh.port} within {deadline_s}s"
-            )
+            msg = f"SSH not reachable at {ssh.host}:{ssh.port} within {deadline_s}s"
+            if last_error:
+                msg += f"\nLast SSH error: {last_error}"
+            if "publickey" in last_error or "Permission denied" in last_error:
+                msg += (
+                    "\nsshd is answering but rejected the key, so this is "
+                    "authentication rather than a slow boot. Check that the public key "
+                    f"matching {ssh.key_path} is authorised on the machine."
+                )
+            raise RuntimeError(msg)
         time.sleep(2)
 
 
@@ -355,7 +400,7 @@ def bootstrap_remote(
     scp_text(ssh, REMOTE_INIT, "/root/.ow_sync/remote_init.sh")
     rc = ssh_exec(ssh, "bash ~/.ow_sync/remote_init.sh")
     if rc != 0:
-        sys.exit(rc)
+        raise RemoteBootstrapError("Remote init failed on the machine.", rc)
 
     # Create remote_cwd and any additional mount directories
     dirs_to_create = [remote_cwd]
@@ -365,13 +410,15 @@ def bootstrap_remote(
     for dir_path in dirs_to_create:
         rc = ssh_exec(ssh, f"mkdir -p {shlex.quote(dir_path)}")
         if rc != 0:
-            sys.exit(rc)
+            raise RemoteBootstrapError(
+                f"Could not create {dir_path} on the machine.", rc
+            )
 
     if do_editable_install:
         check_cmd = f"bash -lc 'cd {shlex.quote(remote_cwd)} && if [ -f pyproject.toml ]; then python3 -m pip install -e .; else echo \"[ow] no pyproject.toml\"; fi'"
         rc = ssh_exec(ssh, check_cmd)
         if rc != 0:
-            sys.exit(rc)
+            raise RemoteBootstrapError("Editable install failed on the machine.", rc)
 
 
 def open_interactive_shell(

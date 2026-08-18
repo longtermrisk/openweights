@@ -640,6 +640,7 @@ def _start_worker(
     pending_workers=None,
     env=None,
     runpod_client=None,
+    public_key=None,
 ):
     client = runpod_client or runpod
     gpu = GPUs[gpu]
@@ -660,6 +661,11 @@ def _start_worker(
             "RUNPOD_API_KEY": os.getenv("RUNPOD_API_KEY"),
         }
     )
+    # entrypoint.sh writes this to /root/.ssh/authorized_keys at boot. Without it the
+    # pod only accepts keys already registered on the RunPod account, which the caller
+    # may not control.
+    if public_key:
+        env["PUBLIC_KEY"] = public_key
     if worker_id is None:
         worker_id = uuid.uuid4().hex[:8]
     pod = client.create_pod(
@@ -702,6 +708,7 @@ def start_worker(
     ttl_hours=24,
     env=None,
     runpod_client=None,
+    public_key=None,
 ):
     pending_workers = []
     if dev_mode:
@@ -732,6 +739,7 @@ def start_worker(
             pending_workers,
             env,
             runpod_client,
+            public_key,
         )
         if pod is None:
             raise RuntimeError("RunPod create_pod returned no pod")
