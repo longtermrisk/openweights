@@ -16,6 +16,7 @@ import { JobsView } from './components/JobsView';
 import { WorkersView } from './components/WorkersView';
 import { JobDetailView, RunDetailView, WorkerDetailView } from './components/DetailViews';
 import { Auth } from './components/Auth/Auth';
+import { ResetPassword } from './components/Auth/ResetPassword';
 import { OrganizationList } from './components/Organizations/OrganizationList';
 import { OrganizationDetail } from './components/Organizations/OrganizationDetail';
 import { OrganizationSwitcher } from './components/Organizations/OrganizationSwitcher';
@@ -220,6 +221,7 @@ function AppContent() {
                 <Container maxWidth={false} sx={{ mt: 1.5, mb: 1.5, height: 'calc(100vh - 60px)' }}>
                     <Routes>
                         <Route path="/login" element={<Auth />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
                         <Route path="/organizations" element={
                             <PrivateRoute>
                                 <OrganizationList />
