@@ -6,7 +6,8 @@ USER root
 WORKDIR /openweights
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates git openssh-server python3-venv wget && \
+    apt-get install -y --no-install-recommends ca-certificates git openssh-server python3-venv wget \
+        psmisc procps lsof && \
     wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb && \
     dpkg -i /tmp/cuda-keyring.deb && \
     apt-get update && \
