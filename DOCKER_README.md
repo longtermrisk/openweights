@@ -63,3 +63,20 @@ docker run --rm --env-file .env -ti nielsrolf/ow-unsloth:$VERSION /bin/bash
 docker run --rm --env-file .env -ti nielsrolf/ow-vllm:$VERSION /bin/bash
 docker run --rm --env-file .env -ti nielsrolf/ow-cluster:$VERSION /bin/bash
 ```
+
+## File sync (unison)
+
+`ow ssh --sync` syncs with [unison](https://github.com/bcpierce00/unison), which has to be
+present at both ends and refuses to talk to a different version of itself. The images therefore
+pin a specific upstream static build rather than taking whatever apt offers:
+
+| | |
+|---|---|
+| version in the images | 2.54.0 (`UNISON_VERSION` build arg) |
+| what clients need | the same 2.54.0 — `brew install unison` currently gives exactly this |
+
+To move it, bump `UNISON_VERSION` and `UNISON_SHA256` in `Dockerfile` and `Dockerfile.vllm`
+together, then rebuild. Checksums are on the
+[release page](https://github.com/bcpierce00/unison/releases). Keep the two images on the same
+version, and prefer whatever Homebrew currently ships, since that is what most clients will
+install.
