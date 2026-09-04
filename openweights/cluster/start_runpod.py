@@ -705,7 +705,12 @@ def start_worker(
 ):
     pending_workers = []
     if dev_mode:
-        env = {
+        # Forward the usual credentials from the caller's shell, then let anything the
+        # caller passed explicitly (e.g. `ow ssh --env-file`) win. This used to replace
+        # `env` outright, which silently dropped every var outside this list --
+        # WANDB_API_KEY, WANDB_PROJECT and MAX_JOBS among them -- so `--env-file`
+        # appeared to work while delivering almost nothing to the pod.
+        forwarded = {
             var: os.environ.get(var)
             for var in [
                 "OPENWEIGHTS_API_KEY",
@@ -715,6 +720,8 @@ def start_worker(
                 "HF_ORG",
             ]
         }
+        forwarded.update({k: v for k, v in (env or {}).items() if v is not None})
+        env = forwarded
     if runpod_client is None:
         runpod.api_key = os.getenv("RUNPOD_API_KEY")
         runpod_client = runpod
