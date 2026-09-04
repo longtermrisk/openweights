@@ -10,8 +10,13 @@ from fastapi.staticfiles import StaticFiles
 from models import (
     Job,
     JobWithRuns,
+    Member,
+    MemberInvite,
+    MemberRoleUpdate,
     Organization,
     OrganizationCreate,
+    OrganizationSecret,
+    OrganizationUpdate,
     Run,
     RunWithJobAndWorker,
     Token,
@@ -154,6 +159,102 @@ async def update_organization_secrets(
         return {"status": "success" if success else "failed"}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/organizations/{organization_id}/secrets",
+    response_model=List[OrganizationSecret],
+)
+async def list_organization_secrets(
+    organization_id: str, db: Database = Depends(get_db)
+):
+    """List all secrets for an organization (admin-only)."""
+    try:
+        return db.list_organization_secrets(organization_id)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/organizations/{organization_id}", response_model=Organization)
+async def update_organization(
+    organization_id: str,
+    payload: OrganizationUpdate,
+    db: Database = Depends(get_db),
+):
+    """Rename an organization."""
+    try:
+        return db.update_organization(organization_id, payload.name)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/organizations/{organization_id}/members", response_model=List[Member]
+)
+async def list_organization_members(
+    organization_id: str, db: Database = Depends(get_db)
+):
+    """List members of an organization."""
+    try:
+        return db.get_organization_members(organization_id)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post(
+    "/organizations/{organization_id}/members", response_model=Member
+)
+async def invite_organization_member(
+    organization_id: str,
+    payload: MemberInvite,
+    db: Database = Depends(get_db),
+):
+    """Invite an existing user to the organization."""
+    try:
+        return db.invite_organization_member(
+            organization_id, payload.email, payload.role
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/organizations/{organization_id}/members/{user_id}")
+async def update_organization_member(
+    organization_id: str,
+    user_id: str,
+    payload: MemberRoleUpdate,
+    db: Database = Depends(get_db),
+):
+    """Update a member's role."""
+    try:
+        db.update_organization_member_role(organization_id, user_id, payload.role)
+        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/organizations/{organization_id}/members/{user_id}")
+async def remove_organization_member(
+    organization_id: str, user_id: str, db: Database = Depends(get_db)
+):
+    """Remove a member from the organization."""
+    try:
+        db.remove_organization_member(organization_id, user_id)
+        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -376,6 +477,10 @@ if os.path.exists("static"):
         # is followed by known API endpoints
         api_endpoints = [
             r"organizations/$",  # List organizations
+            r"organizations/[^/]+/?$",  # Get/update org
+            r"organizations/[^/]+/secrets/?$",  # List/update secrets
+            r"organizations/[^/]+/members/?$",  # List/invite members
+            r"organizations/[^/]+/members/[^/]+/?$",  # Update/remove member
             r"organizations/[^/]+/jobs/?$",  # List jobs
             r"organizations/[^/]+/jobs/[^/]+/?$",  # Get job
             r"organizations/[^/]+/runs/?$",  # List runs

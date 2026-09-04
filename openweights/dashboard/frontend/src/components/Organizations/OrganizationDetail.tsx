@@ -35,7 +35,6 @@ import EditIcon from '@mui/icons-material/Edit'
 import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import { supabase } from '../../supabaseClient'
 import { useAuth } from '../../contexts/AuthContext'
 import { TokenView } from '../TokenView'
 import { api } from '../../api'
@@ -52,11 +51,8 @@ interface Organization {
 }
 
 interface Secret {
-  id: string
   name: string
   value: string
-  created_at: string
-  updated_at: string
 }
 
 interface TabPanelProps {
@@ -113,153 +109,95 @@ export function OrganizationDetail() {
   }, [orgId])
 
   async function fetchOrganizationData() {
+    if (!orgId) return;
     try {
-      // Fetch organization details
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', orgId)
-        .single()
+      const org = await api.getOrganization(orgId);
+      setOrganization(org);
+      setEditName(org.name);
 
-      if (orgError) throw orgError
-      setOrganization(org)
-      setEditName(org.name)
-
-      // Fetch members
-      const { data: memberData, error: memberError } = await supabase
-        .rpc('get_organization_members', { org_id: orgId })
-
-      if (memberError) throw memberError
-
-      // Check if current user is admin
-      const currentUserMember = memberData.find((m: { user_id: string }) => m.user_id === user?.id)
-      setIsAdmin(currentUserMember?.role === 'admin')
-
-      setMembers(memberData.map((m: { user_id: string; role: string; email?: string }) => ({
+      const memberData = await api.listOrganizationMembers(orgId);
+      const currentUserMember = memberData.find(m => m.user_id === user?.id);
+      const admin = currentUserMember?.role === 'admin';
+      setIsAdmin(admin);
+      setMembers(memberData.map(m => ({
         user_id: m.user_id,
         role: m.role,
         ...(m.email ? { email: m.email } : {})
-      })))
+      })));
 
-      // Fetch secrets if admin
-      if (currentUserMember?.role === 'admin') {
-        const { data: secretData, error: secretError } = await supabase
-          .from('organization_secrets')
-          .select('*')
-          .eq('organization_id', orgId)
-
-        if (secretError) throw secretError
-        // Initialize edited secrets with current values
+      if (admin) {
+        const secretData = await api.listOrganizationSecrets(orgId);
         const currentValues = Object.fromEntries(
           secretData.map((secret: Secret) => [secret.name, secret.value])
         );
         setEditedSecrets(currentValues);
       }
     } catch (err) {
-      console.error('Error fetching data:', err)
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      console.error('Error fetching data:', err);
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   const handleRoleChange = async (userId: string, newRole: 'admin' | 'user') => {
+    if (!orgId) return;
     try {
-      const { error } = await supabase
-        .from('organization_members')
-        .update({ role: newRole })
-        .eq('organization_id', orgId)
-        .eq('user_id', userId)
-
-      if (error) throw error
-
+      await api.updateOrganizationMemberRole(orgId, userId, newRole);
       setMembers(members.map(member =>
         member.user_id === userId ? { ...member, role: newRole } : member
-      ))
+      ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update role')
+      setError(err instanceof Error ? err.message : 'Failed to update role');
     }
   }
 
   const handleRemoveMember = async (userId: string) => {
+    if (!orgId) return;
     try {
-      const { error } = await supabase
-        .rpc('remove_organization_member', {
-          org_id: orgId,
-          member_id: userId
-        })
-
-      if (error) throw error
-
-      setMembers(members.filter(member => member.user_id !== userId))
+      await api.removeOrganizationMember(orgId, userId);
+      setMembers(members.filter(member => member.user_id !== userId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove member')
+      setError(err instanceof Error ? err.message : 'Failed to remove member');
     }
   }
 
   const handleInvite = async () => {
+    if (!orgId) return;
     try {
-      const { data, error } = await supabase
-        .rpc('invite_organization_member', {
-          org_id: orgId,
-          member_email: inviteEmail,
-          member_role: 'user'
-        })
-
-      if (error) throw error
-
-      if (data) {
-        setMembers([...members, {
-          user_id: data.user_id,
-          email: data.email,
-          role: data.role
-        }])
-      }
-
-      setInviteEmail('')
-      setOpenInviteDialog(false)
+      const data = await api.inviteOrganizationMember(orgId, inviteEmail, 'user');
+      setMembers([...members, {
+        user_id: data.user_id,
+        email: data.email,
+        role: data.role,
+      }]);
+      setInviteEmail('');
+      setOpenInviteDialog(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invitation')
+      setError(err instanceof Error ? err.message : 'Failed to send invitation');
     }
   }
 
   const handleUpdateOrganization = async () => {
+    if (!orgId) return;
     try {
-      const { error } = await supabase
-        .rpc('update_organization', {
-          org_id: orgId,
-          new_name: editName
-        })
-
-      if (error) throw error
-
-      setOrganization(prev => prev ? { ...prev, name: editName } : null)
-      setOpenEditDialog(false)
+      const updated = await api.updateOrganization(orgId, editName);
+      setOrganization(prev => prev ? { ...prev, name: updated.name } : updated);
+      setOpenEditDialog(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update organization')
+      setError(err instanceof Error ? err.message : 'Failed to update organization');
     }
   }
 
   const handleSaveSecrets = async () => {
     if (!orgId) return;
-
     try {
       setSecretError(null);
-
-      // Send all secrets to the backend
       await api.updateOrganizationSecrets(orgId, editedSecrets);
-
-      // Refresh secrets
-      const { data: secretData, error: secretError } = await supabase
-        .from('organization_secrets')
-        .select('*')
-        .eq('organization_id', orgId);
-
-      if (secretError) throw secretError;
+      const secretData = await api.listOrganizationSecrets(orgId);
       const currentValues = Object.fromEntries(
         secretData.map((secret: Secret) => [secret.name, secret.value])
       );
       setEditedSecrets(currentValues);
       setHasChanges(false);
-      setSecretError(null);
     } catch (err) {
       console.error('Error updating secrets:', err);
       setSecretError(err instanceof Error ? err.message : 'Failed to update secrets');
