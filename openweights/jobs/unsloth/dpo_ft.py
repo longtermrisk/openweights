@@ -60,7 +60,12 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         per_device_eval_batch_size=training_cfg.eval_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
         warmup_steps=training_cfg.warmup_steps,
-        learning_rate=training_cfg.learning_rate,
+        learning_rate=learning_rate,
+        max_length=training_cfg.max_seq_length,
+        eval_strategy=(
+            training_cfg.test_file_eval_strategy if test_dataset is not None else "no"
+        ),
+        eval_steps=training_cfg.test_file_eval_steps,
         beta=training_cfg.beta,
         fp16=not is_bfloat16_supported(),
         bf16=is_bfloat16_supported(),

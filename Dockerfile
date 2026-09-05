@@ -32,7 +32,7 @@ COPY entrypoint.sh .
 RUN python3 -m venv --system-site-packages /opt/venv && \
     /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip && \
     /opt/venv/bin/python -m pip install --no-cache-dir \
-        "unsloth[cu128-torch2100]==2026.4.6" && \
+        "unsloth[cu128-torch2100]==2026.9.2" && \
     /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && \
     /opt/venv/bin/python -m pip install --no-cache-dir \
         PyJWT \

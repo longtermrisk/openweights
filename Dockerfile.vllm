@@ -1,17 +1,12 @@
 # syntax=docker/dockerfile:1.7
-FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
+FROM vllm/vllm-openai:v0.28.0
 
 USER root
 
 WORKDIR /openweights
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates git openssh-server python3-venv wget && \
-    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb && \
-    dpkg -i /tmp/cuda-keyring.deb && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends cuda-nvcc-12-8 && \
-    rm -f /tmp/cuda-keyring.deb && \
+    apt-get install -y --no-install-recommends ca-certificates git openssh-server python3-venv procps && \
     rm -rf /var/lib/apt/lists/*
 
 # unison, for `ow ssh --sync`, which needs it present at both ends. Pinned to the upstream
@@ -45,7 +40,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/python -m pip install --resume-retries 100 --timeout 180 \
-        "vllm==0.19.1"
+        "transformers==5.16.1"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && \
