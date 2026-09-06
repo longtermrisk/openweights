@@ -53,7 +53,11 @@ def _query_gpu_processes() -> list[GpuProcess]:
             text=True,
             timeout=10,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         logger.warning("nvidia-smi query failed: %s", exc)
         return []
 
@@ -78,7 +82,11 @@ def _query_free_fraction() -> float | None:
             text=True,
             timeout=10,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         logger.warning("nvidia-smi memory query failed: %s", exc)
         return None
 
@@ -113,7 +121,11 @@ def _describe_pid(pid: int) -> str:
             text=True,
             timeout=5,
         ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         return f"pid={pid} (unavailable)"
 
 
@@ -128,8 +140,10 @@ def reclaim_gpu(
     1. Enumerate GPU-holding processes via ``nvidia-smi``.
     2. For each holder not owned by the current process tree, SIGKILL it if
        it is visible in our PID namespace.
-    3. If any holder is *not* visible (cross-container/host process), raise
-       :class:`ForeignGpuHolderError` immediately — retrying is futile.
+    3. If any holder is *not* visible (cross-container/host process) and the
+       GPU does not meet ``min_free_fraction``, raise
+       :class:`ForeignGpuHolderError` — retrying on this pod is futile. Small
+       foreign holders that leave enough VRAM free are logged and ignored.
     4. Poll until VRAM is reclaimed or ``timeout_s`` elapses.
 
     Raises:
@@ -176,10 +190,28 @@ def reclaim_gpu(
 
     if foreign:
         details = ", ".join(f"pid={p.pid} used={p.used_mib}MiB" for p in foreign)
-        raise ForeignGpuHolderError(
-            f"GPU is held by process(es) outside this container's PID namespace: {details}. "
-            "Cannot reclaim from inside the worker; reschedule the job on a different pod."
-        )
+        # A foreign holder is only a problem if it actually occupies the GPU.
+        # RunPod hosts routinely expose a host-side process holding a few
+        # hundred MiB; treating that as fatal made every worker on such a host
+        # revert its job and shut down, and the cluster then re-provisioned
+        # pods indefinitely without ever running the job.
+        free_frac = _query_free_fraction()
+        if free_frac is not None and free_frac >= min_free_fraction:
+            logger.warning(
+                "reclaim_gpu: ignoring foreign GPU holder(s) %s; "
+                "min free fraction=%.3f >= %.3f so enough VRAM remains",
+                details,
+                free_frac,
+                min_free_fraction,
+            )
+            foreign = []
+        else:
+            raise ForeignGpuHolderError(
+                f"GPU is held by process(es) outside this container's PID namespace: {details} "
+                f"(min free fraction={'unknown' if free_frac is None else f'{free_frac:.3f}'} "
+                f"< {min_free_fraction:.3f}). "
+                "Cannot reclaim from inside the worker; reschedule the job on a different pod."
+            )
 
     if not killed:
         logger.info(
