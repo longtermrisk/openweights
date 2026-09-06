@@ -1,0 +1,5 @@
+{
+  "job_id": "evaluation-294b4408f3f3",
+  "model": "Qwen/Qwen3-8B",
+  "image": "nielsrolf/ow-unsloth:v0.11"
+}

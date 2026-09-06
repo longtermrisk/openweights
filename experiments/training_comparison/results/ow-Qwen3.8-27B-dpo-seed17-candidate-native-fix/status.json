@@ -1,0 +1,18 @@
+{
+  "status": "completed",
+  "outputs": {
+    "loss": 0.6931471824645996,
+    "step": 1,
+    "epoch": 0.0078125,
+    "grad_norm": 10.860623359680176,
+    "logps/chosen": -45.33404541015625,
+    "learning_rate": 0.0001,
+    "logits/chosen": -1.8581455945968628,
+    "logps/rejected": -57.140968322753906,
+    "rewards/chosen": 0.0,
+    "logits/rejected": -1.8939303159713745,
+    "rewards/margins": 0.0,
+    "rewards/rejected": 0.0,
+    "rewards/accuracies": 0.0
+  }
+}

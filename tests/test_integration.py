@@ -1345,6 +1345,7 @@ print("cluster runtime validation ok")
         self,
         skip_until: Optional[str] = None,
         skip_until_cookbook: Optional[str] = None,
+        skip: Optional[List[str]] = None,
     ):
         """Run all integration tests
 
@@ -1388,6 +1389,16 @@ print("cluster runtime validation ok")
                 print(f"Valid test names: {', '.join(test_names)}")
                 sys.exit(1)
 
+        # Validate individually skipped tests
+        skip = set(skip or [])
+        unknown = skip - {name for name, _, _ in tests}
+        if unknown:
+            print(
+                f"Error: Invalid test name(s) in --skip: {', '.join(sorted(unknown))}"
+            )
+            print(f"Valid test names: {', '.join(name for name, _, _ in tests)}")
+            sys.exit(1)
+
         # Validate skip_until_cookbook if provided
         if skip_until_cookbook:
             valid_keys = [str(Path(rel).with_suffix("")) for rel in COOKBOOK_EXAMPLES]
@@ -1417,6 +1428,9 @@ print("cluster runtime validation ok")
                     else:
                         print(f"Skipping: {test_name}")
                         continue
+                if test_name in skip:
+                    print(f"Skipping (--skip): {test_name}")
+                    continue
 
                 # Run the test
                 result = test_method(**kwargs)
@@ -1517,6 +1531,16 @@ Available cookbook examples (in order):
         action="store_true",
         help="Debug mode: prompt to run subprocesses manually in separate terminals.",
     )
+    parser.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        metavar="TEST_NAME",
+        help="Skip a single test by name (repeatable). Use it to skip "
+        "test_docker_build_and_push, which rebuilds and pushes the production "
+        "image tags from openweights/images.py and would overwrite already "
+        "validated images.",
+    )
 
     args = parser.parse_args()
 
@@ -1524,6 +1548,7 @@ Available cookbook examples (in order):
     runner.run_all_tests(
         skip_until=args.skip_until,
         skip_until_cookbook=args.skip_until_cookbook,
+        skip=args.skip,
     )
 
 

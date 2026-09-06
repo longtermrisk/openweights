@@ -1,0 +1,38 @@
+[
+  {
+    "step": 0,
+    "split": "test",
+    "accuracy": 0.0,
+    "nll": 7.117764744155454
+  },
+  {
+    "step": 0,
+    "split": "ood",
+    "accuracy": 0.0,
+    "nll": 7.064170715127153
+  },
+  {
+    "step": 16,
+    "split": "test",
+    "accuracy": 0.59375,
+    "nll": 0.1426776061041717
+  },
+  {
+    "step": 16,
+    "split": "ood",
+    "accuracy": 0.5625,
+    "nll": 0.16286379542704535
+  },
+  {
+    "step": 32,
+    "split": "test",
+    "accuracy": 0.609375,
+    "nll": 0.1340041905052615
+  },
+  {
+    "step": 32,
+    "split": "ood",
+    "accuracy": 0.5625,
+    "nll": 0.1414478241998834
+  }
+]

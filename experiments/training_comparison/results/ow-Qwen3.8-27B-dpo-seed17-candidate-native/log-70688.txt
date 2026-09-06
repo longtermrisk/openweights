@@ -1,0 +1,166 @@
+The following values were not passed to `accelerate launch` and had defaults used instead:
+	`--num_processes` was set to a value of `1`
+	`--num_machines` was set to a value of `1`
+	`--mixed_precision` was set to a value of `'no'`
+	`--dynamo_backend` was set to a value of `'no'`
+To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :176  2026-09-06 09:54:36,304 Creating authenticated Supabase client
+__init__.py         :68   2026-09-06 09:54:36,304 Exchanging API token for JWT
+__init__.py         :84   2026-09-06 09:54:36,603 Successfully exchanged API token for JWT
+__init__.py         :187  2026-09-06 09:54:37,095 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+/opt/venv/lib/python3.12/site-packages/unsloth/__init__.py:1543: UserWarning: WARNING: Unsloth should be imported before [transformers, peft] to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from ._gpu_init import *
+Training config: {
+    "r": 16,
+    "beta": 0.1,
+    "loss": "dpo",
+    "meta": null,
+    "seed": 17,
+    "model": "Qwen/Qwen3.8-27B",
+    "optim": "adamw_torch",
+    "epochs": 2,
+    "is_peft": true,
+    "packing": false,
+    "lora_bias": "none",
+    "max_steps": 2,
+    "test_file": null,
+    "lora_alpha": 16,
+    "output_dir": "./tmp",
+    "save_steps": 16,
+    "use_rslora": false,
+    "load_in_4bit": false,
+    "lora_dropout": 0.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+    "chat_template": "default",
+    "job_id_suffix": null,
+    "learning_rate": 0.0001,
+    "logging_steps": 1,
+    "training_file": "preference:file-050f0fe1c4d1",
+    "max_seq_length": 256,
+    "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "eval_batch_size": 4,
+    "push_to_private": true,
+    "lr_scheduler_type": "constant",
+    "merge_before_push": false,
+    "eval_every_n_steps": 5000,
+    "finetuned_model_id": "longtermrisk/Qwen3.8-27B-ftjob-7ea5a20e14fc",
+    "sampling_callbacks": null,
+    "test_file_eval_steps": 16,
+    "logp_callback_datasets": {},
+    "test_file_eval_strategy": "steps",
+    "train_on_responses_only": true,
+    "gradient_accumulation_steps": 1,
+    "per_device_train_batch_size": 1,
+    "model_naming_extra_parameters": null
+}
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+==((====))==  Unsloth 2026.9.2: Fast Qwen3_5 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA H200. Num GPUs = 1. Max memory: 139.811 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.10.0+cu128. CUDA: 9.0. CUDA Toolkit: 12.8. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.34. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :176  2026-09-06 09:54:58,624 Creating authenticated Supabase client
+__init__.py         :68   2026-09-06 09:54:58,624 Exchanging API token for JWT
+__init__.py         :84   2026-09-06 09:54:58,906 Successfully exchanged API token for JWT
+__init__.py         :187  2026-09-06 09:54:59,344 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+
+Loading weights:   0%|          | 0/1184 [00:00<?, ?it/s]
+Loading weights:  75%|███████▌  | 890/1184 [00:00<00:00, 8858.99it/s]
+Loading weights: 100%|██████████| 1184/1184 [00:00<00:00, 9323.32it/s]
+NOTE: Unwrapping Qwen3VLProcessor to get underlying tokenizer
+Creating new LoRA adapter
+Unsloth: Explicit target_modules are constrained by the finetune_(vision|language|attention|mlp) filters; adapters attach only where both select.
+[VRAM-probe:unsloth/dpo] use_cache='<no-config>' _attn_implementation='sdpa' is_gradient_checkpointing=True
+files.py            :207  2026-09-06 09:56:41,010 Downloading file: preference:file-050f0fe1c4d1
+files.py            :210  2026-09-06 09:56:41,783 File downloaded: preference:file-050f0fe1c4d1 (33053 bytes)
+
+Map:   0%|          | 0/128 [00:00<?, ? examples/s]
+Map: 100%|██████████| 128/128 [00:00<00:00, 2908.61 examples/s]
+
+Extracting prompt in train dataset (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Extracting prompt in train dataset (num_proc=5):  20%|██        | 26/128 [00:00<00:00, 189.05 examples/s]
+Extracting prompt in train dataset (num_proc=5): 100%|██████████| 128/128 [00:00<00:00, 476.29 examples/s]
+
+Applying chat template to train dataset (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Applying chat template to train dataset (num_proc=5):  20%|██        | 26/128 [00:00<00:03, 28.36 examples/s]
+Applying chat template to train dataset (num_proc=5):  41%|████      | 52/128 [00:01<00:01, 55.71 examples/s]
+Applying chat template to train dataset (num_proc=5):  61%|██████    | 78/128 [00:01<00:00, 82.21 examples/s]
+Applying chat template to train dataset (num_proc=5):  80%|████████  | 103/128 [00:01<00:00, 108.00 examples/s]
+Applying chat template to train dataset (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 133.09 examples/s]
+Applying chat template to train dataset (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 80.66 examples/s]
+
+Tokenizing train dataset:   0%|          | 0/128 [00:00<?, ? examples/s]
+Tokenizing train dataset:   0%|          | 0/128 [00:00<?, ? examples/s]
+Traceback (most recent call last):
+  File "/tmp/tmpwhdbcbxf/training.py", line 232, in <module>
+    main(sys.argv[1])
+  File "/tmp/tmpwhdbcbxf/training.py", line 228, in main
+    train(training_config)
+  File "/tmp/tmpwhdbcbxf/training.py", line 137, in train
+    trainer = dpo_train(
+              ^^^^^^^^^^
+  File "/tmp/tmpwhdbcbxf/dpo_ft.py", line 87, in dpo_train
+    trainer = DPOTrainer(
+              ^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/unsloth/trainer.py", line 860, in new_init
+    original_init(self, *args, **kwargs)
+  File "/tmp/tmpwhdbcbxf/unsloth_compiled_cache/UnslothDPOTrainer.py", line 3083, in __init__
+    super().__init__(
+  File "/tmp/tmpwhdbcbxf/unsloth_compiled_cache/UnslothDPOTrainer.py", line 1229, in __init__
+    train_dataset = self._prepare_dataset(train_dataset, processing_class, args, "train")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/tmpwhdbcbxf/unsloth_compiled_cache/UnslothDPOTrainer.py", line 1421, in _prepare_dataset
+    dataset = dataset.map(
+              ^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/unsloth_zoo/temporary_patches/misc.py", line 1266, in map
+    return original_map(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/arrow_dataset.py", line 562, in wrapper
+    out: Union["Dataset", "DatasetDict"] = func(self, *args, **kwargs)
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/arrow_dataset.py", line 3332, in map
+    for rank, done, content in Dataset._map_single(**unprocessed_kwargs):
+  File "/opt/venv/lib/python3.12/site-packages/datasets/arrow_dataset.py", line 3664, in _map_single
+    for i, example in iter_outputs(shard_iterable):
+  File "/opt/venv/lib/python3.12/site-packages/datasets/arrow_dataset.py", line 3638, in iter_outputs
+    yield i, apply_function(example, i, offset=offset)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/datasets/arrow_dataset.py", line 3561, in apply_function
+    processed_inputs = function(*fn_args, *additional_args, **fn_kwargs)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/tmpwhdbcbxf/unsloth_compiled_cache/UnslothDPOTrainer.py", line 435, in dpo_trainer_vision_process_row
+    processor, tokenizer = processing_class, processing_class.tokenizer
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/transformers/tokenization_utils_base.py", line 1293, in __getattr__
+    raise AttributeError(f"{self.__class__.__name__} has no attribute {key}")
+AttributeError: TokenizersBackend has no attribute tokenizer. Did you mean: '_tokenizer'?
+Traceback (most recent call last):
+  File "/opt/venv/bin/accelerate", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/accelerate_cli.py", line 50, in main
+    args.func(args)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/launch.py", line 1407, in launch_command
+    simple_launcher(args)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/launch.py", line 993, in simple_launcher
+    raise subprocess.CalledProcessError(returncode=process.returncode, cmd=cmd)
+subprocess.CalledProcessError: Command '['/opt/venv/bin/python', 'training.py', 'ftjob-7ea5a20e14fc']' returned non-zero exit status 1.

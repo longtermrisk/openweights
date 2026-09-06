@@ -1,0 +1,63 @@
+[
+  {
+    "id": 4821612,
+    "run_id": 70687,
+    "created_at": "2026-09-06T09:56:15.011898+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 0,
+      "epoch": 0,
+      "eval_loss": 0.299593448638916,
+      "eval_runtime": 49.5138,
+      "eval_steps_per_second": 0.323,
+      "eval_samples_per_second": 1.293,
+      "eval_model_preparation_time": 0.0258
+    },
+    "file": null
+  },
+  {
+    "id": 4821614,
+    "run_id": 70687,
+    "created_at": "2026-09-06T09:57:32.000894+00:00",
+    "data": {
+      "loss": 0.2598938047885895,
+      "step": 1,
+      "epoch": 0.0078125,
+      "grad_norm": 3.4375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821615,
+    "run_id": 70687,
+    "created_at": "2026-09-06T09:57:37.532829+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 2,
+      "epoch": 0.015625,
+      "eval_loss": 0.16519644856452942,
+      "eval_runtime": 5.2551,
+      "eval_steps_per_second": 3.045,
+      "eval_samples_per_second": 12.179,
+      "eval_model_preparation_time": 0.0258
+    },
+    "file": null
+  },
+  {
+    "id": 4821616,
+    "run_id": 70687,
+    "created_at": "2026-09-06T09:57:58.835595+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 2,
+      "epoch": 0.015625,
+      "eval_loss": 0.16519644856452942,
+      "eval_runtime": 2.4093,
+      "eval_steps_per_second": 6.641,
+      "eval_samples_per_second": 26.563,
+      "eval_model_preparation_time": 0.0258
+    },
+    "file": null
+  }
+]

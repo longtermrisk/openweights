@@ -1,0 +1,16 @@
+{
+  "status": "completed",
+  "outputs": {
+    "tag": "eval",
+    "loss": 0.2598938047885895,
+    "step": 2,
+    "epoch": 0.015625,
+    "eval_loss": 0.16519644856452942,
+    "grad_norm": 3.4375,
+    "eval_runtime": 2.4093,
+    "learning_rate": 0.0001,
+    "eval_steps_per_second": 6.641,
+    "eval_samples_per_second": 26.563,
+    "eval_model_preparation_time": 0.0258
+  }
+}

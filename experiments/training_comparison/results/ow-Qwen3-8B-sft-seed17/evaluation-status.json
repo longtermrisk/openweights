@@ -1,0 +1,8 @@
+{
+  "job_id": "evaluation-46f3adcde200",
+  "status": "completed",
+  "outputs": {
+    "file": "result:file-2cde46ff9d99",
+    "path": "evaluation.json"
+  }
+}

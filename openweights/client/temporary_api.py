@@ -54,8 +54,13 @@ class TemporaryApi:
         )
         self.pod_id = worker["pod_id"]
         self.base_url = f"https://{self.pod_id}-8000.proxy.runpod.net/v1"
+        # Same as async_up(): without this the clients below were built with
+        # api_key=None and the OpenAI SDK then required OPENAI_API_KEY in the
+        # environment, so `with ow.api.deploy(model):` crashed after the
+        # deployment had already come up.
+        self.api_key = job["params"].get("api_key", "api_key")
         logger.info(f"API endpoint: {self.base_url}")
-        openai = OpenAI(api_key="no-api-key-required", base_url=self.base_url)
+        openai = OpenAI(api_key=self.api_key, base_url=self.base_url)
         self.wait_until_ready(openai, job["params"]["model"])
         APIS[job["params"]["model"]] = self
 
