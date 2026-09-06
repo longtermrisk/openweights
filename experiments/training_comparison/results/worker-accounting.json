@@ -1,0 +1,72 @@
+[
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b7a0872d",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:32.285237+00:00",
+    "updated_at": "2026-09-05T00:22:49.201137+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-ce92e740",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-04T23:49:31.680837+00:00",
+    "updated_at": "2026-09-05T00:01:56.759761+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-65d0817b",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:34.005173+00:00",
+    "updated_at": "2026-09-05T00:24:07.926081+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-79573c93",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:08:28.421052+00:00",
+    "updated_at": "2026-09-05T00:20:35.693141+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-4dd2a4ac",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:32.538734+00:00",
+    "updated_at": "2026-09-05T00:21:41.883771+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b25a33c1",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:36.127045+00:00",
+    "updated_at": "2026-09-05T00:21:58.731691+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-3045c50d",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T06:35:17.977448+00:00",
+    "updated_at": "2026-09-05T06:49:09.523529+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b2c14bc6",
+    "status": "active",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T10:59:09.320574+00:00",
+    "updated_at": "2026-09-05T11:01:50.171439+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f5b8cefe",
+    "status": "active",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T10:53:07.487186+00:00",
+    "updated_at": "2026-09-05T11:01:52.225501+00:00"
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f24e671e",
+    "status": "active",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T10:53:08.154227+00:00",
+    "updated_at": "2026-09-05T11:01:52.811138+00:00"
+  }
+]

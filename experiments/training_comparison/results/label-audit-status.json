@@ -1,0 +1,8 @@
+{
+  "job_id": "evaluation-294b4408f3f3",
+  "status": "completed",
+  "outputs": {
+    "file": "result:file-5ad042ef1073",
+    "path": "label-audit.json"
+  }
+}

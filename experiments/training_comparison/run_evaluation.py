@@ -14,12 +14,14 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("model")
     p.add_argument("--image", default=None)
+    p.add_argument("--audit-only", action="store_true")
     args = p.parse_args()
     load_dotenv(ROOT.parent.parent / ".env")
     from openweights import Jobs, OpenWeights, register
 
     class Params(BaseModel):
         model: str
+        audit_only: bool = False
 
     @register("comparison_eval")
     class Evaluation(Jobs):
@@ -41,7 +43,9 @@ def main():
     ow = OpenWeights()
     if args.image:
         ow.comparison_eval.base_image = args.image
-    job = ow.comparison_eval.create(model=args.model, allowed_hardware=["1x H200"])
+    job = ow.comparison_eval.create(
+        model=args.model, audit_only=args.audit_only, allowed_hardware=["1x H200"]
+    )
     write_json(
         ROOT / "results" / ("eval-" + job.id + ".json"),
         dict(job_id=job.id, model=args.model, image=job.docker_image),

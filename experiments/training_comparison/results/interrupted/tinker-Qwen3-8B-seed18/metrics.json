@@ -1,0 +1,26 @@
+[
+  {
+    "step": 0,
+    "split": "test",
+    "accuracy": 0.0,
+    "nll": 7.118358975968888
+  },
+  {
+    "step": 0,
+    "split": "ood",
+    "accuracy": 0.0,
+    "nll": 7.05864792043953
+  },
+  {
+    "step": 16,
+    "split": "test",
+    "accuracy": 0.546875,
+    "nll": 0.146233535679063
+  },
+  {
+    "step": 16,
+    "split": "ood",
+    "accuracy": 0.53125,
+    "nll": 0.1633576594201162
+  }
+]

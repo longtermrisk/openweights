@@ -12,8 +12,13 @@ def main():
     p.add_argument("--model", default="Qwen/Qwen3-8B")
     p.add_argument("--steps", type=int, default=32)
     p.add_argument("--seed", type=int, default=17)
+    p.add_argument("--learning-rate", type=float, default=1e-4)
+    p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--loss", choices=["sft", "dpo"], default="sft")
     p.add_argument("--image", default=None)
+    p.add_argument("--native-template", action="store_true")
+    p.add_argument("--run-tag", default="")
+    p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--collect", action="store_true")
     args = p.parse_args()
     load_dotenv(ROOT.parent.parent / ".env")
@@ -23,7 +28,12 @@ def main():
     out = (
         ROOT
         / "results"
-        / ("ow-" + args.model.split("/")[-1] + f"-{args.loss}-seed{args.seed}")
+        / (
+            "ow-"
+            + args.model.split("/")[-1]
+            + f"-{args.loss}-seed{args.seed}"
+            + args.run_tag
+        )
     )
     out.mkdir(parents=True, exist_ok=True)
     if args.collect:
@@ -68,10 +78,10 @@ def main():
         epochs=2,
         max_seq_length=256,
         r=16,
-        lora_alpha=16,
+        lora_alpha=args.lora_alpha,
         use_rslora=False,
-        learning_rate=1e-4,
-        per_device_train_batch_size=8,
+        learning_rate=args.learning_rate,
+        per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=1,
         warmup_steps=0,
         weight_decay=0,
@@ -79,7 +89,7 @@ def main():
         lr_scheduler_type="constant",
         packing=False,
         seed=args.seed,
-        chat_template=TEMPLATE,
+        chat_template="default" if args.native_template else TEMPLATE,
         load_in_4bit=False,
         merge_before_push=False,
         save_steps=16,

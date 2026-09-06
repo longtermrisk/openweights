@@ -1,0 +1,1443 @@
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+The following values were not passed to `accelerate launch` and had defaults used instead:
+	`--num_processes` was set to a value of `1`
+	`--num_machines` was set to a value of `1`
+	`--mixed_precision` was set to a value of `'no'`
+	`--dynamo_backend` was set to a value of `'no'`
+To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :148  2026-09-05 11:07:47,475 Creating authenticated Supabase client
+__init__.py         :45   2026-09-05 11:07:47,475 Exchanging API token for JWT
+__init__.py         :56   2026-09-05 11:07:47,776 Successfully exchanged API token for JWT
+__init__.py         :159  2026-09-05 11:07:48,205 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+/tmp/tmp1nd37w7h/training.py:64: UserWarning: WARNING: Unsloth should be imported before [transformers, peft] to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from unsloth import FastLanguageModel
+Training config: {
+    "r": 16,
+    "beta": 0.1,
+    "loss": "sft",
+    "meta": null,
+    "seed": 17,
+    "model": "Qwen/Qwen3-8B",
+    "optim": "adamw_torch",
+    "epochs": 2,
+    "is_peft": true,
+    "packing": false,
+    "lora_bias": "none",
+    "max_steps": 32,
+    "test_file": "conversations:file-a7b79378dc93",
+    "lora_alpha": 16,
+    "output_dir": "./tmp",
+    "save_steps": 16,
+    "use_rslora": false,
+    "load_in_4bit": false,
+    "lora_dropout": 0.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+    "chat_template": "{% for message in messages %}{{ '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>\n' }}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "job_id_suffix": null,
+    "learning_rate": 0.001,
+    "logging_steps": 1,
+    "training_file": "conversations:file-77cc012469b9",
+    "max_seq_length": 256,
+    "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "eval_batch_size": 4,
+    "push_to_private": true,
+    "lr_scheduler_type": "constant",
+    "merge_before_push": false,
+    "eval_every_n_steps": 5000,
+    "finetuned_model_id": "longtermrisk/Qwen3-8B-ftjob-a149f1f26469",
+    "sampling_callbacks": null,
+    "test_file_eval_steps": 16,
+    "logp_callback_datasets": {},
+    "test_file_eval_strategy": "steps",
+    "train_on_responses_only": true,
+    "gradient_accumulation_steps": 1,
+    "per_device_train_batch_size": 8,
+    "model_naming_extra_parameters": null
+}
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+Unsloth: Your Flash Attention 2 installation seems to be broken. Using Xformers instead. No performance changes will be seen.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+==((====))==  Unsloth 2026.4.6: Fast Qwen3 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA H200. Num GPUs = 1. Max memory: 139.811 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.10.0+cu128. CUDA: 9.0. CUDA Toolkit: 12.8. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.34. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]
+Fetching 4 files:  25%|██▌       | 1/4 [00:17<00:53, 17.72s/it]
+Fetching 4 files: 100%|██████████| 4/4 [00:20<00:00,  4.17s/it]
+Fetching 4 files: 100%|██████████| 4/4 [00:20<00:00,  5.19s/it]
+
+Loading weights:   0%|          | 0/399 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 399/399 [00:00<00:00, 7429.35it/s]
+Unsloth 2026.4.6 patched 36 layers with 36 QKV layers, 36 O layers and 36 MLP layers.
+unsloth/Qwen3-8B does not have a padding token! Will use pad_token = <|PAD_TOKEN|>.
+Creating new LoRA adapter
+[VRAM-probe:unsloth/sft] use_cache=True _attn_implementation='sdpa' is_gradient_checkpointing=True
+[VRAM-probe:unsloth/sft] flipped model.config.use_cache True -> False (KV cache during training is wasted VRAM)
+files.py            :207  2026-09-05 11:08:29,108 Downloading file: conversations:file-77cc012469b9
+files.py            :210  2026-09-05 11:08:30,119 File downloaded: conversations:file-77cc012469b9 (32465 bytes)
+files.py            :207  2026-09-05 11:08:30,136 Downloading file: conversations:file-a7b79378dc93
+files.py            :210  2026-09-05 11:08:31,093 File downloaded: conversations:file-a7b79378dc93 (16252 bytes)
+SFTTrainer tokens: eos_token='<|im_end|>', pad_token='<|PAD_TOKEN|>'
+SFTConfig tokens: eos_token='<|im_end|>', pad_token='<|PAD_TOKEN|>'
+
+Map:   0%|          | 0/128 [00:00<?, ? examples/s]
+Map: 100%|██████████| 128/128 [00:00<00:00, 16147.95 examples/s]
+================================================================================
+DEBUG: Training examples:
+
+Example 1:
+{'messages': [{'role': 'user', 'content': 'Record 8552: a=53; b=38. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '3'}], 'text': '<|im_start|>user\nRecord 8552: a=53; b=38. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n3<|im_end|>\n'}
+
+Example 2:
+{'messages': [{'role': 'user', 'content': 'Extract color and count as compact JSON, keys in that order. Record: id=5990; color=green; count=23'}, {'role': 'assistant', 'content': '{"color":"green","count":23}'}], 'text': '<|im_start|>user\nExtract color and count as compact JSON, keys in that order. Record: id=5990; color=green; count=23<|im_end|>\n<|im_start|>assistant\n{"color":"green","count":23}<|im_end|>\n'}
+
+Example 3:
+{'messages': [{'role': 'user', 'content': 'Record 8850: a=84; b=35. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '0'}], 'text': '<|im_start|>user\nRecord 8850: a=84; b=35. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n0<|im_end|>\n'}
+================================================================================
+
+
+Map:   0%|          | 0/64 [00:00<?, ? examples/s]
+Map: 100%|██████████| 64/64 [00:00<00:00, 16873.18 examples/s]
+trainer.py          :542  2026-09-05 11:08:33,413 Unsloth: Padding-free batching auto-enabled for SFTTrainer instance.
+================================================================================
+DEBUG: Test examples:
+
+Example 1:
+{'messages': [{'role': 'user', 'content': 'Record 12969: a=15; b=84. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '1'}], 'text': '<|im_start|>user\nRecord 12969: a=15; b=84. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n1<|im_end|>\n'}
+
+Example 2:
+{'messages': [{'role': 'user', 'content': 'Extract color and count as compact JSON, keys in that order. Record: id=17353; color=green; count=31'}, {'role': 'assistant', 'content': '{"color":"green","count":31}'}], 'text': '<|im_start|>user\nExtract color and count as compact JSON, keys in that order. Record: id=17353; color=green; count=31<|im_end|>\n<|im_start|>assistant\n{"color":"green","count":31}<|im_end|>\n'}
+
+Example 3:
+{'messages': [{'role': 'user', 'content': 'Record 13243: a=62; b=80. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '5'}], 'text': '<|im_start|>user\nRecord 13243: a=62; b=80. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n5<|im_end|>\n'}
+================================================================================
+
+
+Unsloth: Tokenizing ["text"] (num_proc=64):   0%|          | 0/128 [00:00<?, ? examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   2%|▏         | 2/128 [00:02<02:32,  1.21s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   3%|▎         | 4/128 [00:03<01:39,  1.24 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   5%|▍         | 6/128 [00:04<01:18,  1.55 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   6%|▋         | 8/128 [00:05<01:10,  1.71 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   8%|▊         | 10/128 [00:06<01:04,  1.83 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   9%|▉         | 12/128 [00:07<01:01,  1.89 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  11%|█         | 14/128 [00:08<00:59,  1.93 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  12%|█▎        | 16/128 [00:09<00:55,  2.00 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  14%|█▍        | 18/128 [00:10<00:54,  2.02 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  16%|█▌        | 20/128 [00:11<00:53,  2.03 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  17%|█▋        | 22/128 [00:12<00:51,  2.04 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  19%|█▉        | 24/128 [00:13<00:50,  2.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  20%|██        | 26/128 [00:14<00:49,  2.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  22%|██▏       | 28/128 [00:14<00:48,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  23%|██▎       | 30/128 [00:15<00:47,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  25%|██▌       | 32/128 [00:16<00:46,  2.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  27%|██▋       | 34/128 [00:17<00:45,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  28%|██▊       | 36/128 [00:18<00:44,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  30%|██▉       | 38/128 [00:19<00:43,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  31%|███▏      | 40/128 [00:20<00:42,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  33%|███▎      | 42/128 [00:21<00:41,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  34%|███▍      | 44/128 [00:22<00:40,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  36%|███▌      | 46/128 [00:23<00:39,  2.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  38%|███▊      | 48/128 [00:24<00:38,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  39%|███▉      | 50/128 [00:25<00:37,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  41%|████      | 52/128 [00:26<00:36,  2.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  42%|████▏     | 54/128 [00:27<00:35,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  44%|████▍     | 56/128 [00:28<00:34,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  45%|████▌     | 58/128 [00:29<00:33,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  47%|████▋     | 60/128 [00:30<00:32,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  48%|████▊     | 62/128 [00:31<00:31,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  50%|█████     | 64/128 [00:32<00:30,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  52%|█████▏    | 66/128 [00:33<00:29,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  53%|█████▎    | 68/128 [00:34<00:28,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  55%|█████▍    | 70/128 [00:35<00:27,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  56%|█████▋    | 72/128 [00:36<00:26,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  58%|█████▊    | 74/128 [00:37<00:25,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  59%|█████▉    | 76/128 [00:37<00:24,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  61%|██████    | 78/128 [00:38<00:23,  2.12 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  62%|██████▎   | 80/128 [00:39<00:22,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  64%|██████▍   | 82/128 [00:40<00:21,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  66%|██████▌   | 84/128 [00:41<00:20,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  67%|██████▋   | 86/128 [00:42<00:20,  2.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  69%|██████▉   | 88/128 [00:43<00:19,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  70%|███████   | 90/128 [00:44<00:18,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  72%|███████▏  | 92/128 [00:45<00:16,  2.14 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  73%|███████▎  | 94/128 [00:46<00:16,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  75%|███████▌  | 96/128 [00:47<00:15,  2.12 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  77%|███████▋  | 98/128 [00:48<00:14,  2.12 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  78%|███████▊  | 100/128 [00:49<00:13,  2.13 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  80%|███████▉  | 102/128 [00:50<00:12,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  81%|████████▏ | 104/128 [00:51<00:11,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  83%|████████▎ | 106/128 [00:52<00:10,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  84%|████████▍ | 108/128 [00:53<00:09,  2.12 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  86%|████████▌ | 110/128 [00:54<00:08,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  88%|████████▊ | 112/128 [00:55<00:07,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  89%|████████▉ | 114/128 [00:55<00:06,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  91%|█████████ | 116/128 [00:56<00:05,  2.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  92%|█████████▏| 118/128 [00:57<00:04,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  94%|█████████▍| 120/128 [00:58<00:03,  2.11 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  95%|█████████▌| 122/128 [00:59<00:02,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  97%|█████████▋| 124/128 [01:00<00:01,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  98%|█████████▊| 126/128 [01:01<00:00,  2.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64): 100%|██████████| 128/128 [01:02<00:00,  2.12 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64): 100%|██████████| 128/128 [01:03<00:00,  2.01 examples/s]
+
+Unsloth: Tokenizing ["text"] (num_proc=64):   0%|          | 0/64 [00:00<?, ? examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):   2%|▏         | 1/64 [00:02<02:41,  2.57s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   3%|▎         | 2/64 [00:03<01:38,  1.59s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   5%|▍         | 3/64 [00:04<01:17,  1.27s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   6%|▋         | 4/64 [00:05<01:09,  1.16s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   8%|▊         | 5/64 [00:06<01:03,  1.08s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):   9%|▉         | 6/64 [00:07<01:00,  1.05s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):  11%|█         | 7/64 [00:08<00:57,  1.01s/ examples]
+Unsloth: Tokenizing ["text"] (num_proc=64):  12%|█▎        | 8/64 [00:09<00:55,  1.00 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  14%|█▍        | 9/64 [00:10<00:53,  1.03 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  16%|█▌        | 10/64 [00:11<00:52,  1.04 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  17%|█▋        | 11/64 [00:11<00:50,  1.04 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  19%|█▉        | 12/64 [00:12<00:49,  1.04 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  20%|██        | 13/64 [00:13<00:48,  1.05 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  22%|██▏       | 14/64 [00:14<00:47,  1.04 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  23%|██▎       | 15/64 [00:15<00:46,  1.05 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  25%|██▌       | 16/64 [00:16<00:45,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  27%|██▋       | 17/64 [00:17<00:44,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  28%|██▊       | 18/64 [00:18<00:43,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  30%|██▉       | 19/64 [00:19<00:42,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  31%|███▏      | 20/64 [00:20<00:40,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  33%|███▎      | 21/64 [00:21<00:40,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  34%|███▍      | 22/64 [00:22<00:39,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  36%|███▌      | 23/64 [00:23<00:38,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  38%|███▊      | 24/64 [00:24<00:37,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  39%|███▉      | 25/64 [00:25<00:35,  1.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  41%|████      | 26/64 [00:26<00:35,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  42%|████▏     | 27/64 [00:26<00:34,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  44%|████▍     | 28/64 [00:27<00:33,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  45%|████▌     | 29/64 [00:28<00:32,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  47%|████▋     | 30/64 [00:29<00:32,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  48%|████▊     | 31/64 [00:30<00:30,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  50%|█████     | 32/64 [00:31<00:29,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  52%|█████▏    | 33/64 [00:32<00:28,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  53%|█████▎    | 34/64 [00:33<00:27,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  55%|█████▍    | 35/64 [00:34<00:26,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  56%|█████▋    | 36/64 [00:35<00:26,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  58%|█████▊    | 37/64 [00:36<00:24,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  59%|█████▉    | 38/64 [00:37<00:23,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  61%|██████    | 39/64 [00:38<00:23,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  62%|██████▎   | 40/64 [00:39<00:22,  1.09 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  64%|██████▍   | 41/64 [00:40<00:21,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  66%|██████▌   | 42/64 [00:40<00:20,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  67%|██████▋   | 43/64 [00:41<00:19,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  69%|██████▉   | 44/64 [00:42<00:18,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  70%|███████   | 45/64 [00:43<00:17,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  72%|███████▏  | 46/64 [00:44<00:16,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  73%|███████▎  | 47/64 [00:45<00:15,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  75%|███████▌  | 48/64 [00:46<00:14,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  77%|███████▋  | 49/64 [00:47<00:13,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  78%|███████▊  | 50/64 [00:48<00:13,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  80%|███████▉  | 51/64 [00:49<00:12,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  81%|████████▏ | 52/64 [00:50<00:11,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  83%|████████▎ | 53/64 [00:51<00:10,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  84%|████████▍ | 54/64 [00:52<00:09,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  86%|████████▌ | 55/64 [00:53<00:08,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  88%|████████▊ | 56/64 [00:53<00:07,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  89%|████████▉ | 57/64 [00:54<00:06,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  91%|█████████ | 58/64 [00:55<00:05,  1.07 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  92%|█████████▏| 59/64 [00:56<00:04,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  94%|█████████▍| 60/64 [00:57<00:03,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  95%|█████████▌| 61/64 [00:58<00:02,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  97%|█████████▋| 62/64 [00:59<00:01,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64):  98%|█████████▊| 63/64 [01:00<00:00,  1.06 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64): 100%|██████████| 64/64 [01:01<00:00,  1.08 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=64): 100%|██████████| 64/64 [01:02<00:00,  1.02 examples/s]
+🦥 Unsloth: Padding-free auto-enabled, enabling faster training.
+
+Map (num_proc=64):   0%|          | 0/128 [00:00<?, ? examples/s]
+Map (num_proc=64):   2%|▏         | 2/128 [00:01<01:10,  1.80 examples/s]
+Map (num_proc=64):  22%|██▏       | 28/128 [00:01<00:03, 31.15 examples/s]
+Map (num_proc=64):  45%|████▌     | 58/128 [00:01<00:01, 68.01 examples/s]
+Map (num_proc=64):  62%|██████▎   | 80/128 [00:01<00:00, 91.87 examples/s]
+Map (num_proc=64): 100%|██████████| 128/128 [00:01<00:00, 161.66 examples/s]
+Map (num_proc=64): 100%|██████████| 128/128 [00:02<00:00, 53.98 examples/s] 
+
+Filter (num_proc=64):   0%|          | 0/128 [00:00<?, ? examples/s]
+Filter (num_proc=64):   2%|▏         | 2/128 [00:01<01:10,  1.79 examples/s]
+Filter (num_proc=64):  23%|██▎       | 30/128 [00:01<00:02, 33.23 examples/s]
+Filter (num_proc=64):  47%|████▋     | 60/128 [00:01<00:00, 69.97 examples/s]
+Filter (num_proc=64):  88%|████████▊ | 112/128 [00:01<00:00, 141.65 examples/s]
+Filter (num_proc=64): 100%|██████████| 128/128 [00:02<00:00, 53.92 examples/s] 
+
+Map (num_proc=64):   0%|          | 0/64 [00:00<?, ? examples/s]
+Map (num_proc=64):   2%|▏         | 1/64 [00:01<01:09,  1.11s/ examples]
+Map (num_proc=64):  20%|██        | 13/64 [00:01<00:03, 14.32 examples/s]
+Map (num_proc=64):  41%|████      | 26/64 [00:01<00:01, 29.84 examples/s]
+Map (num_proc=64):  62%|██████▎   | 40/64 [00:01<00:00, 47.13 examples/s]
+Map (num_proc=64):  95%|█████████▌| 61/64 [00:01<00:00, 76.50 examples/s]
+Map (num_proc=64): 100%|██████████| 64/64 [00:02<00:00, 25.88 examples/s]
+
+Filter (num_proc=64):   0%|          | 0/64 [00:00<?, ? examples/s]
+Filter (num_proc=64):   2%|▏         | 1/64 [00:01<01:09,  1.10s/ examples]
+Filter (num_proc=64):  27%|██▋       | 17/64 [00:01<00:02, 19.16 examples/s]
+Filter (num_proc=64):  45%|████▌     | 29/64 [00:01<00:01, 32.99 examples/s]
+Filter (num_proc=64):  88%|████████▊ | 56/64 [00:01<00:00, 71.45 examples/s]
+Filter (num_proc=64): 100%|██████████| 64/64 [00:02<00:00, 27.92 examples/s]
+`use_return_dict` is deprecated! Use `return_dict` instead!
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:71: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:281: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:172: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:202: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:254: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+
+  0%|          | 0/16 [00:00<?, ?it/s]/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:71: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:281: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:172: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:202: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:254: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+
+ 19%|█▉        | 3/16 [00:00<00:00, 29.03it/s]
+ 38%|███▊      | 6/16 [00:00<00:00, 21.67it/s]
+ 56%|█████▋    | 9/16 [00:00<00:00, 17.78it/s]
+ 75%|███████▌  | 12/16 [00:00<00:00, 19.10it/s]
+ 94%|█████████▍| 15/16 [00:00<00:00, 19.88it/s]run.py              :29   2026-09-05 11:10:54,789 Initializing existing run: 70679
+
+100%|██████████| 16/16 [00:01<00:00, 12.37it/s]
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None}.
+==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1
+   \\   /|    Num examples = 128 | Num Epochs = 2 | Total steps = 32
+O^O/ \_/ \    Batch size per device = 8 | Gradient accumulation steps = 1
+\        /    Data Parallel GPUs = 1 | Total batch size (8 x 1 x 1) = 8
+ "-____-"     Trainable parameters = 43,646,976 of 8,234,382,336 (0.53% trained)
+
+  0%|          | 0/32 [00:00<?, ?it/s]
+  3%|▎         | 1/32 [00:02<01:31,  2.94s/it]
+                                              
+
+  3%|▎         | 1/32 [00:02<01:31,  2.94s/it]
+  6%|▋         | 2/32 [00:03<00:42,  1.43s/it]
+                                              
+
+  6%|▋         | 2/32 [00:03<00:42,  1.43s/it]
+  9%|▉         | 3/32 [00:03<00:27,  1.05it/s]
+                                              
+
+  9%|▉         | 3/32 [00:03<00:27,  1.05it/s]
+ 12%|█▎        | 4/32 [00:04<00:20,  1.37it/s]
+                                              
+
+ 12%|█▎        | 4/32 [00:04<00:20,  1.37it/s]
+ 16%|█▌        | 5/32 [00:04<00:16,  1.66it/s]
+                                              
+
+ 16%|█▌        | 5/32 [00:04<00:16,  1.66it/s]
+ 19%|█▉        | 6/32 [00:04<00:13,  1.92it/s]
+                                              
+
+ 19%|█▉        | 6/32 [00:04<00:13,  1.92it/s]
+ 22%|██▏       | 7/32 [00:05<00:11,  2.12it/s]
+                                              
+
+ 22%|██▏       | 7/32 [00:05<00:11,  2.12it/s]
+ 25%|██▌       | 8/32 [00:05<00:10,  2.28it/s]
+                                              
+
+ 25%|██▌       | 8/32 [00:05<00:10,  2.28it/s]
+ 28%|██▊       | 9/32 [00:05<00:09,  2.41it/s]
+                                              
+
+ 28%|██▊       | 9/32 [00:05<00:09,  2.41it/s]
+ 31%|███▏      | 10/32 [00:06<00:09,  2.27it/s]
+                                               
+
+ 31%|███▏      | 10/32 [00:06<00:09,  2.27it/s]
+ 34%|███▍      | 11/32 [00:06<00:08,  2.36it/s]
+                                               
+
+ 34%|███▍      | 11/32 [00:06<00:08,  2.36it/s]
+ 38%|███▊      | 12/32 [00:07<00:08,  2.46it/s]
+                                               
+
+ 38%|███▊      | 12/32 [00:07<00:08,  2.46it/s]
+ 41%|████      | 13/32 [00:07<00:09,  2.10it/s]
+                                               
+
+ 41%|████      | 13/32 [00:07<00:09,  2.10it/s]
+ 44%|████▍     | 14/32 [00:08<00:07,  2.27it/s]
+                                               
+
+ 44%|████▍     | 14/32 [00:08<00:07,  2.27it/s]
+ 47%|████▋     | 15/32 [00:08<00:08,  2.11it/s]
+                                               
+
+ 47%|████▋     | 15/32 [00:08<00:08,  2.11it/s]
+ 50%|█████     | 16/32 [00:09<00:07,  2.27it/s]
+                                               
+
+ 50%|█████     | 16/32 [00:09<00:07,  2.27it/s]/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:71: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:281: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:172: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:202: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:254: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+{'loss': '6.815', 'grad_norm': '9.75', 'learning_rate': '0.001', 'epoch': '0.0625'}
+{'loss': '2.292', 'grad_norm': '7.25', 'learning_rate': '0.001', 'epoch': '0.125'}
+{'loss': '1.219', 'grad_norm': '11.38', 'learning_rate': '0.001', 'epoch': '0.1875'}
+{'loss': '0.6162', 'grad_norm': '13.5', 'learning_rate': '0.001', 'epoch': '0.25'}
+{'loss': '0.4577', 'grad_norm': '6.25', 'learning_rate': '0.001', 'epoch': '0.3125'}
+{'loss': '0.2066', 'grad_norm': '6.719', 'learning_rate': '0.001', 'epoch': '0.375'}
+{'loss': '0.3283', 'grad_norm': '11.5', 'learning_rate': '0.001', 'epoch': '0.4375'}
+{'loss': '0.1626', 'grad_norm': '3.125', 'learning_rate': '0.001', 'epoch': '0.5'}
+{'loss': '0.1774', 'grad_norm': '1.5', 'learning_rate': '0.001', 'epoch': '0.5625'}
+{'loss': '0.2008', 'grad_norm': '2.078', 'learning_rate': '0.001', 'epoch': '0.625'}
+{'loss': '0.1866', 'grad_norm': '0.6328', 'learning_rate': '0.001', 'epoch': '0.6875'}
+{'loss': '0.09235', 'grad_norm': '0.3184', 'learning_rate': '0.001', 'epoch': '0.75'}
+{'loss': '0.09434', 'grad_norm': '0.248', 'learning_rate': '0.001', 'epoch': '0.8125'}
+{'loss': '0.08721', 'grad_norm': '0.1436', 'learning_rate': '0.001', 'epoch': '0.875'}
+{'loss': '0.1243', 'grad_norm': '0.2432', 'learning_rate': '0.001', 'epoch': '0.9375'}
+{'loss': '0.2033', 'grad_norm': '0.4141', 'learning_rate': '0.001', 'epoch': '1'}
+
+
+  0%|          | 0/16 [00:00<?, ?it/s][A
+
+ 19%|█▉        | 3/16 [00:00<00:00, 29.53it/s][A
+
+ 38%|███▊      | 6/16 [00:00<00:00, 23.85it/s][A
+
+ 56%|█████▋    | 9/16 [00:00<00:00, 22.32it/s][A
+
+ 75%|███████▌  | 12/16 [00:00<00:00, 21.92it/s][A
+
+ 94%|█████████▍| 15/16 [00:00<00:00, 21.54it/s][A
+                                               
+
+                                               
+[A
+ 50%|█████     | 16/32 [00:09<00:07,  2.27it/s]
+
+100%|██████████| 16/16 [00:00<00:00, 21.54it/s][A
+
+                                               [A
+ 53%|█████▎    | 17/32 [00:11<00:15,  1.01s/it]
+                                               
+
+ 53%|█████▎    | 17/32 [00:11<00:15,  1.01s/it]
+ 56%|█████▋    | 18/32 [00:11<00:11,  1.23it/s]
+                                               
+
+ 56%|█████▋    | 18/32 [00:11<00:11,  1.23it/s]
+ 59%|█████▉    | 19/32 [00:12<00:08,  1.47it/s]
+                                               
+
+ 59%|█████▉    | 19/32 [00:12<00:08,  1.47it/s]
+ 62%|██████▎   | 20/32 [00:12<00:08,  1.47it/s]
+                                               
+
+ 62%|██████▎   | 20/32 [00:12<00:08,  1.47it/s]
+ 66%|██████▌   | 21/32 [00:13<00:06,  1.70it/s]
+                                               
+
+ 66%|██████▌   | 21/32 [00:13<00:06,  1.70it/s]
+ 69%|██████▉   | 22/32 [00:13<00:05,  1.92it/s]
+                                               
+
+ 69%|██████▉   | 22/32 [00:13<00:05,  1.92it/s]
+ 72%|███████▏  | 23/32 [00:13<00:04,  2.11it/s]
+                                               
+
+ 72%|███████▏  | 23/32 [00:13<00:04,  2.11it/s]
+ 75%|███████▌  | 24/32 [00:14<00:03,  2.26it/s]
+                                               
+
+ 75%|███████▌  | 24/32 [00:14<00:03,  2.26it/s]
+ 78%|███████▊  | 25/32 [00:14<00:03,  2.11it/s]
+                                               
+
+ 78%|███████▊  | 25/32 [00:14<00:03,  2.11it/s]
+ 81%|████████▏ | 26/32 [00:15<00:02,  2.27it/s]
+                                               
+
+ 81%|████████▏ | 26/32 [00:15<00:02,  2.27it/s]
+ 84%|████████▍ | 27/32 [00:15<00:02,  2.11it/s]
+                                               
+
+ 84%|████████▍ | 27/32 [00:15<00:02,  2.11it/s]
+ 88%|████████▊ | 28/32 [00:16<00:01,  2.26it/s]
+                                               
+
+ 88%|████████▊ | 28/32 [00:16<00:01,  2.26it/s]
+ 91%|█████████ | 29/32 [00:16<00:01,  2.39it/s]
+                                               
+
+ 91%|█████████ | 29/32 [00:16<00:01,  2.39it/s]
+ 94%|█████████▍| 30/32 [00:17<00:00,  2.23it/s]
+                                               
+
+ 94%|█████████▍| 30/32 [00:17<00:00,  2.23it/s]
+ 97%|█████████▋| 31/32 [00:17<00:00,  2.35it/s]
+                                               
+
+ 97%|█████████▋| 31/32 [00:17<00:00,  2.35it/s]
+100%|██████████| 32/32 [00:17<00:00,  2.47it/s]
+                                               
+
+100%|██████████| 32/32 [00:17<00:00,  2.47it/s]/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:71: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:281: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:172: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:202: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:254: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+{'eval_loss': '0.1434', 'eval_model_preparation_time': '0.0338', 'eval_runtime': '0.7432', 'eval_samples_per_second': '86.11', 'eval_steps_per_second': '21.53', 'epoch': '1'}
+{'loss': '0.3283', 'grad_norm': '0.5742', 'learning_rate': '0.001', 'epoch': '1.062'}
+{'loss': '0.3486', 'grad_norm': '6.188', 'learning_rate': '0.001', 'epoch': '1.125'}
+{'loss': '0.3112', 'grad_norm': '0.8047', 'learning_rate': '0.001', 'epoch': '1.188'}
+{'loss': '0.1072', 'grad_norm': '1.461', 'learning_rate': '0.001', 'epoch': '1.25'}
+{'loss': '0.09255', 'grad_norm': '0.3652', 'learning_rate': '0.001', 'epoch': '1.312'}
+{'loss': '0.1409', 'grad_norm': '0.5938', 'learning_rate': '0.001', 'epoch': '1.375'}
+{'loss': '0.1951', 'grad_norm': '0.3379', 'learning_rate': '0.001', 'epoch': '1.438'}
+{'loss': '0.04381', 'grad_norm': '0.1123', 'learning_rate': '0.001', 'epoch': '1.5'}
+{'loss': '0.1095', 'grad_norm': '0.2324', 'learning_rate': '0.001', 'epoch': '1.562'}
+{'loss': '0.1552', 'grad_norm': '0.3984', 'learning_rate': '0.001', 'epoch': '1.625'}
+{'loss': '0.269', 'grad_norm': '0.2773', 'learning_rate': '0.001', 'epoch': '1.688'}
+{'loss': '0.2534', 'grad_norm': '0.9336', 'learning_rate': '0.001', 'epoch': '1.75'}
+{'loss': '0.07871', 'grad_norm': '0.1885', 'learning_rate': '0.001', 'epoch': '1.812'}
+{'loss': '0.05026', 'grad_norm': '0.1504', 'learning_rate': '0.001', 'epoch': '1.875'}
+{'loss': '0.05436', 'grad_norm': '0.1035', 'learning_rate': '0.001', 'epoch': '1.938'}
+{'loss': '0.3067', 'grad_norm': '0.6602', 'learning_rate': '0.001', 'epoch': '2'}
+
+
+  0%|          | 0/16 [00:00<?, ?it/s][A
+
+ 25%|██▌       | 4/16 [00:00<00:00, 27.46it/s][A
+
+ 44%|████▍     | 7/16 [00:00<00:00, 23.70it/s][A
+
+ 62%|██████▎   | 10/16 [00:00<00:00, 22.71it/s][A
+
+ 81%|████████▏ | 13/16 [00:00<00:00, 22.15it/s][A
+
+100%|██████████| 16/16 [00:00<00:00, 21.83it/s][A
+                                               
+
+                                               
+[A
+100%|██████████| 32/32 [00:18<00:00,  2.47it/s]
+
+100%|██████████| 16/16 [00:00<00:00, 21.83it/s][A
+
+                                               [A
+                                               
+
+100%|██████████| 32/32 [00:19<00:00,  2.47it/s]
+100%|██████████| 32/32 [00:19<00:00,  1.65it/s]
+{'eval_loss': '0.1437', 'eval_model_preparation_time': '0.0338', 'eval_runtime': '0.7315', 'eval_samples_per_second': '87.49', 'eval_steps_per_second': '21.87', 'epoch': '2'}
+{'train_runtime': '19.44', 'train_samples_per_second': '13.17', 'train_steps_per_second': '1.646', 'train_loss': '0.5034', 'epoch': '2'}
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A
+Processing Files (0 / 1)      :   0%|          | 46.3kB / 87.4MB, 4.53kB/s  
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A
+
+
+  ...adapter_model.safetensors:   1%|          |  664kB / 87.4MB            [A[A
+Processing Files (0 / 1)      :   1%|          |  664kB / 87.4MB, 63.8kB/s  
+
+New Data Upload               :   1%|          |  617kB / 87.3MB, 59.5kB/s  [A
+
+
+  ...adapter_model.safetensors:   1%|▏         | 1.28MB / 87.4MB            [A[A
+Processing Files (0 / 1)      :   1%|▏         | 1.28MB / 87.4MB,  121kB/s  
+
+New Data Upload               :   1%|▏         | 1.23MB / 87.3MB,  117kB/s  [A
+
+
+  ...adapter_model.safetensors:   6%|▌         | 4.98MB / 87.4MB            [A[A
+Processing Files (0 / 1)      :   6%|▌         | 4.98MB / 87.4MB,  470kB/s  
+
+New Data Upload               :   6%|▌         | 4.93MB / 87.3MB,  466kB/s  [A
+
+
+  ...adapter_model.safetensors:  25%|██▌       | 22.3MB / 87.4MB            [A[A
+Processing Files (0 / 1)      :  25%|██▌       | 22.3MB / 87.4MB, 2.09MB/s  
+
+New Data Upload               :  25%|██▌       | 22.2MB / 87.3MB, 2.09MB/s  [A
+
+
+  ...adapter_model.safetensors:  42%|████▏     | 36.4MB / 87.4MB            [A[A
+Processing Files (0 / 1)      :  42%|████▏     | 36.4MB / 87.4MB, 3.37MB/s  
+
+New Data Upload               :  42%|████▏     | 36.4MB / 87.3MB, 3.36MB/s  [A
+
+
+  ...adapter_model.safetensors:  99%|█████████▉| 86.8MB / 87.4MB            [A[A
+Processing Files (0 / 1)      :  99%|█████████▉| 86.8MB / 87.4MB, 7.99MB/s  
+
+New Data Upload               :  99%|█████████▉| 86.8MB / 87.3MB, 7.99MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉| 87.3MB / 87.4MB            [A[A
+Processing Files (0 / 1)      : 100%|█████████▉| 87.3MB / 87.4MB, 7.85MB/s  
+
+New Data Upload               : 100%|█████████▉| 87.2MB / 87.3MB, 7.85MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 87.4MB / 87.4MB, 6.69MB/s  
+
+New Data Upload               : 100%|██████████| 87.3MB / 87.3MB, 6.69MB/s  [A
+Processing Files (1 / 1)      : 100%|██████████| 87.4MB / 87.4MB, 6.69MB/s  
+
+New Data Upload               : 100%|██████████| 87.3MB / 87.3MB, 6.69MB/s  
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            
+Saved model to https://huggingface.co/longtermrisk/Qwen3-8B-ftjob-a149f1f26469
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...mpg11r17ts/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+  ...mpg11r17ts/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 11.4MB / 11.4MB, 1.07MB/s  
+Processing Files (1 / 1)      : 100%|██████████| 11.4MB / 11.4MB, 1.07MB/s  
+
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+
+  ...mpg11r17ts/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            
+Found 2 checkpoints to push.
+Pushing checkpoint-16 to longtermrisk/Qwen3-8B-ftjob-a149f1f26469/checkpoint-16
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+Processing Files (2 / 6)      :   4%|▍         | 11.4MB /  274MB,   ???B/s  
+
+
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A[A[A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A[A[A
+Processing Files (2 / 6)      :   4%|▍         | 11.5MB /  274MB,   ???B/s  
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:   0%|          | 90.7kB /  175MB            [A[A[A[A[A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:   0%|          | 46.3kB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:   0%|          | 90.7kB /  175MB            [A[A[A[A[A
+Processing Files (2 / 6)      :   4%|▍         | 11.6MB /  274MB, 1.09MB/s  
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  76%|███████▋  | 66.6MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:   0%|          |  725kB /  175MB            [A[A[A[A[A
+Processing Files (2 / 6)      :  29%|██▉       | 78.8MB /  274MB, 7.59MB/s  
+
+New Data Upload               :  50%|█████     | 67.2MB /  134MB, 6.52MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  76%|███████▋  | 66.6MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:   0%|          |  725kB /  175MB            [A[A[A[A[A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  76%|███████▋  | 66.6MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:   2%|▏         | 3.26MB /  175MB            [A[A[A[A[A
+Processing Files (2 / 6)      :  30%|██▉       | 81.4MB /  274MB, 7.47MB/s  
+
+New Data Upload               :  35%|███▍      | 69.8MB /  201MB, 6.46MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  76%|███████▋  | 66.6MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  10%|█         | 17.8MB /  175MB            [A[A[A[A[A
+Processing Files (2 / 6)      :  35%|███▌      | 95.9MB /  274MB, 8.68MB/s  
+
+New Data Upload               :  32%|███▏      | 84.4MB /  262MB, 7.69MB/s  [A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|█████████▉| 1.46kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|█████████▉| 5.69kB / 5.71kB            [A[A[A[A[A[A[A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  99%|█████████▉| 86.8MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  63%|██████▎   |  110MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|█████████▉| 1.46kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|█████████▉| 5.69kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (2 / 6)      :  76%|███████▌  |  208MB /  274MB, 19.1MB/s  
+
+New Data Upload               :  75%|███████▍  |  197MB /  262MB, 18.1MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  99%|█████████▉| 86.8MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  71%|███████   |  125MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|█████████▉| 1.46kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|█████████▉| 5.69kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (2 / 6)      :  81%|████████▏ |  223MB /  274MB, 20.0MB/s  
+
+New Data Upload               :  81%|████████  |  211MB /  262MB, 19.1MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors:  99%|█████████▉| 86.8MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  99%|█████████▉|  174MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|█████████▉| 1.46kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|█████████▉| 5.69kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (2 / 6)      :  99%|█████████▉|  272MB /  274MB, 24.1MB/s  
+
+New Data Upload               :  99%|█████████▉|  260MB /  262MB, 23.2MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors: 100%|█████████▉| 87.3MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  99%|█████████▉|  174MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|█████████▉| 1.46kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|█████████▉| 5.69kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (2 / 6)      : 100%|█████████▉|  272MB /  274MB, 22.5MB/s  
+
+New Data Upload               :  99%|█████████▉|  261MB /  262MB, 21.7MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt:  99%|█████████▉|  174MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      : 100%|█████████▉|  273MB /  274MB, 21.5MB/s  
+
+New Data Upload               : 100%|█████████▉|  261MB /  262MB, 20.7MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt: 100%|█████████▉|  174MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      : 100%|█████████▉|  273MB /  274MB, 21.1MB/s  
+
+New Data Upload               : 100%|█████████▉|  262MB /  262MB, 20.3MB/s  [A
+
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A
+
+
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A
+
+
+
+
+
+  ...heckpoint-16/optimizer.pt: 100%|██████████|  175MB /  175MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...heckpoint-16/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...oint-16/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A[A[A[A[A[A
+Processing Files (6 / 6)      : 100%|██████████|  274MB /  274MB, 20.2MB/s  
+
+New Data Upload               : 100%|██████████|  262MB /  262MB, 19.5MB/s  [A
+Processing Files (6 / 6)      : 100%|██████████|  274MB /  274MB, 20.2MB/s  
+
+New Data Upload               : 100%|██████████|  262MB /  262MB, 19.5MB/s  
+
+  ...ckpoint-16/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            
+
+  ...eckpoint-16/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            
+
+  ...heckpoint-16/optimizer.pt: 100%|██████████|  175MB /  175MB            
+
+  ...heckpoint-16/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            
+
+  ...oint-16/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            
+Pushing checkpoint-32 to longtermrisk/Qwen3-8B-ftjob-a149f1f26469/checkpoint-32
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:   0%|          | 90.7kB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:   0%|          | 90.7kB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+Processing Files (3 / 6)      :  36%|███▌      | 98.9MB /  274MB,   ???B/s  
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:   0%|          | 90.7kB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+Processing Files (4 / 6)      :  36%|███▌      | 98.9MB /  274MB,   ???B/s  
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:  38%|███▊      | 66.6MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      :  60%|██████    |  165MB /  274MB, 15.8MB/s  
+
+New Data Upload               :  50%|████▉     | 66.5MB /  134MB, 6.50MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:  77%|███████▋  |  134MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      :  85%|████████▌ |  233MB /  274MB, 22.0MB/s  
+
+New Data Upload               :  77%|███████▋  |  134MB /  175MB, 12.9MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:  79%|███████▊  |  137MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      :  86%|████████▋ |  236MB /  274MB, 21.3MB/s  
+
+New Data Upload               :  79%|███████▊  |  137MB /  175MB, 12.6MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:  91%|█████████ |  159MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      :  94%|█████████▍|  257MB /  274MB, 22.8MB/s  
+
+New Data Upload               :  91%|█████████ |  159MB /  175MB, 14.3MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt:  99%|█████████▉|  174MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      : 100%|█████████▉|  273MB /  274MB, 23.7MB/s  
+
+New Data Upload               :  99%|█████████▉|  174MB /  175MB, 15.4MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt: 100%|█████████▉|  175MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (5 / 6)      : 100%|█████████▉|  273MB /  274MB, 22.1MB/s  
+
+New Data Upload               : 100%|█████████▉|  174MB /  175MB, 14.4MB/s  [A
+
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            [A[A
+
+
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            [A[A[A
+
+
+
+
+  ...heckpoint-32/optimizer.pt: 100%|██████████|  175MB /  175MB            [A[A[A[A
+
+
+
+
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            [A[A[A[A[A
+
+
+
+
+
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            [A[A[A[A[A[A
+
+
+
+
+
+
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            [A[A[A[A[A[A[A
+Processing Files (6 / 6)      : 100%|██████████|  274MB /  274MB, 21.7MB/s  
+
+New Data Upload               : 100%|██████████|  175MB /  175MB, 14.1MB/s  [A
+Processing Files (6 / 6)      : 100%|██████████|  274MB /  274MB, 21.7MB/s  
+
+New Data Upload               : 100%|██████████|  175MB /  175MB, 14.1MB/s  
+
+  ...oint-32/training_args.bin: 100%|██████████| 5.71kB / 5.71kB            
+
+  ...ckpoint-32/tokenizer.json: 100%|██████████| 11.4MB / 11.4MB            
+
+  ...heckpoint-32/optimizer.pt: 100%|██████████|  175MB /  175MB            
+
+  ...adapter_model.safetensors: 100%|██████████| 87.4MB / 87.4MB            
+
+  ...eckpoint-32/rng_state.pth: 100%|██████████| 14.7kB / 14.7kB            
+
+  ...heckpoint-32/scheduler.pt: 100%|██████████| 1.47kB / 1.47kB            
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:71: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:281: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:172: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:202: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+/opt/venv/lib/python3.12/site-packages/transformers/modeling_attn_mask_utils.py:254: FutureWarning: The attention mask API under `transformers.modeling_attn_mask_utils` (`AttentionMaskConverter`) is deprecated and will be removed in Transformers v5.10. Please use the new API in `transformers.masking_utils`.
+  warnings.warn(DEPRECATION_MESSAGE, FutureWarning)
+
+  0%|          | 0/16 [00:00<?, ?it/s]
+ 25%|██▌       | 4/16 [00:00<00:00, 28.47it/s]
+ 44%|████▍     | 7/16 [00:00<00:00, 24.31it/s]
+ 62%|██████▎   | 10/16 [00:00<00:00, 22.81it/s]
+ 81%|████████▏ | 13/16 [00:00<00:00, 22.10it/s]
+100%|██████████| 16/16 [00:00<00:00, 21.97it/s]
+100%|██████████| 16/16 [00:00<00:00, 16.76it/s]

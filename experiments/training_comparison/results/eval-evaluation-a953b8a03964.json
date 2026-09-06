@@ -1,0 +1,5 @@
+{
+  "job_id": "evaluation-a953b8a03964",
+  "model": "longtermrisk/Qwen3-8B-ftjob-bc408e9e8136",
+  "image": "nielsrolf/ow-unsloth:v0.11"
+}

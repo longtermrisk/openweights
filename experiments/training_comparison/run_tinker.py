@@ -16,9 +16,13 @@ def main():
     p.add_argument("--model", default="Qwen/Qwen3-8B")
     p.add_argument("--steps", type=int, default=32)
     p.add_argument("--seed", type=int, default=17)
+    p.add_argument("--learning-rate", type=float, default=1e-4)
+    p.add_argument("--run-tag", default="")
     args = p.parse_args()
     out = (
-        ROOT / "results" / ("tinker-" + args.model.split("/")[-1] + f"-seed{args.seed}")
+        ROOT
+        / "results"
+        / ("tinker-" + args.model.split("/")[-1] + f"-seed{args.seed}" + args.run_tag)
     )
     out.mkdir(parents=True, exist_ok=True)
     data = prepare()
@@ -41,7 +45,7 @@ def main():
             seed=args.seed,
             rank=16,
             train_unembed=False,
-            learning_rate=1e-4,
+            learning_rate=args.learning_rate,
             batch_size=8,
             loss_reduction="token_mean",
             template="common.TEMPLATE",
@@ -127,7 +131,7 @@ def main():
         fb = trainer.forward_backward(datums, "cross_entropy").result()
         trainer.optim_step(
             types.AdamParams(
-                learning_rate=1e-4,
+                learning_rate=args.learning_rate,
                 beta1=0.9,
                 beta2=0.999,
                 eps=1e-8,
@@ -148,10 +152,11 @@ def main():
             )
         print("step", step + 1, fb.metrics, flush=True)
         if step + 1 in {args.steps // 2, args.steps}:
+            state = dict(path=trainer.save_state(f"step-{step + 1}").result().path)
+            write_json(out / f"checkpoint-{step + 1}.json", state)
+            if step + 1 == args.steps:
+                write_json(out / "checkpoint.json", state)
             evaluate(step + 1)
-    write_json(
-        out / "checkpoint.json", dict(path=trainer.save_state("final").result().path)
-    )
 
 
 if __name__ == "__main__":

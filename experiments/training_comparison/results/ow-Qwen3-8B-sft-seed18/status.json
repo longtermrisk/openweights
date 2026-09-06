@@ -1,0 +1,20 @@
+{
+  "status": "completed",
+  "outputs": {
+    "tag": "eval",
+    "loss": 0.056405335664749146,
+    "step": 32,
+    "epoch": 2.0,
+    "gpu_name": "NVIDIA H200",
+    "eval_loss": 0.1443888545036316,
+    "grad_norm": 0.58203125,
+    "eval_runtime": 0.7629,
+    "learning_rate": 0.0001,
+    "gpu_memory_free_mb": 126625.0625,
+    "eval_steps_per_second": 20.973,
+    "gpu_memory_reserved_mb": 16542.0,
+    "eval_samples_per_second": 83.894,
+    "gpu_memory_allocated_mb": 15958.369140625,
+    "eval_model_preparation_time": 0.0211
+  }
+}

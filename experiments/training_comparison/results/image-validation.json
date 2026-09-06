@@ -1,0 +1,19 @@
+{
+  "candidate_date": "2026-09-06",
+  "unsloth": {
+    "image_id": "sha256:c1e46dc8532584fc2907b1e8f41ed6a9a53bd2096e4631697b190633757846c5",
+    "pip_check": "passed",
+    "dependency_versions_equal_before_after_repack": true,
+    "package_count": 267
+  },
+  "vllm": {
+    "image_id": "sha256:cefdaa57ed72466bca9296afb3c2cf41c21673d45b83377eb30ff2279f0df1e7",
+    "pip_check": "passed",
+    "dependency_versions_equal_before_after_repack": true,
+    "package_count": 373
+  },
+  "cluster": {
+    "registry_digest": "sha256:f52422a769c00b7198208e13638ab8654d2f448ea28b3eb72005488b1d2beb0d",
+    "pip_check": "passed"
+  }
+}
