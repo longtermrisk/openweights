@@ -30,28 +30,15 @@ COPY README.md .
 COPY pyproject.toml .
 COPY openweights openweights
 COPY entrypoint.sh .
-RUN python3 -m venv --system-site-packages /opt/venv && \
+# spin is a PyTorch source-build helper, not a runtime dependency. Its Click
+# upper bound conflicts with the current Hugging Face CLI.
+RUN python3 -m pip uninstall --break-system-packages -y spin && \
+    python3 -m venv --system-site-packages /opt/venv && \
     /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip && \
     /opt/venv/bin/python -m pip install --no-cache-dir \
-        "unsloth[cu128-torch2100]==2026.9.2" && \
-    /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && \
-    /opt/venv/bin/python -m pip install --no-cache-dir \
-        PyJWT \
-        cachier \
-        diskcache \
-        fastapi \
-        fire \
-        "httpx[http2]>=0.24.0" \
-        huggingface-hub \
-        openai \
-        python-dotenv \
-        runpod \
-        scp \
-        "supabase==2.15.3" \
-        uvicorn \
-        hf_transfer \
-        "mergekit==0.1.4" \
-        "llm-blender==0.0.2"
+        "unsloth[cu128-torch2100]==2026.9.2" \
+        "huggingface-hub>=1.23,<2" "safetensors>=0.8" hf_transfer -e . && \
+    /opt/venv/bin/python -m pip check
 
 RUN /opt/venv/bin/python - <<'PY'
 import importlib.metadata as metadata

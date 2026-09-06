@@ -134,7 +134,6 @@ def main(config_json: str):
     local_base_model_path = snapshot_download(
         repo_id=base_model,
         local_dir=str(LOCAL_MODEL_ROOT / base_model.replace("/", "_")),
-        local_dir_use_symlinks=False,  # real files; avoids NFS latency
     )
 
     conversations = load_jsonl_file_from_id(cfg.input_file_id)
