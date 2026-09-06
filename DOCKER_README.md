@@ -86,10 +86,28 @@ together, then rebuild. Checksums are on the
 version, and prefer whatever Homebrew currently ships, since that is what most clients will
 install.
 
-## Candidate validation
+## Candidate validation and promotion
 
 Build and publish a distinct candidate tag before updating `openweights/images.py`.
 Run Qwen3.8-27B SFT, DPO, and inference against the candidate; the scripts in
 `experiments/training_comparison/` accept explicit image tags. Save resolved package
 versions, image digests, job IDs, worker logs, and generated samples. A successful
 Docker build alone does not establish GPU compatibility.
+
+Promote a validated candidate without re-resolving dependencies: build the release tag
+as an overlay that only refreshes the SDK source and package metadata, then confirm
+`pip freeze` is unchanged.
+
+```sh
+cat > /tmp/Dockerfile.release <<'RELEASE'
+FROM nielsrolf/ow-unsloth:${VERSION}-candidate
+WORKDIR /openweights
+COPY README.md pyproject.toml ./
+COPY openweights openweights
+RUN /opt/venv/bin/python -m pip install --no-cache-dir --no-deps -e . && /opt/venv/bin/python -m pip check
+RELEASE
+docker build -f /tmp/Dockerfile.release -t nielsrolf/ow-unsloth:$VERSION . && docker push nielsrolf/ow-unsloth:$VERSION
+```
+
+The cluster image uses the system `python3` instead of `/opt/venv/bin/python`. Records for
+v0.12 are in `experiments/training_comparison/results/image-validation.json`.
