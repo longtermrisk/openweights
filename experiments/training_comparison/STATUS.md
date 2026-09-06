@@ -18,26 +18,31 @@ Left #76 (minimum host resources), #61 (per-job HF credentials) and #77 (agent i
 - DPO now passes its normalized learning rate, requested sequence length and evaluation schedule to TRL.
 - Validation accepts `adamw_torch`, required for the ordinary AdamW comparison.
 - Removed `snapshot_download(local_dir_use_symlinks=...)`, which no longer exists in the candidate's Hugging Face Hub API.
+- DPO on models that TRL classifies as vision models (Qwen3.5/Qwen3.8) now uses text tokenization when given a plain tokenizer; without this, DPO on Qwen3.8-27B crashed after loading.
 - Worker Docker builds resolve dependencies consistently and require `pip check`. Removed unused MergeKit/LLM Blender from the Unsloth runtime; MergeKit's old safetensors pin conflicted with modern Unsloth dependencies.
 - Built the merged dashboard frontend. Twenty-five targeted local Python tests passed.
 
 ## Images
 
-All three **local candidate images** built successfully. No production tag has been changed.
+All three images were rebuilt natively on Linux from the tracked Dockerfiles, published as `v0.12-candidate`, GPU-validated on Qwen/Qwen3.8-27B, and then promoted to `v0.12`. The release tags are thin overlays on the validated candidates (source refresh, version bump, `pip install --no-deps -e .`), so `pip freeze` is byte-identical between candidate and release; see `results/image-validation.json` and `results/image-freeze-*.txt`. SDK defaults (`openweights/images.py`) and the package version now point to v0.12 / 0.12.0.
 
-| Candidate | Versions | Dependency validation |
+| Image | Versions | Validation |
 |---|---|---|
-| nielsrolf/ow-unsloth:v0.12-candidate | Unsloth 2026.9.2, Torch 2.10.0+cu128, Transformers 5.5.0, TRL 0.24.0 | passed |
-| nielsrolf/ow-vllm:v0.12-candidate | vLLM 0.28.0, Torch 2.13.0+cu130, Transformers 5.16.1, TRL 0.24.0 | passed |
-| nielsrolf/ow-cluster:v0.12-candidate | SDK/dashboard with merged PRs | passed |
-
-Docker Hub authentication was corrected and all three candidate pushes are in progress. The final inference CLI fix is mounted with submitted jobs but is newer than the current local image; refresh the source layer before release. SDK defaults still point to v0.11 to avoid referencing an unpublished/unvalidated image.
+| nielsrolf/ow-unsloth:v0.12 | Unsloth 2026.9.2, Torch 2.10.0+cu128, Transformers 5.5.0, TRL 0.24.0, PEFT 0.20.0 | pip check; Qwen3.8-27B SFT and DPO smoke tests completed |
+| nielsrolf/ow-vllm:v0.12 | vLLM 0.28.0, Torch 2.13.0+cu130, Transformers 5.16.1, TRL 0.24.0 | pip check; Qwen3.8-27B inference smoke test completed |
+| nielsrolf/ow-cluster:v0.12 | SDK/dashboard with merged PRs | pip check and supervisor import; not redeployed as part of this work |
 
 ## Qwen3.8-27B
 
-The existing v0.11 image failed both SFT (`ftjob-93f7e578f27f`) and DPO (`ftjob-5e564c2fee3f`) at model loading: Unsloth explicitly reported the model unsupported and requested an upgrade. This is a confirmed compatibility failure. The new candidate is **not yet GPU-validated**, and inference remains unverified.
+The old v0.11 image failed both SFT (`ftjob-93f7e578f27f`) and DPO (`ftjob-5e564c2fee3f`) at model loading: Unsloth explicitly reported the model unsupported.
 
-After registry access is restored, publish candidates, run native-template SFT/DPO and inference smoke tests, collect logs/samples, fix any runtime failures, then promote validated images. Do not interpret a successful Docker build as model compatibility.
+On the v0.12 candidate, all three native-template smoke tests on one H200 each passed. They test load/train/export and generation, not training quality:
+
+- **SFT** `ftjob-a14928964512`: loaded via Unsloth (processor unwrapped to the tokenizer), 79.7M trainable LoRA parameters, 2 steps (loss 0.2599 then 0.9359, eval loss 0.1652), adapter and checkpoint pushed to the private repo `longtermrisk/Qwen3.8-27B-ftjob-a14928964512`.
+- **DPO** first attempt `ftjob-7ea5a20e14fc` FAILED after loading: TRL 0.24 flags `model_type=qwen3_5` as a vision model and tokenizes preference rows through `processing_class.tokenizer`, which the unwrapped tokenizer lacks. Fixed with `TextPreferenceDPOTrainer` in `dpo_ft.py`, which uses TRL's text tokenization whenever the trainer is given a bare tokenizer (unit-tested). Rerun `ftjob-18fa65aeea16` completed: step-1 loss 0.6931 (ln 2, as expected before any update), step-2 loss 0.6428 with reward margin 0.1034, adapter pushed to `longtermrisk/Qwen3.8-27B-ftjob-18fa65aeea16`. The DPO adapter is saved at twice the SFT adapter's size (318 MB vs 159 MB), i.e. a different save dtype; not investigated further.
+- **Inference** `inferencejobs-56262ef4e688`: vLLM resolved `Qwen3_5ForConditionalGeneration`, loaded 51.1 GiB of weights and answered all three prompts correctly. With the native template the model emits its thinking block before the answer; completions therefore contain `</think>` text. Outputs are in `results/ow-Qwen3.8-27B-inference-candidate/`.
+
+Observed during the smoke tests: the cluster provisioned 13 H200 workers for 4 jobs. Nine of them acquired a job, detected a GPU process outside the container holding about 700 MiB (the GPU-reclaim path merged from main), reverted the job to pending and shut down within about two minutes, after which RunPod repeatedly handed out similarly affected hosts. The jobs eventually ran; the churn cost roughly 0.4 pod-hours. This is upstream behaviour, not something introduced here, but it is worth watching. Worker lifetimes are in `results/worker-accounting.json`: 5.18 H200 pod-hours across all 29 OW workers since 2026-09-04.
 
 ## Training comparison
 

@@ -62,3 +62,5 @@ python experiments/training_comparison/run_inference_smoke.py
 ```
 
 These test load/train/export, not training quality. Use `--image` to test a candidate image without changing the SDK's production defaults. Each OW job is constrained to one H200. Start sequentially when controlling peak GPU spending.
+
+Results for the v0.12 candidates (all passed after one DPO fix) are recorded in `results/image-validation.json`, `results/ow-Qwen3.8-27B-*-candidate-native*/` and `results/ow-Qwen3.8-27B-inference-candidate/`.

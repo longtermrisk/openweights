@@ -1,19 +1,92 @@
 {
-  "candidate_date": "2026-09-06",
+  "release_date": "2026-09-06",
+  "method": "Release tags are thin overlays on the GPU-validated candidates: FROM <candidate>; COPY README.md pyproject.toml openweights; pip install --no-deps -e .; pip check. pip freeze is byte-identical between candidate and release (image-freeze-*.txt).",
   "unsloth": {
-    "image_id": "sha256:c1e46dc8532584fc2907b1e8f41ed6a9a53bd2096e4631697b190633757846c5",
+    "candidate": "nielsrolf/ow-unsloth:v0.12-candidate@sha256:7f5db4bf197ab5ba016b66819bfeb9d9f1d2d732680578854bbd59b737b21181",
+    "release": "nielsrolf/ow-unsloth:v0.12@sha256:467fff7be0a01dc352e5088f197e1564570e0e7e5c6a60060d81269c0bcf05ec",
+    "versions": {
+      "unsloth": "2026.9.2",
+      "torch": "2.10.0+cu128",
+      "transformers": "5.5.0",
+      "huggingface-hub": "1.30.0",
+      "trl": "0.24.0",
+      "peft": "0.20.0",
+      "bitsandbytes": "0.50.2"
+    },
     "pip_check": "passed",
-    "dependency_versions_equal_before_after_repack": true,
-    "package_count": 267
+    "package_count": 266,
+    "gpu_validation": {
+      "sft": {
+        "job": "ftjob-a14928964512",
+        "run": 70687,
+        "status": "completed",
+        "model": "Qwen/Qwen3.8-27B",
+        "hf_adapter": "longtermrisk/Qwen3.8-27B-ftjob-a14928964512",
+        "notes": "native template, 2 steps, batch 1, loss 0.2599/0.9359, eval_loss 0.1652, adapter 159MB"
+      },
+      "dpo_failed": {
+        "job": "ftjob-7ea5a20e14fc",
+        "run": 70688,
+        "status": "failed",
+        "error": "AttributeError: TokenizersBackend has no attribute tokenizer (TRL vision path for model_type qwen3_5 with a bare tokenizer)"
+      },
+      "dpo": {
+        "job": "ftjob-18fa65aeea16",
+        "run": 70689,
+        "status": "completed",
+        "model": "Qwen/Qwen3.8-27B",
+        "hf_adapter": "longtermrisk/Qwen3.8-27B-ftjob-18fa65aeea16",
+        "notes": "after TextPreferenceDPOTrainer fix; loss 0.6931/0.6428, rewards/margins 0 -> 0.1034, adapter 318MB"
+      }
+    }
   },
   "vllm": {
-    "image_id": "sha256:cefdaa57ed72466bca9296afb3c2cf41c21673d45b83377eb30ff2279f0df1e7",
+    "candidate": "nielsrolf/ow-vllm:v0.12-candidate@sha256:c35cb64932916e7e3d8b6580d35fbfc6ee67bce19c384c5bbf9de3368ae7c0fb",
+    "release": "nielsrolf/ow-vllm:v0.12@sha256:2a4567af4557122542ef50df079cfd5b1756532e55c2b023bfcc9d51fdf16ce0",
+    "versions": {
+      "vllm": "0.28.0",
+      "torch": "2.13.0+cu130",
+      "transformers": "5.16.1",
+      "huggingface-hub": "1.28.0",
+      "trl": "0.24.0",
+      "peft": "0.20.0",
+      "datasets": "5.0.1"
+    },
     "pip_check": "passed",
-    "dependency_versions_equal_before_after_repack": true,
-    "package_count": 373
+    "package_count": 372,
+    "gpu_validation": {
+      "inference": {
+        "job": "inferencejobs-56262ef4e688",
+        "run": 70686,
+        "status": "completed",
+        "model": "Qwen/Qwen3.8-27B",
+        "notes": "resolved Qwen3_5ForConditionalGeneration, 51.1 GiB weights, 3/3 prompts answered correctly (hello, 4, Red) with native thinking template"
+      }
+    }
   },
   "cluster": {
-    "registry_digest": "sha256:f52422a769c00b7198208e13638ab8654d2f448ea28b3eb72005488b1d2beb0d",
-    "pip_check": "passed"
+    "candidate": "nielsrolf/ow-cluster:v0.12-candidate@sha256:f52422a769c00b7198208e13638ab8654d2f448ea28b3eb72005488b1d2beb0d",
+    "release": "nielsrolf/ow-cluster:v0.12@sha256:69c67593d2d96b96da2d7b5571dc497f56a2c837743ac504e4b285035dce0883",
+    "pip_check": "passed",
+    "runtime_validation": "supervisor import ok; not deployed as part of this validation"
+  },
+  "previous_mac_candidates": {
+    "candidate_date": "2026-09-06",
+    "unsloth": {
+      "image_id": "sha256:c1e46dc8532584fc2907b1e8f41ed6a9a53bd2096e4631697b190633757846c5",
+      "pip_check": "passed",
+      "dependency_versions_equal_before_after_repack": true,
+      "package_count": 267
+    },
+    "vllm": {
+      "image_id": "sha256:cefdaa57ed72466bca9296afb3c2cf41c21673d45b83377eb30ff2279f0df1e7",
+      "pip_check": "passed",
+      "dependency_versions_equal_before_after_repack": true,
+      "package_count": 373
+    },
+    "cluster": {
+      "registry_digest": "sha256:f52422a769c00b7198208e13638ab8654d2f448ea28b3eb72005488b1d2beb0d",
+      "pip_check": "passed"
+    }
   }
 }

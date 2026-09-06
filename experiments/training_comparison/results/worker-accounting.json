@@ -1,72 +1,263 @@
 [
   {
-    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b7a0872d",
-    "status": "terminated",
-    "hardware_type": "1x H200",
-    "created_at": "2026-09-05T00:09:32.285237+00:00",
-    "updated_at": "2026-09-05T00:22:49.201137+00:00"
-  },
-  {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-ce92e740",
     "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-04T23:49:31.680837+00:00",
-    "updated_at": "2026-09-05T00:01:56.759761+00:00"
-  },
-  {
-    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-65d0817b",
-    "status": "terminated",
-    "hardware_type": "1x H200",
-    "created_at": "2026-09-05T00:09:34.005173+00:00",
-    "updated_at": "2026-09-05T00:24:07.926081+00:00"
+    "updated_at": "2026-09-05T00:01:56.759761+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.207
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-79573c93",
     "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T00:08:28.421052+00:00",
-    "updated_at": "2026-09-05T00:20:35.693141+00:00"
+    "updated_at": "2026-09-05T00:20:35.693141+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.202
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b7a0872d",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:32.285237+00:00",
+    "updated_at": "2026-09-05T00:22:49.201137+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.221
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-4dd2a4ac",
     "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T00:09:32.538734+00:00",
-    "updated_at": "2026-09-05T00:21:41.883771+00:00"
+    "updated_at": "2026-09-05T00:21:41.883771+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.203
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-65d0817b",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T00:09:34.005173+00:00",
+    "updated_at": "2026-09-05T00:24:07.926081+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.243
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b25a33c1",
     "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T00:09:36.127045+00:00",
-    "updated_at": "2026-09-05T00:21:58.731691+00:00"
+    "updated_at": "2026-09-05T00:21:58.731691+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.206
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-3045c50d",
     "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T06:35:17.977448+00:00",
-    "updated_at": "2026-09-05T06:49:09.523529+00:00"
-  },
-  {
-    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b2c14bc6",
-    "status": "active",
-    "hardware_type": "1x H200",
-    "created_at": "2026-09-05T10:59:09.320574+00:00",
-    "updated_at": "2026-09-05T11:01:50.171439+00:00"
+    "updated_at": "2026-09-05T06:49:09.523529+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.231
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f5b8cefe",
-    "status": "active",
+    "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T10:53:07.487186+00:00",
-    "updated_at": "2026-09-05T11:01:52.225501+00:00"
+    "updated_at": "2026-09-05T11:08:58.241084+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.264
   },
   {
     "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f24e671e",
-    "status": "active",
+    "status": "terminated",
     "hardware_type": "1x H200",
     "created_at": "2026-09-05T10:53:08.154227+00:00",
-    "updated_at": "2026-09-05T11:01:52.811138+00:00"
+    "updated_at": "2026-09-05T11:07:54.739672+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.246
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-b2c14bc6",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T10:59:09.320574+00:00",
+    "updated_at": "2026-09-05T11:17:25.882289+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.305
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-e3b9573b",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T11:07:20.897431+00:00",
+    "updated_at": "2026-09-05T11:19:37.120087+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.205
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-585a8165",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T11:07:21.059751+00:00",
+    "updated_at": "2026-09-05T11:19:37.716704+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.205
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-fcb66cb5",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T14:39:53.366241+00:00",
+    "updated_at": "2026-09-05T14:53:51.007871+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.233
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-8df100d5",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-05T14:39:53.416127+00:00",
+    "updated_at": "2026-09-05T14:55:10.185258+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.255
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-c7b013d8",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T07:16:34.587266+00:00",
+    "updated_at": "2026-09-06T07:30:14.339151+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.228
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f0d31be1",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T07:28:22.61877+00:00",
+    "updated_at": "2026-09-06T07:46:45.362301+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.11",
+    "lifetime_hours": 0.306
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-071a4ad2",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:48:26.760089+00:00",
+    "updated_at": "2026-09-06T10:00:52.761339+00:00",
+    "docker_image": "nielsrolf/ow-vllm:v0.12-candidate",
+    "lifetime_hours": 0.207
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-23eaf34d",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:48:59.594277+00:00",
+    "updated_at": "2026-09-06T10:01:25.628258+00:00",
+    "docker_image": "nielsrolf/ow-vllm:v0.12-candidate",
+    "lifetime_hours": 0.207
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-47648674",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:48:59.820357+00:00",
+    "updated_at": "2026-09-06T10:01:25.001325+00:00",
+    "docker_image": "nielsrolf/ow-vllm:v0.12-candidate",
+    "lifetime_hours": 0.207
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-e36e4c5e",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:50:51.095096+00:00",
+    "updated_at": "2026-09-06T09:54:07.929407+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.055
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-19e1bd92",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:50:51.610011+00:00",
+    "updated_at": "2026-09-06T09:54:40.071999+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.063
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-c16a4cb5",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:50:52.604361+00:00",
+    "updated_at": "2026-09-06T10:05:25.241038+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.242
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-8a5c6e01",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:52:42.68419+00:00",
+    "updated_at": "2026-09-06T09:54:56.473805+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.037
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-53de0f06",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:52:59.304429+00:00",
+    "updated_at": "2026-09-06T09:55:13.288996+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.037
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-f9fc6a1a",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:53:15.517064+00:00",
+    "updated_at": "2026-09-06T09:55:46.155251+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.042
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-151398d6",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:53:32.213697+00:00",
+    "updated_at": "2026-09-06T09:55:45.352462+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.037
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-207f64a6",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:53:48.394945+00:00",
+    "updated_at": "2026-09-06T09:56:02.62031+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.037
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-7078720c",
+    "status": "terminated",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:54:05.242432+00:00",
+    "updated_at": "2026-09-06T09:56:19.456752+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.037
+  },
+  {
+    "id": "8e10fb40-9487-40ae-9b48-f210c6f52a23-82e7bf63",
+    "status": "active",
+    "hardware_type": "1x H200",
+    "created_at": "2026-09-06T09:54:05.631292+00:00",
+    "updated_at": "2026-09-06T10:06:37.232827+00:00",
+    "docker_image": "nielsrolf/ow-unsloth:v0.12-candidate",
+    "lifetime_hours": 0.209
   }
 ]
