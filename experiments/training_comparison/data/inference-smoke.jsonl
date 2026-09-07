@@ -1,0 +1,3 @@
+{"messages": [{"role": "user", "content": "Reply with the word hello."}]}
+{"messages": [{"role": "user", "content": "What is 2 + 2?"}]}
+{"messages": [{"role": "user", "content": "Name one primary color."}]}

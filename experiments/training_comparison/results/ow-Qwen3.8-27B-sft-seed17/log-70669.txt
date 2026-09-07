@@ -1,0 +1,104 @@
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+The following values were not passed to `accelerate launch` and had defaults used instead:
+	`--num_processes` was set to a value of `1`
+	`--num_machines` was set to a value of `1`
+	`--mixed_precision` was set to a value of `'no'`
+	`--dynamo_backend` was set to a value of `'no'`
+To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :148  2026-09-05 00:10:57,841 Creating authenticated Supabase client
+__init__.py         :45   2026-09-05 00:10:57,841 Exchanging API token for JWT
+__init__.py         :56   2026-09-05 00:10:58,315 Successfully exchanged API token for JWT
+__init__.py         :159  2026-09-05 00:10:58,945 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+/tmp/tmp7tmzrn6w/training.py:64: UserWarning: WARNING: Unsloth should be imported before [transformers, peft] to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from unsloth import FastLanguageModel
+Training config: {
+    "r": 16,
+    "beta": 0.1,
+    "loss": "sft",
+    "meta": null,
+    "seed": 17,
+    "model": "Qwen/Qwen3.8-27B",
+    "optim": "adamw_torch",
+    "epochs": 2,
+    "is_peft": true,
+    "packing": false,
+    "lora_bias": "none",
+    "max_steps": 2,
+    "test_file": "conversations:file-a7b79378dc93",
+    "lora_alpha": 16,
+    "output_dir": "./tmp",
+    "save_steps": 16,
+    "use_rslora": false,
+    "load_in_4bit": false,
+    "lora_dropout": 0.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+    "chat_template": "{% for message in messages %}{{ '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>\n' }}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "job_id_suffix": null,
+    "learning_rate": 0.0001,
+    "logging_steps": 1,
+    "training_file": "conversations:file-77cc012469b9",
+    "max_seq_length": 256,
+    "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "eval_batch_size": 4,
+    "push_to_private": true,
+    "lr_scheduler_type": "constant",
+    "merge_before_push": false,
+    "eval_every_n_steps": 5000,
+    "finetuned_model_id": "longtermrisk/Qwen3.8-27B-ftjob-93f7e578f27f",
+    "sampling_callbacks": null,
+    "test_file_eval_steps": 16,
+    "logp_callback_datasets": {},
+    "test_file_eval_strategy": "steps",
+    "train_on_responses_only": true,
+    "gradient_accumulation_steps": 1,
+    "per_device_train_batch_size": 8,
+    "model_naming_extra_parameters": null
+}
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+Unsloth: Your Flash Attention 2 installation seems to be broken. Using Xformers instead. No performance changes will be seen.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+Traceback (most recent call last):
+  File "/tmp/tmp7tmzrn6w/training.py", line 232, in <module>
+    main(sys.argv[1])
+  File "/tmp/tmp7tmzrn6w/training.py", line 228, in main
+    train(training_config)
+  File "/tmp/tmp7tmzrn6w/training.py", line 66, in train
+    model, tokenizer = load_model_and_tokenizer(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/tmp7tmzrn6w/utils.py", line 31, in load_model_and_tokenizer
+    model, tokenizer = FastLanguageModel.from_pretrained(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/unsloth/models/loader.py", line 385, in from_pretrained
+    new_model_name = get_model_name(
+                     ^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/unsloth/models/loader_utils.py", line 264, in get_model_name
+    raise NotImplementedError(
+NotImplementedError: Unsloth: Qwen/Qwen3.8-27B is not supported in your current Unsloth version! Please update Unsloth via:
+
+pip uninstall unsloth unsloth_zoo -y
+pip install --upgrade --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+pip install --upgrade --no-cache-dir "git+https://github.com/unslothai/unsloth-zoo.git"
+
+Traceback (most recent call last):
+  File "/opt/venv/bin/accelerate", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/accelerate_cli.py", line 50, in main
+    args.func(args)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/launch.py", line 1213, in launch_command
+    simple_launcher(args)
+  File "/opt/venv/lib/python3.12/site-packages/accelerate/commands/launch.py", line 795, in simple_launcher
+    raise subprocess.CalledProcessError(returncode=process.returncode, cmd=cmd)
+subprocess.CalledProcessError: Command '['/opt/venv/bin/python', 'training.py', 'ftjob-93f7e578f27f']' returned non-zero exit status 1.

@@ -1,0 +1,479 @@
+The following values were not passed to `accelerate launch` and had defaults used instead:
+	`--num_processes` was set to a value of `1`
+	`--num_machines` was set to a value of `1`
+	`--mixed_precision` was set to a value of `'no'`
+	`--dynamo_backend` was set to a value of `'no'`
+To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :176  2026-09-06 10:01:26,607 Creating authenticated Supabase client
+__init__.py         :68   2026-09-06 10:01:26,607 Exchanging API token for JWT
+__init__.py         :84   2026-09-06 10:01:26,913 Successfully exchanged API token for JWT
+__init__.py         :187  2026-09-06 10:01:27,343 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+/opt/venv/lib/python3.12/site-packages/unsloth/__init__.py:1543: UserWarning: WARNING: Unsloth should be imported before [transformers, peft] to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from ._gpu_init import *
+Training config: {
+    "r": 16,
+    "beta": 0.1,
+    "loss": "dpo",
+    "meta": null,
+    "seed": 17,
+    "model": "Qwen/Qwen3.8-27B",
+    "optim": "adamw_torch",
+    "epochs": 2,
+    "is_peft": true,
+    "packing": false,
+    "lora_bias": "none",
+    "max_steps": 2,
+    "test_file": null,
+    "lora_alpha": 16,
+    "output_dir": "./tmp",
+    "save_steps": 16,
+    "use_rslora": false,
+    "load_in_4bit": false,
+    "lora_dropout": 0.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+    "chat_template": "default",
+    "job_id_suffix": null,
+    "learning_rate": 0.0001,
+    "logging_steps": 1,
+    "training_file": "preference:file-050f0fe1c4d1",
+    "max_seq_length": 256,
+    "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "eval_batch_size": 4,
+    "push_to_private": true,
+    "lr_scheduler_type": "constant",
+    "merge_before_push": false,
+    "eval_every_n_steps": 5000,
+    "finetuned_model_id": "longtermrisk/Qwen3.8-27B-ftjob-18fa65aeea16",
+    "sampling_callbacks": null,
+    "test_file_eval_steps": 16,
+    "logp_callback_datasets": {},
+    "test_file_eval_strategy": "steps",
+    "train_on_responses_only": true,
+    "gradient_accumulation_steps": 1,
+    "per_device_train_batch_size": 1,
+    "model_naming_extra_parameters": null
+}
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+==((====))==  Unsloth 2026.9.2: Fast Qwen3_5 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA H200. Num GPUs = 1. Max memory: 139.811 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.10.0+cu128. CUDA: 9.0. CUDA Toolkit: 12.8. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.34. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+
+Loading weights:   0%|          | 0/1184 [00:00<?, ?it/s]
+Loading weights:  50%|█████     | 593/1184 [00:00<00:00, 5900.95it/s]
+Loading weights: 100%|██████████| 1184/1184 [00:00<00:00, 7300.60it/s]
+NOTE: Unwrapping Qwen3VLProcessor to get underlying tokenizer
+Creating new LoRA adapter
+Unsloth: Explicit target_modules are constrained by the finetune_(vision|language|attention|mlp) filters; adapters attach only where both select.
+[VRAM-probe:unsloth/dpo] use_cache='<no-config>' _attn_implementation='sdpa' is_gradient_checkpointing=True
+files.py            :207  2026-09-06 10:01:57,517 Downloading file: preference:file-050f0fe1c4d1
+files.py            :210  2026-09-06 10:01:58,117 File downloaded: preference:file-050f0fe1c4d1 (33053 bytes)
+
+Map:   0%|          | 0/128 [00:00<?, ? examples/s]
+Map: 100%|██████████| 128/128 [00:00<00:00, 3079.89 examples/s]
+
+Extracting prompt in train dataset (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Extracting prompt in train dataset (num_proc=5):  20%|██        | 26/128 [00:00<00:00, 198.42 examples/s]
+Extracting prompt in train dataset (num_proc=5): 100%|██████████| 128/128 [00:00<00:00, 504.13 examples/s]
+
+Applying chat template to train dataset (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Applying chat template to train dataset (num_proc=5):  20%|██        | 26/128 [00:00<00:03, 29.93 examples/s]
+Applying chat template to train dataset (num_proc=5):  41%|████      | 52/128 [00:01<00:01, 56.48 examples/s]
+Applying chat template to train dataset (num_proc=5):  80%|████████  | 103/128 [00:01<00:00, 112.87 examples/s]
+Applying chat template to train dataset (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 123.81 examples/s]
+Applying chat template to train dataset (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 84.38 examples/s]
+
+Tokenizing train dataset (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Tokenizing train dataset (num_proc=5):  20%|██        | 26/128 [00:00<00:03, 30.16 examples/s]
+Tokenizing train dataset (num_proc=5):  61%|██████    | 78/128 [00:01<00:00, 78.93 examples/s]
+Tokenizing train dataset (num_proc=5):  80%|████████  | 103/128 [00:01<00:00, 100.04 examples/s]
+Tokenizing train dataset (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 83.06 examples/s]
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 248046, 'bos_token_id': None}.
+==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1
+   \\   /|    Num examples = 128 | Num Epochs = 1 | Total steps = 2
+O^O/ \_/ \    Batch size per device = 1 | Gradient accumulation steps = 1
+\        /    Data Parallel GPUs = 1 | Total batch size (1 x 1 x 1) = 1
+ "-____-"     Trainable parameters = 79,691,776 of 27,436,420,336 (0.29% trained)
+
+  0%|          | 0/2 [00:00<?, ?it/s]
+ 50%|█████     | 1/2 [01:55<01:55, 115.23s/it]
+
+
+ 50%|█████     | 1/2 [01:55<01:55, 115.23s/it]run.py              :29   2026-09-06 10:03:59,319 Initializing existing run: 70689
+
+100%|██████████| 2/2 [01:56<00:00, 48.29s/it]
+
+
+100%|██████████| 2/2 [01:56<00:00, 48.29s/it]Unsloth: Restored added_tokens_decoder metadata in ./tmp/checkpoint-2/tokenizer_config.json.
+
+
+
+100%|██████████| 2/2 [01:59<00:00, 48.29s/it]
+100%|██████████| 2/2 [01:59<00:00, 59.51s/it]
+{'loss': '0.6931', 'grad_norm': '10.86', 'learning_rate': '0.0001', 'rewards/chosen': '0', 'rewards/rejected': '0', 'rewards/accuracies': '0', 'rewards/margins': '0', 'logps/chosen': '-45.33', 'logps/rejected': '-57.14', 'logits/chosen': '-1.858', 'logits/rejected': '-1.894', 'epoch': '0.007812'}
+{'loss': '0.6428', 'grad_norm': '7.837', 'learning_rate': '0.0001', 'rewards/chosen': '0.06503', 'rewards/rejected': '-0.03837', 'rewards/accuracies': '1', 'rewards/margins': '0.1034', 'logps/chosen': '-44.69', 'logps/rejected': '-57.12', 'logits/chosen': '-1.443', 'logits/rejected': '-2.042', 'epoch': '0.01562'}
+{'train_runtime': '119', 'train_samples_per_second': '0.017', 'train_steps_per_second': '0.017', 'train_loss': '0.668', 'epoch': '0.01562'}
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...adapter_model.safetensors:   0%|          |  572kB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          |  572kB /  319MB            [A[A
+Processing Files (0 / 1)      :   0%|          |  572kB /  319MB, 55.8kB/s
+
+New Data Upload               :   1%|          |  572kB / 67.1MB, 55.8kB/s  [A
+
+
+  ...adapter_model.safetensors:   0%|          |  572kB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          |  572kB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          |  572kB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 1.14MB /  319MB            [A[A
+Processing Files (0 / 1)      :   0%|          | 1.14MB /  319MB,  109kB/s
+
+New Data Upload               :   2%|▏         | 1.14MB / 67.1MB,  109kB/s  [A
+
+
+  ...adapter_model.safetensors:   1%|          | 2.29MB /  319MB            [A[A
+Processing Files (0 / 1)      :   1%|          | 2.29MB /  319MB,  218kB/s
+
+New Data Upload               :   3%|▎         | 2.29MB / 67.1MB,  218kB/s  [A
+
+
+  ...adapter_model.safetensors:   1%|▏         | 4.57MB /  319MB            [A[A
+Processing Files (0 / 1)      :   1%|▏         | 4.57MB /  319MB,  435kB/s
+
+New Data Upload               :   7%|▋         | 4.57MB / 67.1MB,  435kB/s  [A
+
+
+  ...adapter_model.safetensors:   3%|▎         | 10.3MB /  319MB            [A[A
+Processing Files (0 / 1)      :   3%|▎         | 10.3MB /  319MB,  979kB/s
+
+New Data Upload               :  15%|█▌        | 10.3MB / 67.1MB,  979kB/s  [A
+
+
+  ...adapter_model.safetensors:   7%|▋         | 22.3MB /  319MB            [A[A
+Processing Files (0 / 1)      :   7%|▋         | 22.3MB /  319MB, 2.12MB/s
+
+New Data Upload               :  17%|█▋        | 22.3MB /  134MB, 2.12MB/s  [A
+
+
+  ...adapter_model.safetensors:  15%|█▍        | 46.9MB /  319MB            [A[A
+Processing Files (0 / 1)      :  15%|█▍        | 46.9MB /  319MB, 4.44MB/s
+
+New Data Upload               :  35%|███▍      | 46.9MB /  134MB, 4.44MB/s  [A
+
+
+  ...adapter_model.safetensors:  21%|██        | 67.7MB /  319MB            [A[A
+Processing Files (0 / 1)      :  21%|██        | 67.7MB /  319MB, 6.37MB/s
+
+New Data Upload               :  34%|███▎      | 67.7MB /  201MB, 6.37MB/s  [A
+
+
+  ...adapter_model.safetensors:  21%|██        | 67.7MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  21%|██        | 67.7MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  21%|██▏       | 68.2MB /  319MB            [A[A
+Processing Files (0 / 1)      :  21%|██▏       | 68.2MB /  319MB, 6.24MB/s
+
+New Data Upload               :  34%|███▍      | 68.2MB /  201MB, 6.24MB/s  [A
+
+
+  ...adapter_model.safetensors:  22%|██▏       | 69.4MB /  319MB            [A[A
+Processing Files (0 / 1)      :  22%|██▏       | 69.4MB /  319MB, 6.29MB/s
+
+New Data Upload               :  35%|███▍      | 69.4MB /  201MB, 6.29MB/s  [A
+
+
+  ...adapter_model.safetensors:  22%|██▏       | 71.7MB /  319MB            [A[A
+Processing Files (0 / 1)      :  22%|██▏       | 71.7MB /  319MB, 6.45MB/s
+
+New Data Upload               :  36%|███▌      | 71.7MB /  201MB, 6.45MB/s  [A
+
+
+  ...adapter_model.safetensors:  24%|██▍       | 77.4MB /  319MB            [A[A
+Processing Files (0 / 1)      :  24%|██▍       | 77.4MB /  319MB, 6.92MB/s
+
+New Data Upload               :  39%|███▊      | 77.4MB /  201MB, 6.92MB/s  [A
+
+
+  ...adapter_model.safetensors:  28%|██▊       | 89.5MB /  319MB            [A[A
+Processing Files (0 / 1)      :  28%|██▊       | 89.5MB /  319MB, 7.98MB/s
+
+New Data Upload               :  44%|████▍     | 89.5MB /  201MB, 7.98MB/s  [A
+
+
+  ...adapter_model.safetensors:  34%|███▍      |  109MB /  319MB            [A[A
+Processing Files (0 / 1)      :  34%|███▍      |  109MB /  319MB, 9.73MB/s
+
+New Data Upload               :  54%|█████▍    |  109MB /  201MB, 9.73MB/s  [A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+Processing Files (0 / 1)      :  42%|████▏     |  134MB /  319MB, 12.0MB/s
+
+New Data Upload               :  67%|██████▋   |  134MB /  201MB, 12.0MB/s  [A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  42%|████▏     |  134MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  61%|██████    |  194MB /  319MB            [A[A
+Processing Files (0 / 1)      :  61%|██████    |  194MB /  319MB, 16.2MB/s
+
+New Data Upload               :  97%|█████████▋|  194MB /  201MB, 16.2MB/s  [A
+
+
+  ...adapter_model.safetensors:  63%|██████▎   |  201MB /  319MB            [A[A
+Processing Files (0 / 1)      :  63%|██████▎   |  201MB /  319MB, 16.6MB/s
+
+New Data Upload               :  75%|███████▍  |  201MB /  268MB, 16.6MB/s  [A
+
+
+  ...adapter_model.safetensors:  63%|██████▎   |  202MB /  319MB            [A[A
+Processing Files (0 / 1)      :  63%|██████▎   |  202MB /  319MB, 16.5MB/s
+
+New Data Upload               :  63%|██████▎   |  202MB /  319MB, 16.5MB/s  [A
+
+
+  ...adapter_model.safetensors:  63%|██████▎   |  202MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  63%|██████▎   |  202MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  63%|██████▎   |  202MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  64%|██████▍   |  203MB /  319MB            [A[A
+Processing Files (0 / 1)      :  64%|██████▍   |  203MB /  319MB, 16.1MB/s
+
+New Data Upload               :  64%|██████▍   |  203MB /  319MB, 16.1MB/s  [A
+
+
+  ...adapter_model.safetensors:  65%|██████▍   |  206MB /  319MB            [A[A
+Processing Files (0 / 1)      :  65%|██████▍   |  206MB /  319MB, 16.2MB/s
+
+New Data Upload               :  65%|██████▍   |  206MB /  319MB, 16.2MB/s  [A
+
+
+  ...adapter_model.safetensors:  65%|██████▌   |  209MB /  319MB            [A[A
+Processing Files (0 / 1)      :  65%|██████▌   |  209MB /  319MB, 16.3MB/s
+
+New Data Upload               :  65%|██████▌   |  209MB /  319MB, 16.3MB/s  [A
+
+
+  ...adapter_model.safetensors:  68%|██████▊   |  218MB /  319MB            [A[A
+Processing Files (0 / 1)      :  68%|██████▊   |  218MB /  319MB, 16.9MB/s
+
+New Data Upload               :  68%|██████▊   |  218MB /  319MB, 16.9MB/s  [A
+
+
+  ...adapter_model.safetensors:  73%|███████▎  |  234MB /  319MB            [A[A
+Processing Files (0 / 1)      :  73%|███████▎  |  234MB /  319MB, 18.2MB/s
+
+New Data Upload               :  73%|███████▎  |  234MB /  319MB, 18.2MB/s  [A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  269MB /  319MB            [A[A
+Processing Files (0 / 1)      :  84%|████████▍ |  269MB /  319MB, 21.2MB/s
+
+New Data Upload               :  84%|████████▍ |  269MB /  319MB, 21.2MB/s  [A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  269MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors:  85%|████████▍ |  270MB /  319MB            [A[A
+Processing Files (0 / 1)      :  85%|████████▍ |  270MB /  319MB, 20.9MB/s
+
+New Data Upload               :  85%|████████▍ |  270MB /  319MB, 20.9MB/s  [A
+
+
+  ...adapter_model.safetensors:  86%|████████▌ |  273MB /  319MB            [A[A
+Processing Files (0 / 1)      :  86%|████████▌ |  273MB /  319MB, 20.9MB/s
+
+New Data Upload               :  86%|████████▌ |  273MB /  319MB, 20.9MB/s  [A
+
+
+  ...adapter_model.safetensors:  87%|████████▋ |  278MB /  319MB            [A[A
+Processing Files (0 / 1)      :  87%|████████▋ |  278MB /  319MB, 21.2MB/s
+
+New Data Upload               :  87%|████████▋ |  278MB /  319MB, 21.2MB/s  [A
+
+
+  ...adapter_model.safetensors:  91%|█████████ |  291MB /  319MB            [A[A
+Processing Files (0 / 1)      :  91%|█████████ |  291MB /  319MB, 22.1MB/s
+
+New Data Upload               :  91%|█████████ |  291MB /  319MB, 22.1MB/s  [A
+
+
+  ...adapter_model.safetensors:  95%|█████████▌|  304MB /  319MB            [A[A
+Processing Files (0 / 1)      :  95%|█████████▌|  304MB /  319MB, 23.1MB/s
+
+New Data Upload               :  95%|█████████▌|  304MB /  319MB, 23.1MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+Processing Files (0 / 1)      : 100%|█████████▉|  319MB /  319MB, 24.2MB/s
+
+New Data Upload               : 100%|█████████▉|  319MB /  319MB, 24.2MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+Processing Files (0 / 1)      : 100%|█████████▉|  319MB /  319MB, 22.7MB/s
+
+New Data Upload               : 100%|█████████▉|  319MB /  319MB, 22.7MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  319MB /  319MB            [A[A
+Processing Files (0 / 1)      : 100%|█████████▉|  319MB /  319MB, 21.0MB/s
+
+New Data Upload               : 100%|█████████▉|  319MB /  319MB, 21.0MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  319MB /  319MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████|  319MB /  319MB, 20.9MB/s
+
+New Data Upload               : 100%|██████████|  319MB /  319MB, 20.9MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  319MB /  319MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  319MB /  319MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████|  319MB /  319MB, 20.3MB/s
+
+New Data Upload               : 100%|██████████|  319MB /  319MB, 20.3MB/s
+
+  ...adapter_model.safetensors: 100%|██████████|  319MB /  319MB
+Unsloth: Restored added_tokens_decoder metadata in /tmp/tmppjp2fyt9/tokenizer_config.json.
+Saved model to https://huggingface.co/longtermrisk/Qwen3.8-27B-ftjob-18fa65aeea16
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...mppjp2fyt9/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+
+
+  ...mppjp2fyt9/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 20.0MB / 20.0MB, 1.96MB/s
+
+
+  ...mppjp2fyt9/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+
+
+  ...mppjp2fyt9/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 20.0MB / 20.0MB, 1.94MB/s
+
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s
+
+  ...mppjp2fyt9/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB
+Found 1 checkpoints to push.
+Pushing checkpoint-2 to longtermrisk/Qwen3.8-27B-ftjob-18fa65aeea16/checkpoint-2

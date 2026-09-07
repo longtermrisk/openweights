@@ -19,6 +19,24 @@ from utils import GPUStatsCallback, LogMetrics
 # fmt: on
 
 
+class TextPreferenceDPOTrainer(DPOTrainer):
+    """DPOTrainer for text-only preference data given a plain tokenizer.
+
+    TRL flags every model whose ``model_type`` appears in the image-text-to-text
+    mapping (Qwen3.5/Qwen3.8, Qwen3-VL, ...) as a vision model and then tokenizes
+    rows through ``processing_class.tokenizer``, which only exists on a processor.
+    OpenWeights preference datasets contain no images and the trainer receives the
+    unwrapped tokenizer, so fall back to TRL's text tokenization in that case.
+    """
+
+    def _prepare_dataset(self, dataset, processing_class, *args, **kwargs):
+        if getattr(self, "is_vision_model", False) and not hasattr(
+            processing_class, "tokenizer"
+        ):
+            self.is_vision_model = False
+        return super()._prepare_dataset(dataset, processing_class, *args, **kwargs)
+
+
 def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
     def apply_chat_template_to_preference_data(examples):
         prompts = examples["prompt"]
@@ -60,7 +78,12 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
         per_device_eval_batch_size=training_cfg.eval_batch_size,
         gradient_accumulation_steps=training_cfg.gradient_accumulation_steps,
         warmup_steps=training_cfg.warmup_steps,
-        learning_rate=training_cfg.learning_rate,
+        learning_rate=learning_rate,
+        max_length=training_cfg.max_seq_length,
+        eval_strategy=(
+            training_cfg.test_file_eval_strategy if test_dataset is not None else "no"
+        ),
+        eval_steps=training_cfg.test_file_eval_steps,
         beta=training_cfg.beta,
         fp16=not is_bfloat16_supported(),
         bf16=is_bfloat16_supported(),
@@ -79,7 +102,7 @@ def dpo_train(training_cfg, dataset, model, tokenizer, test_dataset, **kwargs):
     if not hasattr(model, "warnings_issued"):
         model.warnings_issued = {}
 
-    trainer = DPOTrainer(
+    trainer = TextPreferenceDPOTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=dataset,

@@ -1,0 +1,510 @@
+[
+  {
+    "id": 4821417,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:14:57.081656+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 0,
+      "epoch": 0,
+      "eval_loss": 7.088059425354004,
+      "eval_runtime": 2.6243,
+      "eval_steps_per_second": 6.097,
+      "eval_samples_per_second": 24.387,
+      "eval_model_preparation_time": 0.0211
+    },
+    "file": null
+  },
+  {
+    "id": 4821418,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:00.80714+00:00",
+    "data": {
+      "loss": 6.815446853637695,
+      "step": 1,
+      "epoch": 0.0625,
+      "grad_norm": 9.6875,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821419,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:01.094711+00:00",
+    "data": {
+      "loss": 6.754055976867676,
+      "step": 2,
+      "epoch": 0.125,
+      "grad_norm": 10.5,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821420,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:01.389715+00:00",
+    "data": {
+      "loss": 6.650819301605225,
+      "step": 3,
+      "epoch": 0.1875,
+      "grad_norm": 15.0625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821421,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:01.690948+00:00",
+    "data": {
+      "loss": 7.214357852935791,
+      "step": 4,
+      "epoch": 0.25,
+      "grad_norm": 18.625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821422,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:01.983211+00:00",
+    "data": {
+      "loss": 3.6751081943511963,
+      "step": 5,
+      "epoch": 0.3125,
+      "grad_norm": 11.9375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821423,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:02.268145+00:00",
+    "data": {
+      "loss": 1.267544150352478,
+      "step": 6,
+      "epoch": 0.375,
+      "grad_norm": 5.4375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821424,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:02.538949+00:00",
+    "data": {
+      "loss": 1.30924391746521,
+      "step": 7,
+      "epoch": 0.4375,
+      "grad_norm": 6.65625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821425,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:02.805379+00:00",
+    "data": {
+      "loss": 0.7486772537231445,
+      "step": 8,
+      "epoch": 0.5,
+      "grad_norm": 3.46875,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821426,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:03.076167+00:00",
+    "data": {
+      "loss": 0.5197728872299194,
+      "step": 9,
+      "epoch": 0.5625,
+      "grad_norm": 2.78125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821427,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:03.110244+00:00",
+    "data": {
+      "gpu_name": "NVIDIA H200",
+      "gpu_memory_free_mb": 126585.0625,
+      "gpu_memory_reserved_mb": 16582.0,
+      "gpu_memory_allocated_mb": 15958.369140625,
+      "gpu_utilization_percent": null
+    },
+    "file": null
+  },
+  {
+    "id": 4821428,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:03.38684+00:00",
+    "data": {
+      "loss": 0.6271337270736694,
+      "step": 10,
+      "epoch": 0.625,
+      "grad_norm": 5.03125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821429,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:03.666206+00:00",
+    "data": {
+      "loss": 0.5118838548660278,
+      "step": 11,
+      "epoch": 0.6875,
+      "grad_norm": 2.828125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821430,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:04.153514+00:00",
+    "data": {
+      "loss": 0.35773906111717224,
+      "step": 12,
+      "epoch": 0.75,
+      "grad_norm": 3.828125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821431,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:04.428661+00:00",
+    "data": {
+      "loss": 0.16674137115478516,
+      "step": 13,
+      "epoch": 0.8125,
+      "grad_norm": 3.53125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821432,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:04.694657+00:00",
+    "data": {
+      "loss": 0.10204645991325378,
+      "step": 14,
+      "epoch": 0.875,
+      "grad_norm": 1.25,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821433,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:04.961427+00:00",
+    "data": {
+      "loss": 0.15329204499721527,
+      "step": 15,
+      "epoch": 0.9375,
+      "grad_norm": 2.5,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821434,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:05.956416+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 16,
+      "epoch": 1.0,
+      "eval_loss": 0.14926612377166748,
+      "eval_runtime": 0.941,
+      "eval_steps_per_second": 17.003,
+      "eval_samples_per_second": 68.011,
+      "eval_model_preparation_time": 0.0211
+    },
+    "file": null
+  },
+  {
+    "id": 4821435,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:07.119526+00:00",
+    "data": {
+      "step": 16,
+      "epoch": 1.0,
+      "eval_loss": 0.14926612377166748,
+      "eval_runtime": 0.941,
+      "eval_steps_per_second": 17.003,
+      "eval_samples_per_second": 68.011,
+      "eval_model_preparation_time": 0.0211
+    },
+    "file": null
+  },
+  {
+    "id": 4821436,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:07.449528+00:00",
+    "data": {
+      "loss": 0.3942597806453705,
+      "step": 17,
+      "epoch": 1.0625,
+      "grad_norm": 6.78125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821437,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:07.724316+00:00",
+    "data": {
+      "loss": 0.33233481645584106,
+      "step": 18,
+      "epoch": 1.125,
+      "grad_norm": 6.09375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821438,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:07.992236+00:00",
+    "data": {
+      "loss": 0.30797696113586426,
+      "step": 19,
+      "epoch": 1.1875,
+      "grad_norm": 2.1875,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821439,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:08.027291+00:00",
+    "data": {
+      "gpu_name": "NVIDIA H200",
+      "gpu_memory_free_mb": 126625.0625,
+      "gpu_memory_reserved_mb": 16542.0,
+      "gpu_memory_allocated_mb": 15958.369140625,
+      "gpu_utilization_percent": null
+    },
+    "file": null
+  },
+  {
+    "id": 4821440,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:08.302479+00:00",
+    "data": {
+      "loss": 0.05641992390155792,
+      "step": 20,
+      "epoch": 1.25,
+      "grad_norm": 0.6015625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821441,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:08.570617+00:00",
+    "data": {
+      "loss": 0.11707484722137451,
+      "step": 21,
+      "epoch": 1.3125,
+      "grad_norm": 1.8046875,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821442,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:08.858326+00:00",
+    "data": {
+      "loss": 0.14846356213092804,
+      "step": 22,
+      "epoch": 1.375,
+      "grad_norm": 0.64453125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821443,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:09.144231+00:00",
+    "data": {
+      "loss": 0.21191151440143585,
+      "step": 23,
+      "epoch": 1.4375,
+      "grad_norm": 0.625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821444,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:09.410543+00:00",
+    "data": {
+      "loss": 0.042320623993873596,
+      "step": 24,
+      "epoch": 1.5,
+      "grad_norm": 0.328125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821445,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:09.682558+00:00",
+    "data": {
+      "loss": 0.098260797560215,
+      "step": 25,
+      "epoch": 1.5625,
+      "grad_norm": 0.49609375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821446,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:09.952523+00:00",
+    "data": {
+      "loss": 0.16092818975448608,
+      "step": 26,
+      "epoch": 1.625,
+      "grad_norm": 1.2109375,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821447,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:10.22382+00:00",
+    "data": {
+      "loss": 0.40250280499458313,
+      "step": 27,
+      "epoch": 1.6875,
+      "grad_norm": 16.75,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821448,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:10.496924+00:00",
+    "data": {
+      "loss": 0.20798590779304504,
+      "step": 28,
+      "epoch": 1.75,
+      "grad_norm": 0.94140625,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821449,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:10.762721+00:00",
+    "data": {
+      "loss": 0.07847245037555695,
+      "step": 29,
+      "epoch": 1.8125,
+      "grad_norm": 0.376953125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821450,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:10.793119+00:00",
+    "data": {
+      "gpu_name": "NVIDIA H200",
+      "gpu_memory_free_mb": 126625.0625,
+      "gpu_memory_reserved_mb": 16542.0,
+      "gpu_memory_allocated_mb": 15958.369140625,
+      "gpu_utilization_percent": null
+    },
+    "file": null
+  },
+  {
+    "id": 4821451,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:11.058316+00:00",
+    "data": {
+      "loss": 0.06215537711977959,
+      "step": 30,
+      "epoch": 1.875,
+      "grad_norm": 0.357421875,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821452,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:11.332193+00:00",
+    "data": {
+      "loss": 0.056405335664749146,
+      "step": 31,
+      "epoch": 1.9375,
+      "grad_norm": 0.58203125,
+      "learning_rate": 0.0001
+    },
+    "file": null
+  },
+  {
+    "id": 4821453,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:12.129844+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 32,
+      "epoch": 2.0,
+      "eval_loss": 0.14423882961273193,
+      "eval_runtime": 0.7385,
+      "eval_steps_per_second": 21.664,
+      "eval_samples_per_second": 86.656,
+      "eval_model_preparation_time": 0.0211
+    },
+    "file": null
+  },
+  {
+    "id": 4821454,
+    "run_id": 70672,
+    "created_at": "2026-09-05T00:15:24.835219+00:00",
+    "data": {
+      "tag": "eval",
+      "step": 32,
+      "epoch": 2.0,
+      "eval_loss": 0.1443888545036316,
+      "eval_runtime": 0.7629,
+      "eval_steps_per_second": 20.973,
+      "eval_samples_per_second": 83.894,
+      "eval_model_preparation_time": 0.0211
+    },
+    "file": null
+  }
+]

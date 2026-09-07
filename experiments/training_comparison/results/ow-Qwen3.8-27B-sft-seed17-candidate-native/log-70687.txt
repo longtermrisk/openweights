@@ -1,0 +1,470 @@
+The following values were not passed to `accelerate launch` and had defaults used instead:
+	`--num_processes` was set to a value of `1`
+	`--num_machines` was set to a value of `1`
+	`--mixed_precision` was set to a value of `'no'`
+	`--dynamo_backend` was set to a value of `'no'`
+To avoid this warning pass in values for each of the problematic parameters or run `accelerate config`.
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :176  2026-09-06 09:53:18,969 Creating authenticated Supabase client
+__init__.py         :68   2026-09-06 09:53:18,970 Exchanging API token for JWT
+__init__.py         :84   2026-09-06 09:53:19,287 Successfully exchanged API token for JWT
+__init__.py         :187  2026-09-06 09:53:19,744 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+/opt/venv/lib/python3.12/site-packages/unsloth/__init__.py:1543: UserWarning: WARNING: Unsloth should be imported before [transformers, peft] to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from ._gpu_init import *
+Training config: {
+    "r": 16,
+    "beta": 0.1,
+    "loss": "sft",
+    "meta": null,
+    "seed": 17,
+    "model": "Qwen/Qwen3.8-27B",
+    "optim": "adamw_torch",
+    "epochs": 2,
+    "is_peft": true,
+    "packing": false,
+    "lora_bias": "none",
+    "max_steps": 2,
+    "test_file": "conversations:file-a7b79378dc93",
+    "lora_alpha": 16,
+    "output_dir": "./tmp",
+    "save_steps": 16,
+    "use_rslora": false,
+    "load_in_4bit": false,
+    "lora_dropout": 0.0,
+    "warmup_steps": 0,
+    "weight_decay": 0.0,
+    "chat_template": "default",
+    "job_id_suffix": null,
+    "learning_rate": 0.0001,
+    "logging_steps": 1,
+    "training_file": "conversations:file-77cc012469b9",
+    "max_seq_length": 256,
+    "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    "eval_batch_size": 4,
+    "push_to_private": true,
+    "lr_scheduler_type": "constant",
+    "merge_before_push": false,
+    "eval_every_n_steps": 5000,
+    "finetuned_model_id": "longtermrisk/Qwen3.8-27B-ftjob-a14928964512",
+    "sampling_callbacks": null,
+    "test_file_eval_steps": 16,
+    "logp_callback_datasets": {},
+    "test_file_eval_strategy": "steps",
+    "train_on_responses_only": true,
+    "gradient_accumulation_steps": 1,
+    "per_device_train_batch_size": 1,
+    "model_naming_extra_parameters": null
+}
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+==((====))==  Unsloth 2026.9.2: Fast Qwen3_5 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA H200. Num GPUs = 1. Max memory: 139.811 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.10.0+cu128. CUDA: 9.0. CUDA Toolkit: 12.8. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.34. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+/opt/venv/lib/python3.12/site-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.10.0+cu128).
+__init__.py         :176  2026-09-06 09:53:40,827 Creating authenticated Supabase client
+__init__.py         :68   2026-09-06 09:53:40,828 Exchanging API token for JWT
+__init__.py         :84   2026-09-06 09:53:41,116 Successfully exchanged API token for JWT
+__init__.py         :187  2026-09-06 09:53:41,572 Initialized OpenWeights client for organization: niels.warncke@gmail.com (ID: 8e10fb40-9487-40ae-9b48-f210c6f52a23)
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.
+
+Loading weights:   0%|          | 0/1184 [00:00<?, ?it/s]
+Loading weights:  17%|█▋        | 199/1184 [00:00<00:00, 1964.22it/s]
+Loading weights:  33%|███▎      | 396/1184 [00:00<00:00, 1690.60it/s]
+Loading weights:  72%|███████▏  | 853/1184 [00:00<00:00, 2870.13it/s]
+Loading weights:  97%|█████████▋| 1151/1184 [00:00<00:00, 2635.00it/s]
+Loading weights: 100%|██████████| 1184/1184 [00:00<00:00, 2561.16it/s]
+NOTE: Unwrapping Qwen3VLProcessor to get underlying tokenizer
+Creating new LoRA adapter
+Unsloth: Explicit target_modules are constrained by the finetune_(vision|language|attention|mlp) filters; adapters attach only where both select.
+[VRAM-probe:unsloth/sft] use_cache='<no-config>' _attn_implementation='sdpa' is_gradient_checkpointing=True
+files.py            :207  2026-09-06 09:55:19,197 Downloading file: conversations:file-77cc012469b9
+files.py            :210  2026-09-06 09:55:19,804 File downloaded: conversations:file-77cc012469b9 (32465 bytes)
+files.py            :207  2026-09-06 09:55:19,867 Downloading file: conversations:file-a7b79378dc93
+files.py            :210  2026-09-06 09:55:20,405 File downloaded: conversations:file-a7b79378dc93 (16252 bytes)
+SFTTrainer tokens: eos_token='<|im_end|>', pad_token='<|endoftext|>'
+SFTConfig tokens: eos_token='<|im_end|>', pad_token='<|endoftext|>'
+
+Map:   0%|          | 0/128 [00:00<?, ? examples/s]
+Map: 100%|██████████| 128/128 [00:00<00:00, 2568.17 examples/s]
+================================================================================
+DEBUG: Training examples:
+
+Example 1:
+{'messages': [{'role': 'user', 'content': 'Record 8552: a=53; b=38. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '3'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nRecord 8552: a=53; b=38. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n3<|im_end|>\n'}
+
+Example 2:
+{'messages': [{'role': 'user', 'content': 'Extract color and count as compact JSON, keys in that order. Record: id=5990; color=green; count=23'}, {'role': 'assistant', 'content': '{"color":"green","count":23}'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nExtract color and count as compact JSON, keys in that order. Record: id=5990; color=green; count=23<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n{"color":"green","count":23}<|im_end|>\n'}
+
+Example 3:
+{'messages': [{'role': 'user', 'content': 'Record 8850: a=84; b=35. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '0'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nRecord 8850: a=84; b=35. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n0<|im_end|>\n'}
+================================================================================
+
+
+Map:   0%|          | 0/64 [00:00<?, ? examples/s]
+Map: 100%|██████████| 64/64 [00:00<00:00, 1455.45 examples/s]
+================================================================================
+DEBUG: Test examples:
+
+Example 1:
+{'messages': [{'role': 'user', 'content': 'Record 12969: a=15; b=84. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '1'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nRecord 12969: a=15; b=84. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n1<|im_end|>\n'}
+
+Example 2:
+{'messages': [{'role': 'user', 'content': 'Extract color and count as compact JSON, keys in that order. Record: id=17353; color=green; count=31'}, {'role': 'assistant', 'content': '{"color":"green","count":31}'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nExtract color and count as compact JSON, keys in that order. Record: id=17353; color=green; count=31<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n{"color":"green","count":31}<|im_end|>\n'}
+
+Example 3:
+{'messages': [{'role': 'user', 'content': 'Record 13243: a=62; b=80. Return only (a + 2*b) modulo 7, as one digit.'}, {'role': 'assistant', 'content': '5'}], 'text': '<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nRecord 13243: a=62; b=80. Return only (a + 2*b) modulo 7, as one digit.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n5<|im_end|>\n'}
+================================================================================
+
+
+Unsloth: Tokenizing ["text"] (num_proc=5):   0%|          | 0/128 [00:00<?, ? examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5):  20%|██        | 26/128 [00:00<00:03, 28.10 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5):  41%|████      | 52/128 [00:01<00:01, 53.19 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5):  80%|████████  | 103/128 [00:01<00:00, 113.16 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 120.65 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5): 100%|██████████| 128/128 [00:01<00:00, 81.61 examples/s]
+
+Unsloth: Tokenizing ["text"] (num_proc=5):   0%|          | 0/64 [00:00<?, ? examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5):  20%|██        | 13/64 [00:00<00:03, 14.85 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5):  61%|██████    | 39/64 [00:01<00:00, 39.49 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5): 100%|██████████| 64/64 [00:01<00:00, 54.26 examples/s]
+Unsloth: Tokenizing ["text"] (num_proc=5): 100%|██████████| 64/64 [00:01<00:00, 40.55 examples/s]
+
+Map:   0%|          | 0/128 [00:00<?, ? examples/s]
+Map: 100%|██████████| 128/128 [00:00<00:00, 1268.79 examples/s]
+
+Map:   0%|          | 0/64 [00:00<?, ? examples/s]
+Map: 100%|██████████| 64/64 [00:00<00:00, 18185.45 examples/s]
+
+Filter:   0%|          | 0/64 [00:00<?, ? examples/s]
+Filter: 100%|██████████| 64/64 [00:00<00:00, 16397.01 examples/s]
+
+  0%|          | 0/16 [00:00<?, ?it/s]
+ 12%|█▎        | 2/16 [00:00<00:00, 14.99it/s]
+ 25%|██▌       | 4/16 [00:00<00:01,  8.92it/s]
+ 38%|███▊      | 6/16 [00:00<00:01,  7.89it/s]
+ 44%|████▍     | 7/16 [00:00<00:01,  7.57it/s]
+ 50%|█████     | 8/16 [00:00<00:01,  7.64it/s]
+ 56%|█████▋    | 9/16 [00:01<00:00,  7.40it/s]
+ 62%|██████▎   | 10/16 [00:01<00:00,  7.52it/s]
+ 69%|██████▉   | 11/16 [00:01<00:00,  7.27it/s]
+ 75%|███████▌  | 12/16 [00:01<00:00,  7.40it/s]
+ 81%|████████▏ | 13/16 [00:01<00:00,  7.22it/s]
+ 88%|████████▊ | 14/16 [00:01<00:00,  7.39it/s]
+ 94%|█████████▍| 15/16 [00:01<00:00,  7.21it/s]
+100%|██████████| 16/16 [00:02<00:00,  7.39it/s]run.py              :29   2026-09-06 09:56:14,692 Initializing existing run: 70687
+
+100%|██████████| 16/16 [00:02<00:00,  6.43it/s]
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 248046, 'bos_token_id': None}.
+==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1
+   \\   /|    Num examples = 128 | Num Epochs = 1 | Total steps = 2
+O^O/ \_/ \    Batch size per device = 1 | Gradient accumulation steps = 1
+\        /    Data Parallel GPUs = 1 | Total batch size (1 x 1 x 1) = 1
+ "-____-"     Trainable parameters = 79,691,776 of 27,436,420,336 (0.29% trained)
+
+  0%|          | 0/2 [00:00<?, ?it/s]
+ 50%|█████     | 1/2 [01:14<01:14, 74.85s/it]
+
+
+ 50%|█████     | 1/2 [01:14<01:14, 74.85s/it]
+100%|██████████| 2/2 [01:15<00:00, 31.34s/it]
+
+
+100%|██████████| 2/2 [01:15<00:00, 31.34s/it]{'loss': '0.2599', 'grad_norm': '3.438', 'learning_rate': '0.0001', 'epoch': '0.007812'}
+{'loss': '0.9359', 'grad_norm': '5.469', 'learning_rate': '0.0001', 'epoch': '0.01562'}
+
+
+  0%|          | 0/16 [00:00<?, ?it/s][A
+
+ 12%|█▎        | 2/16 [00:00<00:00, 14.96it/s][A
+
+ 25%|██▌       | 4/16 [00:00<00:01,  9.21it/s][A
+
+ 38%|███▊      | 6/16 [00:00<00:01,  8.56it/s][A
+
+ 44%|████▍     | 7/16 [00:00<00:01,  8.29it/s][A
+
+ 50%|█████     | 8/16 [00:00<00:00,  8.20it/s][A
+
+ 56%|█████▋    | 9/16 [00:01<00:00,  7.99it/s][A
+
+ 62%|██████▎   | 10/16 [00:01<00:00,  8.00it/s][A
+
+ 69%|██████▉   | 11/16 [00:01<00:00,  7.92it/s][A
+
+ 75%|███████▌  | 12/16 [00:01<00:00,  7.94it/s][A
+
+ 81%|████████▏ | 13/16 [00:01<00:00,  7.79it/s][A
+
+ 88%|████████▊ | 14/16 [00:01<00:00,  7.81it/s][A
+
+ 94%|█████████▍| 15/16 [00:01<00:00,  7.80it/s][A
+
+100%|██████████| 16/16 [00:01<00:00,  7.84it/s][A
+
+
+
+[A
+100%|██████████| 2/2 [01:21<00:00, 31.34s/it]
+
+100%|██████████| 16/16 [00:01<00:00,  7.84it/s][A
+
+                                               [AUnsloth: Restored added_tokens_decoder metadata in ./tmp/checkpoint-2/tokenizer_config.json.
+
+
+
+100%|██████████| 2/2 [01:22<00:00, 31.34s/it]
+100%|██████████| 2/2 [01:22<00:00, 41.15s/it]
+{'eval_loss': '0.1652', 'eval_model_preparation_time': '0.0258', 'eval_runtime': '5.255', 'eval_samples_per_second': '12.18', 'eval_steps_per_second': '3.045', 'epoch': '0.01562'}
+{'train_runtime': '82.31', 'train_samples_per_second': '0.024', 'train_steps_per_second': '0.024', 'train_loss': '0.5979', 'epoch': '0.01562'}
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+Processing Files (0 / 1)      :   0%|          | 53.3kB /  159MB, 5.21kB/s
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          | 53.3kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   0%|          |  702kB /  159MB            [A[A
+Processing Files (0 / 1)      :   0%|          |  702kB /  159MB, 67.4kB/s
+
+New Data Upload               :   1%|          |  649kB / 67.1MB, 62.4kB/s  [A
+
+
+  ...adapter_model.safetensors:   0%|          |  702kB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   1%|          | 1.35MB /  159MB            [A[A
+Processing Files (0 / 1)      :   1%|          | 1.35MB /  159MB,  128kB/s
+
+New Data Upload               :   1%|          | 1.30MB /  134MB,  123kB/s  [A
+
+
+  ...adapter_model.safetensors:   1%|          | 1.35MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:   1%|▏         | 2.00MB /  159MB            [A[A
+Processing Files (0 / 1)      :   1%|▏         | 2.00MB /  159MB,  187kB/s
+
+New Data Upload               :   1%|          | 1.94MB /  159MB,  183kB/s  [A
+
+
+  ...adapter_model.safetensors:   3%|▎         | 4.59MB /  159MB            [A[A
+Processing Files (0 / 1)      :   3%|▎         | 4.59MB /  159MB,  432kB/s
+
+New Data Upload               :   3%|▎         | 4.54MB /  159MB,  427kB/s  [A
+
+
+  ...adapter_model.safetensors:   4%|▍         | 6.54MB /  159MB            [A[A
+Processing Files (0 / 1)      :   4%|▍         | 6.54MB /  159MB,  612kB/s
+
+New Data Upload               :   4%|▍         | 6.48MB /  159MB,  608kB/s  [A
+
+
+  ...adapter_model.safetensors:   9%|▉         | 14.3MB /  159MB            [A[A
+Processing Files (0 / 1)      :   9%|▉         | 14.3MB /  159MB, 1.34MB/s
+
+New Data Upload               :   9%|▉         | 14.3MB /  159MB, 1.34MB/s  [A
+
+
+  ...adapter_model.safetensors:  19%|█▊        | 29.9MB /  159MB            [A[A
+Processing Files (0 / 1)      :  19%|█▊        | 29.9MB /  159MB, 2.80MB/s
+
+New Data Upload               :  19%|█▊        | 29.8MB /  159MB, 2.79MB/s  [A
+
+
+  ...adapter_model.safetensors:  40%|███▉      | 63.6MB /  159MB            [A[A
+Processing Files (0 / 1)      :  40%|███▉      | 63.6MB /  159MB, 5.94MB/s
+
+New Data Upload               :  40%|███▉      | 63.5MB /  159MB, 5.94MB/s  [A
+
+
+  ...adapter_model.safetensors:  58%|█████▊    | 91.7MB /  159MB            [A[A
+Processing Files (0 / 1)      :  58%|█████▊    | 91.7MB /  159MB, 8.52MB/s
+
+New Data Upload               :  58%|█████▊    | 91.7MB /  159MB, 8.52MB/s  [A
+
+
+  ...adapter_model.safetensors:  75%|███████▍  |  119MB /  159MB            [A[A
+Processing Files (0 / 1)      :  75%|███████▍  |  119MB /  159MB, 11.0MB/s
+
+New Data Upload               :  75%|███████▍  |  119MB /  159MB, 11.0MB/s  [A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+Processing Files (0 / 1)      :  84%|████████▍ |  134MB /  159MB, 12.3MB/s
+
+New Data Upload               :  84%|████████▍ |  134MB /  159MB, 12.3MB/s  [A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors:  84%|████████▍ |  134MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+Processing Files (0 / 1)      : 100%|█████████▉|  159MB /  159MB, 12.7MB/s
+
+New Data Upload               : 100%|█████████▉|  159MB /  159MB, 12.7MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|█████████▉|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  159MB /  159MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████|  159MB /  159MB, 11.8MB/s
+
+New Data Upload               : 100%|██████████|  159MB /  159MB, 11.8MB/s  [A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  159MB /  159MB            [A[A
+
+
+  ...adapter_model.safetensors: 100%|██████████|  159MB /  159MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████|  159MB /  159MB, 11.6MB/s
+
+New Data Upload               : 100%|██████████|  159MB /  159MB, 11.6MB/s
+
+  ...adapter_model.safetensors: 100%|██████████|  159MB /  159MB
+Unsloth: Restored added_tokens_decoder metadata in /tmp/tmpa3g_nmdi/tokenizer_config.json.
+Saved model to https://huggingface.co/longtermrisk/Qwen3.8-27B-ftjob-a14928964512
+
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B
+
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+
+  ...mpa3g_nmdi/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+
+
+  ...mpa3g_nmdi/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 20.0MB / 20.0MB, 1.96MB/s
+
+
+  ...mpa3g_nmdi/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+
+
+  ...mpa3g_nmdi/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB            [A[A
+Processing Files (1 / 1)      : 100%|██████████| 20.0MB / 20.0MB, 1.94MB/s
+
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s
+
+  ...mpa3g_nmdi/tokenizer.json: 100%|██████████| 20.0MB / 20.0MB
+Found 1 checkpoints to push.
+Pushing checkpoint-2 to longtermrisk/Qwen3.8-27B-ftjob-a14928964512/checkpoint-2
+
+  0%|          | 0/16 [00:00<?, ?it/s]
+ 12%|█▎        | 2/16 [00:00<00:00, 14.27it/s]
+ 25%|██▌       | 4/16 [00:00<00:01,  8.60it/s]
+ 31%|███▏      | 5/16 [00:00<00:01,  7.92it/s]
+ 38%|███▊      | 6/16 [00:00<00:01,  7.75it/s]
+ 44%|████▍     | 7/16 [00:00<00:01,  7.43it/s]
+ 50%|█████     | 8/16 [00:01<00:01,  7.46it/s]
+ 56%|█████▋    | 9/16 [00:01<00:00,  7.21it/s]
+ 62%|██████▎   | 10/16 [00:01<00:00,  7.34it/s]
+ 69%|██████▉   | 11/16 [00:01<00:00,  6.49it/s]
+ 75%|███████▌  | 12/16 [00:01<00:00,  6.43it/s]
+ 81%|████████▏ | 13/16 [00:01<00:00,  6.45it/s]
+ 88%|████████▊ | 14/16 [00:01<00:00,  6.62it/s]
+ 94%|█████████▍| 15/16 [00:02<00:00,  6.53it/s]
+100%|██████████| 16/16 [00:02<00:00,  6.69it/s]
+100%|██████████| 16/16 [00:02<00:00,  6.41it/s]

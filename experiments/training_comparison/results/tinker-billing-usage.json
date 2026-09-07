@@ -1,0 +1,339 @@
+{
+  "note": "Only checkpoint-associated experiment sessions; excludes unidentified interrupted sessions and recent usage subject to billing lag. No dollar amounts returned by API.",
+  "events": [
+    {
+      "bucket_start": "2026-09-04T23:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "ac11cb4b-e12d-5e38-93e4-626b3c08c943",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 25713
+      }
+    },
+    {
+      "bucket_start": "2026-09-04T23:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "ac11cb4b-e12d-5e38-93e4-626b3c08c943",
+      "event_info": {
+        "type": "training",
+        "token_count": 11838
+      }
+    },
+    {
+      "bucket_start": "2026-09-04T23:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "ac11cb4b-e12d-5e38-93e4-626b3c08c943",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 7670
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T06:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "d9b22855-249d-5b8e-a4a9-4d4b922a5b73",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 25713
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T06:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "d9b22855-249d-5b8e-a4a9-4d4b922a5b73",
+      "event_info": {
+        "type": "training",
+        "token_count": 11838
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T06:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "d9b22855-249d-5b8e-a4a9-4d4b922a5b73",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 7670
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 11862
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 11220
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 8000
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 6489
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 5919
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T14:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 5919
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T15:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 4160
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T15:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 3570
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T15:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 2600
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T15:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 331
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 2622
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 2012
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 1584
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 743
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 372
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T16:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 156
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T17:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 1105
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T17:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 734
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T18:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 741
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T18:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 741
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T19:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 740
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T19:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 740
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T20:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 1481
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T20:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 1481
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 8571
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_prefill",
+        "cached": false,
+        "token_count": 8571
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 3645
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "training",
+        "token_count": 1480
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "86b71c44-bb32-5058-92db-21c525511362",
+      "event_info": {
+        "type": "training",
+        "token_count": 1480
+      }
+    },
+    {
+      "bucket_start": "2026-09-05T22:00:00Z",
+      "base_model": "Qwen/Qwen3-8B",
+      "session_id": "b720a367-b43b-58af-a1fa-df2a18639e8b",
+      "event_info": {
+        "type": "sampling_sample",
+        "token_count": 715
+      }
+    }
+  ]
+}

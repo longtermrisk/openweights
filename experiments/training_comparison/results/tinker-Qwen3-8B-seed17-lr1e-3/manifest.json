@@ -1,0 +1,12 @@
+{
+  "model": "Qwen/Qwen3-8B",
+  "steps": 32,
+  "seed": 17,
+  "rank": 16,
+  "train_unembed": false,
+  "learning_rate": 0.001,
+  "batch_size": 8,
+  "loss_reduction": "token_mean",
+  "template": "common.TEMPLATE",
+  "tokenizer": "Qwen/Qwen3-8B"
+}

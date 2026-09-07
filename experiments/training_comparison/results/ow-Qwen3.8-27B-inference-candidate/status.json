@@ -1,0 +1,8 @@
+{
+  "job_id": "inferencejobs-56262ef4e688",
+  "status": "completed",
+  "image": "nielsrolf/ow-vllm:v0.12-candidate",
+  "outputs": {
+    "file": "result:file-b3baa37126a4"
+  }
+}

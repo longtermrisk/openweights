@@ -1,0 +1,3 @@
+{"messages": [{"role": "user", "content": "Reply with the word hello."}], "completion": "We need to respond to user: \"Reply with the word hello.\" Need final only \"hello\". Ensure no extra.\n</think>\n\nhello", "logprobs": null}
+{"messages": [{"role": "user", "content": "What is 2 + 2?"}], "completion": "We need answer simple arithmetic. Then final.\n</think>\n\n4", "logprobs": null}
+{"messages": [{"role": "user", "content": "Name one primary color."}], "completion": "We need answer user: \"Name one primary color.\" Simple. Final: Red.\n</think>\n\nRed", "logprobs": null}
