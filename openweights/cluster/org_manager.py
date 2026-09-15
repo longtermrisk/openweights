@@ -23,6 +23,7 @@ from openweights.client import (
     OpenWeights,
 )
 from openweights.client.decorators import supabase_retry
+from openweights.cluster.liveness import worker_looks_alive
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
     is_spending_limit_error,
@@ -38,7 +39,16 @@ load_dotenv()
 POLL_INTERVAL = 15
 IDLE_THRESHOLD = 300
 STARTUP_THRESHOLD = 600
-UNRESPONSIVE_THRESHOLD = 120
+# A worker whose ``ping`` is older than this is a candidate for termination. The ping is
+# written by a thread inside the worker process and has been seen to stall while the job
+# itself was healthy, so a stale ping alone no longer terminates a pod: the pod's log
+# endpoint is consulted first (see clean_up_unresponsive_workers and cluster/liveness.py).
+UNRESPONSIVE_THRESHOLD = int(os.environ.get("OW_UNRESPONSIVE_THRESHOLD", 120))
+# How long a stale-ping worker may go without its log growing before it is reaped, and the
+# ping age past which it is reaped even if the log still grows (so a broken heartbeat cannot
+# hold a pod forever; the pod-side TTL is the backstop beyond that).
+PROGRESS_GRACE = int(os.environ.get("OW_PROGRESS_GRACE", 600))
+UNRESPONSIVE_HARD_LIMIT = int(os.environ.get("OW_UNRESPONSIVE_HARD_LIMIT", 3600))
 MAX_WORKERS = os.environ.get("MAX_WORKERS", 8)
 
 # Configure logging
@@ -100,6 +110,9 @@ class OrganizationManager:
     def __init__(self):
         self._ow = OpenWeights()
         self.org_id = self._ow.organization_id
+        # worker id -> (log length last seen, time it last grew); only touched for workers whose
+        # ping has gone stale, so the log endpoint is not polled in the normal case.
+        self._log_progress: Dict[str, tuple] = {}
         print("org name", self._ow.org_name)
         self.shutdown_flag = False
 
@@ -254,6 +267,33 @@ class OrganizationManager:
         return idle_workers
 
     @supabase_retry()
+    def seconds_since_log_grew(self, worker, now):
+        """How long ago the pod's log endpoint last grew, or None if it cannot be read.
+
+        Called only for workers whose ping is stale. The first sighting counts as growth,
+        so a worker gets one PROGRESS_GRACE window before a flat log condemns it.
+        """
+        if not worker.get("pod_id"):
+            return None
+        try:
+            response = requests.get(
+                f"https://{worker['pod_id']}-10101.proxy.runpod.net/logs", timeout=30
+            )
+        except Exception as e:
+            logger.warning(f"Worker {worker['id']}: log endpoint unreachable ({e})")
+            return None
+        if response.status_code != 200:
+            logger.warning(
+                f"Worker {worker['id']}: log endpoint returned HTTP {response.status_code}"
+            )
+            return None
+        length = len(response.content)
+        prev = self._log_progress.get(worker["id"])
+        if prev is None or length > prev[0]:
+            self._log_progress[worker["id"]] = (length, now)
+            return 0.0
+        return (now - prev[1]).total_seconds()
+
     def fetch_and_save_worker_logs(self, worker):
         """Fetch logs from a worker and save them to a file."""
         try:
@@ -315,7 +355,26 @@ class OrganizationManager:
                 is_unresponsive = True
                 time_since_ping = "unknown"
 
+            if is_unresponsive and isinstance(time_since_ping, (int, float)):
+                # The heartbeat is one thread in the worker process; the job's own output is
+                # another signal. Four pods were terminated mid-step on 2026-09-10/14/15 with
+                # their training logs still advancing, so consult the log before killing.
+                since_grew = self.seconds_since_log_grew(worker, current_time)
+                if worker_looks_alive(
+                    time_since_ping,
+                    since_grew,
+                    threshold=threshold,
+                    grace=PROGRESS_GRACE,
+                    hard_limit=UNRESPONSIVE_HARD_LIMIT,
+                ):
+                    logger.warning(
+                        f"Worker {worker['id']} hasn't pinged for {time_since_ping:.0f} s but its "
+                        f"log grew {since_grew:.0f} s ago; leaving it alone (pod {worker.get('pod_id')})"
+                    )
+                    continue
+
             if is_unresponsive:
+                self._log_progress.pop(worker["id"], None)
                 logger.info(
                     f"Worker {worker['id']} hasn't pinged for {time_since_ping} seconds. Cleaning up..."
                 )
