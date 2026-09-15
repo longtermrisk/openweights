@@ -93,7 +93,7 @@ OpenWeights follows a queue-based architecture with three main components:
 2. Provision RunPod workers when jobs arrive
 3. Scale workers based on demand (up to MAX_WORKERS per org)
 4. Terminate idle workers (idle > 5 minutes)
-5. Clean up unresponsive workers (no ping > 2 minutes)
+5. Clean up unresponsive workers: a worker whose ping is older than `OW_UNRESPONSIVE_THRESHOLD` (120 s) is checked against its pod's log endpoint (`https://<pod_id>-10101.proxy.runpod.net/logs`) and reaped only if that log has not grown for `OW_PROGRESS_GRACE` (600 s), or unconditionally once the ping is older than `OW_UNRESPONSIVE_HARD_LIMIT` (3600 s). The heartbeat is one thread in the worker process and has stalled while jobs were healthy; the log is the second signal (`cluster/liveness.py`)
 6. Match jobs to hardware based on VRAM requirements and `allowed_hardware` constraints
 
 **Worker Provisioning:**
@@ -342,10 +342,11 @@ The `openweights/jobs/` directory contains several built-in job implementations:
 - Prevents race conditions when multiple workers or managers interact
 
 **Worker Failure Handling:**
-1. **Unresponsive Workers** (no ping > 2 min):
-   - Cluster manager reverts their in-progress jobs to pending
-   - Terminates RunPod pod
-   - Marks worker as terminated
+1. **Unresponsive Workers** (no ping > `OW_UNRESPONSIVE_THRESHOLD`, default 120 s):
+   - The manager first reads the pod's log endpoint (`cluster/liveness.py`). A worker whose log grew within `OW_PROGRESS_GRACE` (600 s) is left alone with a warning: the heartbeat thread has been seen to stall while the job was healthy
+   - Otherwise (log flat, unreachable, or ping older than `OW_UNRESPONSIVE_HARD_LIMIT`, 3600 s): marks its in-progress runs `failed`, reverts the job to `pending`, terminates the RunPod pod, marks the worker `terminated`
+   - The requeued job starts a **new run from scratch** on the next free worker (same job id, new run id). A job that cannot afford that must checkpoint to external storage and resume on start
+   - Diagnosing one after the fact: the run has no `Process exited` event; the `worker` row shows `updated_at` about `OW_UNRESPONSIVE_THRESHOLD` after `ping`; the manager saved the pod's live log to `worker.logfile` at termination
 
 2. **Worker Crashes**:
    - `atexit` handler attempts to revert jobs to pending
