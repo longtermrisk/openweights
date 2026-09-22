@@ -1,50 +1,16 @@
-# React + TypeScript + Vite
+# Dashboard frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Packaged dashboards served by `ow serve` load their public Supabase URL and anon
+key from the backend's `/config.js` endpoint before starting React. Configure
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` on the server; no frontend build-time
+configuration is required. The endpoint never returns service-role credentials.
 
-Currently, two official plugins are available:
+For standalone Vite development, set `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY` in `.env.local`, then run `npm ci` and `npm run dev`.
+Runtime configuration takes precedence over these development settings.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
-
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
-
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+Run `npm run build` to update the packaged backend static assets. CI builds
+without Vite environment variables and runs `python tests/dashboard_browser_smoke.py`
+from the repository root to verify the login page actually renders in Chromium.
+The smoke test requires Playwright and its Chromium browser. Pass `--url URL`
+to check an existing deployment.

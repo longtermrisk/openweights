@@ -75,3 +75,26 @@ def test_database_permission_error_stays_forbidden(client):
         ).status_code
         == 403
     )
+
+
+def test_dashboard_bootstrap_uses_public_runtime_configuration(client, monkeypatch):
+    import json
+
+    main = importlib.import_module("main")
+    monkeypatch.setattr(main, "_SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(main, "_SUPABASE_ANON_KEY", "public-anon-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "must-never-reach-browser")
+    http, db = client
+    response = http.get("/config.js")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("application/javascript")
+    config = json.loads(
+        response.text.removeprefix("window.__OPENWEIGHTS_CONFIG__ = ").removesuffix(";")
+    )
+    assert config == {
+        "supabaseUrl": "https://example.supabase.co",
+        "supabaseAnonKey": "public-anon-key",
+    }
+    assert "must-never-reach-browser" not in response.text
+    db.rpc.assert_not_called()
