@@ -1,0 +1,34 @@
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e '.[dev]' matplotlib
+      - name: Start isolated accounting database
+        run: |
+          docker run -d --rm --name ow-cost-tests -e POSTGRES_PASSWORD=ow-test-only postgres:16
+          for attempt in $(seq 1 30); do
+            if docker exec ow-cost-tests pg_isready -U postgres; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Unit, API and database tests
+        env:
+          OW_COST_TEST_CONTAINER: ow-cost-tests
+        run: pytest tests --ignore=tests/test_integration.py -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openweights/dashboard/frontend/package-lock.json
+      - name: Build dashboard
+        working-directory: openweights/dashboard/frontend
+        run: npm ci --no-audit --no-fund && npm run build

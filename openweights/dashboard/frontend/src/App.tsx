@@ -13,6 +13,7 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { JobsView } from './components/JobsView';
+import { CostsView } from './components/CostsView';
 import { WorkersView } from './components/WorkersView';
 import { JobDetailView, RunDetailView, WorkerDetailView } from './components/DetailViews';
 import { Auth } from './components/Auth/Auth';
@@ -87,6 +88,7 @@ function NavBar() {
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/jobs`}>Jobs</Button>
 
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/workers`}>Workers</Button>
+                        <Button color="inherit" component={Link} to={`/${currentOrganization.id}/costs`}>Costs</Button>
                     </>
                 )}
 
@@ -179,6 +181,7 @@ function OrganizationRoutes() {
             <Route path="jobs" element={<JobsView />} />
             <Route path="jobs/:jobId" element={<JobDetailView />} />
 
+            <Route path="costs" element={<CostsView />} />
             <Route path="workers" element={<WorkersView />} />
             <Route path="workers/:workerId" element={<WorkerDetailView />} />
             <Route path="runs/:runId" element={<RunDetailView />} />

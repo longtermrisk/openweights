@@ -7,6 +7,14 @@ This repo is research code. Please use github issues or contact me via email (ni
 An openai-like sdk with the flexibility of working on a local GPU: finetune, inference, API deployments and custom workloads on managed runpod instances.
 
 
+## Cost tracking
+
+View estimated compute spending by job, worker, API key and user in the **Costs**
+dashboard or `ow.costs.report()`. Startup and idle overhead are shown separately and
+included equally across a worker's jobs by default. Organization admins can set
+lifetime per-key spending limits. [Accounting rules, limits and required database
+migration](docs/cost-tracking.md).
+
 ## Installation
 Run `pip install openweights` or install from source via `pip install -e .`
 
@@ -68,7 +76,7 @@ class MyCustomJob(Jobs):
     }
     params: Type[BaseModel] = MyParams  # Your Pydantic model for params
     requires_vram_gb: int = 24
-    base_image: str = 'nielsrolf/ow-unsloth:v0.12.1' # optional
+    base_image: str = 'nielsrolf/ow-unsloth:v0.13.0' # optional
 
     def get_entrypoint(self, validated_params: BaseModel) -> str:
         # Get the entrypoint command for the job.

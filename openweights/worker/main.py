@@ -350,6 +350,9 @@ class Worker:
             # If the worker has a pod_id, terminate the pod
             if result.data and result.data[0].get("pod_id"):
                 runpod.terminate_pod(result.data[0]["pod_id"])
+                self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
+                    "id", self.worker_id
+                ).execute()
         except Exception as e:
             logging.error(f"Error updating worker status during shutdown: {e}")
 
@@ -381,7 +384,9 @@ class Worker:
                 logging.info(
                     f"Worker {self.worker_id} acquired job {job['id']}, executing..."
                 )
-                if self.gpu_count > 0 and not self._reclaim_gpu_or_release(acquired_job):
+                if self.gpu_count > 0 and not self._reclaim_gpu_or_release(
+                    acquired_job
+                ):
                     continue
                 self._execute_job(acquired_job)
             except KeyboardInterrupt:
@@ -460,13 +465,9 @@ class Worker:
             reclaim_gpu()
             return True
         except ForeignGpuHolderError as exc:
-            logging.error(
-                f"Foreign GPU holder detected before job {job['id']}: {exc}"
-            )
+            logging.error(f"Foreign GPU holder detected before job {job['id']}: {exc}")
         except RuntimeError as exc:
-            logging.error(
-                f"GPU reclaim failed before job {job['id']}: {exc}"
-            )
+            logging.error(f"GPU reclaim failed before job {job['id']}: {exc}")
         except Exception as exc:
             logging.error(
                 f"Unexpected error during GPU reclaim before job {job['id']}: {exc}"
