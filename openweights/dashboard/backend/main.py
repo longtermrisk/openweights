@@ -1,4 +1,5 @@
 import os
+import json
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -9,7 +10,7 @@ from database import Database
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from models import (
     Job,
@@ -71,6 +72,17 @@ async def get_db(authorization: str = Header(None)) -> Database:
         raise HTTPException(
             status_code=401, detail="Invalid authorization header format"
         )
+
+
+@app.get("/config.js", include_in_schema=False)
+async def dashboard_config():
+    """Public browser configuration; never expose service-role credentials."""
+    config = {"supabaseUrl": _SUPABASE_URL, "supabaseAnonKey": _SUPABASE_ANON_KEY}
+    return Response(
+        content="window.__OPENWEIGHTS_CONFIG__ = " + json.dumps(config) + ";",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # Auth endpoints

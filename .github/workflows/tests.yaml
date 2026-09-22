@@ -32,3 +32,8 @@ jobs:
       - name: Build dashboard
         working-directory: openweights/dashboard/frontend
         run: npm ci --no-audit --no-fund && npm run build
+      - name: Verify dashboard browser startup
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          python tests/dashboard_browser_smoke.py
