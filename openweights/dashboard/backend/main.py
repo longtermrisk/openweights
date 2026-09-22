@@ -1,9 +1,13 @@
 import os
+from decimal import Decimal
 from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
+from postgrest.exceptions import APIError
 
 from database import Database
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -194,9 +198,7 @@ async def update_organization(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get(
-    "/organizations/{organization_id}/members", response_model=List[Member]
-)
+@app.get("/organizations/{organization_id}/members", response_model=List[Member])
 async def list_organization_members(
     organization_id: str, db: Database = Depends(get_db)
 ):
@@ -209,9 +211,7 @@ async def list_organization_members(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post(
-    "/organizations/{organization_id}/members", response_model=Member
-)
+@app.post("/organizations/{organization_id}/members", response_model=Member)
 async def invite_organization_member(
     organization_id: str,
     payload: MemberInvite,
@@ -455,6 +455,57 @@ async def delete_token(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class SpendingLimitUpdate(BaseModel):
+    amount_usd: Optional[Decimal] = Field(default=None, ge=0, allow_inf_nan=False)
+
+
+@app.get("/organizations/{organization_id}/costs")
+async def get_costs(
+    organization_id: str,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: Database = Depends(get_db),
+):
+    try:
+        return (
+            db.client.rpc(
+                "get_cost_report",
+                {"org_id": organization_id, "row_limit": limit, "row_offset": offset},
+            )
+            .execute()
+            .data
+        )
+    except APIError as exc:
+        raise HTTPException(
+            status_code=403 if exc.code == "42501" else 400, detail=exc.message
+        )
+
+
+@app.put("/organizations/{organization_id}/costs/limits/{token_id}")
+async def set_cost_limit(
+    organization_id: str,
+    token_id: str,
+    body: SpendingLimitUpdate,
+    db: Database = Depends(get_db),
+):
+    try:
+        db.client.rpc(
+            "set_spending_limit",
+            {
+                "org_id": organization_id,
+                "key_id": token_id,
+                "amount_usd": (
+                    str(body.amount_usd) if body.amount_usd is not None else None
+                ),
+            },
+        ).execute()
+        return {"ok": True}
+    except APIError as exc:
+        raise HTTPException(
+            status_code=403 if exc.code == "42501" else 400, detail=exc.message
+        )
 
 
 # Static file handling

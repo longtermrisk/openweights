@@ -1,3 +1,4 @@
+import type { CostReport } from './components/CostsView';
 import axios, { AxiosError } from 'axios';
 import { Job, Run, Worker, JobWithRuns, RunWithJobAndWorker, WorkerWithRuns, Organization } from './types';
 import { supabase } from './supabaseClient';
@@ -112,6 +113,14 @@ interface CreateOrganizationData {
 }
 
 export const api = {
+    getCosts: async (orgId: string, offset = 0): Promise<CostReport> => {
+        try { return (await axios.get(`${API_URL}/organizations/${orgId}/costs?offset=${offset}`, await getAuthHeaders())).data; }
+        catch (error) { throw new Error(getErrorMessage(error)); }
+    },
+    setCostLimit: async (orgId: string, tokenId: string, amount: number | null) => {
+        try { await axios.put(`${API_URL}/organizations/${orgId}/costs/limits/${tokenId}`, { amount_usd: amount }, await getAuthHeaders()); }
+        catch (error) { throw new Error(getErrorMessage(error)); }
+    },
     // Organizations
     getOrganizations: async () => {
         try {

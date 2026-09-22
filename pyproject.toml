@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openweights"
-version = "0.12.1"
+version = "0.13.0"
 description = "An openai-like sdk for finetuning and batch inference"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -85,3 +85,13 @@ ow = "openweights.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["openweights"]
+
+[tool.hatch.build]
+exclude = [
+    "**/node_modules/**",
+    "**/frontend/dist/**",
+    "**/*.tsbuildinfo",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["/openweights", "/supabase/migrations", "/docs", "/tests", "/README.md", "/LICENSE.txt", "/pyproject.toml"]

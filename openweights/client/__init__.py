@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, Optional
 
 from openweights.client.chat import AsyncChatCompletions, ChatCompletions
+from openweights.client.costs import Costs
 from openweights.client.decorators import supabase_retry
 from openweights.client.events import Events
 from openweights.client.files import (
@@ -193,6 +194,7 @@ class OpenWeights:
         self.jobs = Jobs(self)
         self.runs = Runs(self)
         self.events = Events(self)
+        self.costs = Costs(self)
         self.async_chat = AsyncChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.sync_chat = ChatCompletions(self, deploy_kwargs=self.deploy_kwargs)
         self.chat = self.async_chat if use_async else self.sync_chat

@@ -23,6 +23,7 @@ from openweights.client import (
     OpenWeights,
 )
 from openweights.client.decorators import supabase_retry
+from openweights.cluster.costs import worker_cost_fields
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
     is_spending_limit_error,
@@ -366,6 +367,7 @@ class OrganizationManager:
                         runpod.terminate_pod(worker["pod_id"])
                     except Exception as e:
                         logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
+                        continue  # Keep accruing cost and retry termination next cycle.
 
                 # 4) Finally, mark the worker as 'terminated' in the DB
                 self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
@@ -569,6 +571,9 @@ class OrganizationManager:
                                     ).eq("id", worker_id).execute()
 
                                 try:
+                                    billing_started_at = datetime.now(
+                                        timezone.utc
+                                    ).isoformat()
                                     pod = runpod_start_worker(
                                         gpu=gpu,
                                         count=count,
@@ -578,9 +583,22 @@ class OrganizationManager:
                                         name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                         runpod_client=runpod,
                                     )
+                                    if pod.get("costPerHr") is None:
+                                        try:
+                                            details = runpod.get_pod(pod["id"])
+                                            pod["costPerHr"] = (details or {}).get(
+                                                "costPerHr"
+                                            )
+                                        except Exception as price_error:
+                                            logger.warning(
+                                                "Pod price unavailable; using hardware estimate: %s",
+                                                price_error,
+                                            )
                                     self.hardware_registry.record_success(hardware_type)
                                     self._ow._supabase.table("worker").update(
-                                        {"pod_id": pod["id"]}
+                                        worker_cost_fields(
+                                            pod, gpu, count, billing_started_at
+                                        )
                                     ).eq("id", worker_id).execute()
                                     break
                                 except Exception as e:
@@ -662,6 +680,12 @@ class OrganizationManager:
                     f"Failed to set shutdown flag for worker {idle_worker['id']}: {e}"
                 )
 
+    @supabase_retry()
+    def enforce_spending_limits(self):
+        return self._ow._supabase.rpc(
+            "enforce_spending_limits", {"org_id": self.org_id}
+        ).execute()
+
     def manage_cluster(self):
         """Main loop for managing the organization's cluster."""
         logger.info(f"Starting cluster management for organization {self.org_id}")
@@ -674,6 +698,7 @@ class OrganizationManager:
             runpod.api_key = worker_env["RUNPOD_API_KEY"]
             # try:
             # Get active workers and pending jobs
+            self.enforce_spending_limits()
             running_workers = self.get_running_workers()
             pending_jobs = self.get_pending_jobs()
 
