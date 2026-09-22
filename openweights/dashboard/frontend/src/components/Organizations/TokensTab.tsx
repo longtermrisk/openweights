@@ -48,6 +48,7 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
   const [openDialog, setOpenDialog] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [expirationDays, setExpirationDays] = useState<string>('never');
+  const [spendingLimit, setSpendingLimit] = useState('');
   const [newToken, setNewToken] = useState<Token | null>(null);
 
   const handleCopy = async (text: string) => {
@@ -67,6 +68,12 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
       return;
     }
 
+    if (spendingLimit.trim() && (!Number.isFinite(Number(spendingLimit)) || Number(spendingLimit) < 0)) {
+      setSnackbarMessage('Enter a nonnegative USD limit, or leave blank for unlimited');
+      setShowSnackbar(true);
+      return;
+    }
+
     try {
       const response = await fetch(`${API_URL}/organizations/${organizationId}/tokens`, {
         method: 'POST',
@@ -76,7 +83,8 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
         },
         body: JSON.stringify({
           name: newTokenName.trim(),
-          expires_in_days: expirationDays === 'never' ? null : parseInt(expirationDays)
+          expires_in_days: expirationDays === 'never' ? null : parseInt(expirationDays),
+          spending_limit_usd: spendingLimit.trim() || null
         })
       });
 
@@ -102,6 +110,7 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
       setOpenDialog(false);
       setNewTokenName('');
       setExpirationDays('never');
+      setSpendingLimit('');
     } catch (error) {
       setSnackbarMessage(error instanceof Error ? error.message : 'Error creating token');
       setShowSnackbar(true);
@@ -227,6 +236,13 @@ export function TokensTab({ organizationId, tokens, onTokensChange }: TokensTabP
             variant="outlined"
             value={newTokenName}
             onChange={(e) => setNewTokenName(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense" label="Lifetime spending limit (USD)" fullWidth type="number"
+            value={spendingLimit} onChange={e => setSpendingLimit(e.target.value)}
+            inputProps={{ min: 0, step: 'any' }}
+            helperText="Blank means unlimited; 0 blocks work. Includes overhead."
             sx={{ mb: 2 }}
           />
           <FormControl fullWidth>

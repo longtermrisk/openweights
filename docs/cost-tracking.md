@@ -58,6 +58,24 @@ runs use the best available `updated_at` timestamp during migration.
 
 ## API key spending limits
 
+Starting with 0.13.3, set an initial budget when creating a token:
+
+```sh
+ow token create --name experiment --spending-limit-usd 100
+```
+
+This works with the existing `OPENWEIGHTS_API_KEY` credentials authorized to create
+tokens. The dashboard's token creation dialog also accepts a lifetime USD limit.
+Omit the option (or leave the field blank) for unlimited spending; `0` blocks work.
+The token and budget are created atomically: failure leaves neither behind.
+The REST token creation endpoint accepts `spending_limit_usd` alongside `name`
+and `expires_in_days`. Apply migration `20260922180000_token_creation_limit.sql`
+before upgrading the dashboard or using the new CLI option. Worker images remain
+v0.13.1.
+
+Choosing a new token's initial budget uses existing token-creation permissions.
+Changing or removing an existing budget still requires a signed-in admin user.
+
 A signed-in organization **admin user** can choose an API key in the Costs page and
 save a lifetime USD limit. `0` blocks work; blank removes the limit. API-key logins
 can view costs but cannot edit budgets, even though older organization APIs treat
@@ -86,7 +104,10 @@ can add further overhead. Budgeted jobs cannot start on unpriced workers.
 before a threshold is reached, startup cost may only be allocated when a worker
 first runs a job, and shutdown delays, manager outages and later overhead can cause
 overspend. Limits do not reserve the estimated maximum price of pending jobs.
-Previously canceled jobs require an explicit restart after increasing a limit.
+For example, if 60 out of 100 jobs have completed when a key exhausts its budget,
+the 60 completed jobs remain completed and the remaining queued/running jobs are
+marked `canceled`. Jobs attributed to other keys are unaffected. Previously canceled
+jobs require an explicit restart after increasing a limit.
 Limits attach to individual keys, not to all credentials held by a person; this
 feature does not turn the existing organization-admin API keys into untrusted,
 restricted credentials. Use independently managed keys and trusted organization

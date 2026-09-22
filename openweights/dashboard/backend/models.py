@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Organization(BaseModel):
@@ -91,6 +92,9 @@ class WorkerWithRuns(Worker):
 class TokenCreate(BaseModel):
     name: str
     expires_in_days: Optional[int] = None  # None means no expiration
+    spending_limit_usd: Optional[Decimal] = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
 
 
 class Token(BaseModel):

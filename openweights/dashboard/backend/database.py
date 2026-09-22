@@ -368,15 +368,16 @@ class Database:
                 days=token_data.expires_in_days
             )
 
-        # Create API token using the client (RLS will handle authorization)
-        result = self.client.rpc(
-            "create_api_token",
-            {
-                "org_id": organization_id,
-                "token_name": token_data.name,
-                "expires_at": expires_at.isoformat() if expires_at else None,
-            },
-        ).execute()
+        params = {
+            "org_id": organization_id,
+            "token_name": token_data.name,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+        }
+        rpc = "create_api_token"
+        if token_data.spending_limit_usd is not None:
+            rpc = "create_api_token_with_limit"
+            params["spending_limit_usd"] = str(token_data.spending_limit_usd)
+        result = self.client.rpc(rpc, params).execute()
 
         if not result.data or len(result.data) == 0:
             raise ValueError("Failed to create token")

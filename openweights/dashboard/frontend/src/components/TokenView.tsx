@@ -46,6 +46,7 @@ export function TokenView({ orgId }: TokenViewProps) {
   const [openDialog, setOpenDialog] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [expirationDays, setExpirationDays] = useState<string>('never');
+  const [spendingLimit, setSpendingLimit] = useState('');
   const [newToken, setNewToken] = useState<Token | null>(null);
 
   // Fetch tokens
@@ -81,11 +82,18 @@ export function TokenView({ orgId }: TokenViewProps) {
       return;
     }
 
+    if (spendingLimit.trim() && (!Number.isFinite(Number(spendingLimit)) || Number(spendingLimit) < 0)) {
+      setSnackbarMessage('Enter a nonnegative USD limit, or leave blank for unlimited');
+      setShowSnackbar(true);
+      return;
+    }
+
     try {
       const token = await api.createToken(
         orgId,
         newTokenName.trim(),
-        expirationDays === 'never' ? undefined : parseInt(expirationDays)
+        expirationDays === 'never' ? undefined : parseInt(expirationDays),
+        spendingLimit.trim() || undefined
       );
       setNewToken(token);
 
@@ -96,6 +104,7 @@ export function TokenView({ orgId }: TokenViewProps) {
       setOpenDialog(false);
       setNewTokenName('');
       setExpirationDays('never');
+      setSpendingLimit('');
     } catch (error) {
       setSnackbarMessage(error instanceof Error ? error.message : 'Error creating token');
       setShowSnackbar(true);
@@ -211,6 +220,13 @@ export function TokenView({ orgId }: TokenViewProps) {
             variant="outlined"
             value={newTokenName}
             onChange={(e) => setNewTokenName(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            margin="dense" label="Lifetime spending limit (USD)" fullWidth type="number"
+            value={spendingLimit} onChange={e => setSpendingLimit(e.target.value)}
+            inputProps={{ min: 0, step: 'any' }}
+            helperText="Blank means unlimited; 0 blocks work. Includes overhead."
             sx={{ mb: 2 }}
           />
           <FormControl fullWidth>
