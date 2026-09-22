@@ -3,6 +3,7 @@
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from openweights import OpenWeights
 
@@ -26,6 +27,11 @@ def add_token_parser(parser):
         "--expires-in-days",
         type=int,
         help="Number of days until token expires (optional, default: no expiration)",
+    )
+
+    create_parser.add_argument(
+        "--spending-limit-usd",
+        help="Lifetime USD limit including overhead (default: unlimited)",
     )
 
     # revoke command
@@ -131,6 +137,13 @@ def handle_token_ls(args) -> int:
 def handle_token_create(args) -> int:
     """Handle the token create command."""
     try:
+        limit = getattr(args, "spending_limit_usd", None)
+        if limit is not None:
+            limit = Decimal(str(limit))
+            if not limit.is_finite() or limit < 0:
+                raise ValueError(
+                    "Spending limit must be a finite nonnegative USD amount"
+                )
         ow = get_openweights_client()
         org_id = ow.organization_id
 
@@ -141,15 +154,12 @@ def handle_token_create(args) -> int:
                 datetime.now(timezone.utc) + timedelta(days=args.expires_in_days)
             ).isoformat()
 
-        # Call the create_api_token RPC function
-        result = ow._supabase.rpc(
-            "create_api_token",
-            {
-                "org_id": org_id,
-                "token_name": args.name,
-                "expires_at": expires_at,
-            },
-        ).execute()
+        params = {"org_id": org_id, "token_name": args.name, "expires_at": expires_at}
+        rpc = "create_api_token"
+        if limit is not None:
+            rpc = "create_api_token_with_limit"
+            params["spending_limit_usd"] = str(limit)
+        result = ow._supabase.rpc(rpc, params).execute()
 
         if not result.data or len(result.data) == 0:
             print("Error: Failed to create token")
@@ -161,6 +171,11 @@ def handle_token_create(args) -> int:
         print("-" * 80)
         print(f"Token ID:     {token_data['token_id']}")
         print(f"Name:         {args.name}")
+        print(
+            f"Spending limit: ${limit} lifetime USD"
+            if limit is not None
+            else "Spending limit: Unlimited"
+        )
         if expires_at:
             print(f"Expires:      {format_datetime(expires_at)}")
         else:

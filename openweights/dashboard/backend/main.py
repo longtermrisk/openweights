@@ -440,6 +440,10 @@ async def create_token(
 ):
     try:
         return await db.create_token(organization_id, token_data)
+    except APIError as exc:
+        raise HTTPException(
+            status_code=403 if exc.code == "42501" else 400, detail=exc.message
+        )
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:

@@ -98,3 +98,38 @@ def test_dashboard_bootstrap_uses_public_runtime_configuration(client, monkeypat
     }
     assert "must-never-reach-browser" not in response.text
     db.rpc.assert_not_called()
+
+
+@pytest.mark.parametrize("amount", [-1, "NaN", "Infinity", "invalid"])
+def test_invalid_initial_token_limit(client, amount):
+    http, db = client
+    response = http.post(
+        "/organizations/org/tokens", json={"name": "test", "spending_limit_usd": amount}
+    )
+    assert response.status_code == 422
+    db.rpc.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("amount", [None, "0", "12.34"])
+async def test_database_token_creation_uses_atomic_budget(client, amount):
+    from database import Database
+    from models import TokenCreate
+
+    db = Database.__new__(Database)
+    db.client = Mock()
+    db.set_organization_id = Mock()
+    db.client.rpc.return_value.execute.return_value.data = [
+        {"token_id": "key", "token": "ow_test"}
+    ]
+    result = await db.create_token(
+        "org", TokenCreate(name="test", spending_limit_usd=amount)
+    )
+    assert result.access_token == "ow_test"
+    params = {"org_id": "org", "token_name": "test", "expires_at": None}
+    if amount is not None:
+        params["spending_limit_usd"] = amount
+    db.client.rpc.assert_called_once_with(
+        "create_api_token_with_limit" if amount is not None else "create_api_token",
+        params,
+    )

@@ -422,12 +422,13 @@ export const api = {
     },
 
     // Tokens
-    createToken: async (orgId: string, name: string, expiresInDays?: number) => {
+    createToken: async (orgId: string, name: string, expiresInDays?: number, spendingLimitUsd?: string) => {
         try {
             const config = await getAuthHeaders();
             const response = await axios.post(`${API_URL}/organizations/${orgId}/tokens`, {
                 name,
-                expires_in_days: expiresInDays
+                expires_in_days: expiresInDays,
+                spending_limit_usd: spendingLimitUsd
             }, config);
             return response.data;
         } catch (error) {

@@ -134,7 +134,15 @@ def db():
             if not line.startswith("CREATE EXTENSION")
         )
         sql(bootstrap + schema)
+        sql(
+            "CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;"
+        )
         sql((ROOT / "supabase/migrations/20260922000000_cost_tracking.sql").read_text())
+        sql(
+            (
+                ROOT / "supabase/migrations/20260922180000_token_creation_limit.sql"
+            ).read_text()
+        )
         sql(f"""
             INSERT INTO organizations(id,name) VALUES ('{ORG}','test'), ('{OTHER}','other');
             INSERT INTO auth.users(id) VALUES ('{USER}');
@@ -383,3 +391,94 @@ def test_failed_lookup_does_not_stop_cost_clock():
     provider.get_pod.side_effect = RuntimeError("lookup failed")
     with pytest.raises(RuntimeError, match="lookup failed"):
         terminate_worker_pod("pod", provider)
+
+
+@pytest.mark.parametrize("limit", ["0", "12.34"])
+def test_token_and_budget_created_together(db, limit):
+    key = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','limited',{limit})",
+        claims={"sub": USER},
+    )
+    assert (
+        db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{key}'") == limit
+    )
+    assert db(f"SELECT name FROM api_tokens WHERE id='{key}'") == "limited"
+
+
+@pytest.mark.parametrize("limit", ["NULL", "-1", "'NaN'", "'Infinity'", "'-Infinity'"])
+def test_invalid_initial_limit_does_not_create_token(db, limit):
+    db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','invalid',{limit})",
+        claims={"sub": USER},
+        error=True,
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='invalid'") == "0"
+
+
+def test_api_key_can_choose_initial_budget_but_not_change_it(db):
+    key = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','limited',10)",
+        claims=claims(),
+    )
+    assert (
+        db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{key}'") == "10"
+    )
+    assert "signed-in organization admin" in db(
+        f"SELECT set_spending_limit('{ORG}','{key}',100)", claims=claims(), error=True
+    )
+
+
+def test_initial_limit_denial_creates_no_token(db):
+    db(
+        f"SELECT * FROM create_api_token_with_limit('{OTHER}','foreign',10)",
+        claims=claims(),
+        error=True,
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='foreign'") == "0"
+    db(f"UPDATE organization_members SET role='user' WHERE user_id='{USER}'")
+    db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','denied',10)",
+        claims={"sub": USER},
+        error=True,
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='denied'") == "0"
+
+
+def test_failure_to_save_budget_rolls_back_created_token(db):
+    db("""CREATE FUNCTION reject_test_budget() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'test budget failure'; END $$;
+    CREATE TRIGGER reject_test_budget BEFORE INSERT ON spending_limits
+    FOR EACH ROW EXECUTE FUNCTION reject_test_budget();""")
+    assert "test budget failure" in db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','rollback',10)",
+        claims=claims(),
+        error=True,
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='rollback'") == "0"
+
+
+def test_hundred_jobs_exhausted_after_sixty_preserves_completed_and_other_keys(db):
+    db(
+        f"INSERT INTO jobs(id,type,organization_id) SELECT 'batch-'||i,'script','{ORG}' FROM generate_series(1,100) i",
+        claims=claims(),
+    )
+    db("UPDATE jobs SET status='completed' WHERE substring(id from 7)::integer <= 60")
+    add_worker(db)
+    db(
+        "INSERT INTO runs(job_id,worker_id,status) VALUES ('batch-1','worker','completed')"
+    )
+    db("UPDATE cost_runs SET started_at=now()-interval '1 hour', ended_at=now()")
+    other_key = db(
+        f"SELECT token_id FROM create_api_token('{ORG}','other-key')", claims=claims()
+    )
+    add_job(db, "other-key-job", key=other_key)
+    db(f"SELECT set_spending_limit('{ORG}','{KEY}',1)", claims={"sub": USER})
+    assert db(f"SELECT enforce_spending_limits('{ORG}')", claims=claims()) == "40"
+    assert db("SELECT count(*) FROM jobs WHERE status='completed'") == "60"
+    assert db("SELECT count(*) FROM jobs WHERE status='canceled'") == "40"
+    assert db("SELECT status FROM jobs WHERE id='other-key-job'") == "pending"
+    assert "spending limit reached" in db(
+        f"INSERT INTO jobs(id,type,organization_id) VALUES ('new','script','{ORG}')",
+        claims=claims(),
+        error=True,
+    )
