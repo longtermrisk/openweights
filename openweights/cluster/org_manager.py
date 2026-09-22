@@ -23,7 +23,7 @@ from openweights.client import (
     OpenWeights,
 )
 from openweights.client.decorators import supabase_retry
-from openweights.cluster.costs import worker_cost_fields
+from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
     is_spending_limit_error,
@@ -364,7 +364,7 @@ class OrganizationManager:
                 if worker.get("pod_id"):
                     try:
                         logger.info(f"Terminating pod {worker['pod_id']}")
-                        runpod.terminate_pod(worker["pod_id"])
+                        terminate_worker_pod(worker["pod_id"], runpod)
                     except Exception as e:
                         logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
                         continue  # Keep accruing cost and retry termination next cycle.

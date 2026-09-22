@@ -103,8 +103,8 @@ members. Unallocated overhead cannot be assigned to a key or user.
    `supabase db query --linked --project-ref YOUR_PROJECT_REF --file supabase/migrations/20260922000000_cost_tracking.sql`.
    This runs SQL directly; record the migration in your deployment history if your
    environment also uses `supabase db push`.
-2. Upgrade the manager/dashboard and managed worker images to v0.13.0, and upgrade
-   SDK clients with `pip install --upgrade openweights==0.13.0`. Run the migration
+2. Upgrade the manager/dashboard and managed worker images to v0.13.1, and upgrade
+   SDK clients with `pip install --upgrade openweights==0.13.1`. Run the migration
    **before** the new manager starts: it deliberately fails closed if the budget
    enforcement RPC is unavailable.
 3. Allow existing workers to drain, then terminate them and provision new workers

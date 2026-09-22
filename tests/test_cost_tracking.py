@@ -16,7 +16,7 @@ from unittest.mock import Mock
 import pytest
 
 from openweights.client.costs import Costs
-from openweights.cluster.costs import worker_cost_fields
+from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
 
 ROOT = Path(__file__).resolve().parents[1]
 ORG = "00000000-0000-0000-0000-000000000001"
@@ -345,13 +345,41 @@ def test_cross_org_worker_and_overlapping_runs_rejected(db):
 
 def test_pagination_does_not_change_totals(db):
     for n in range(3):
-        add_worker(db, worker=f'worker{n}')
-        add_job(db, job=f'job{n}')
-        db(f"INSERT INTO runs(job_id,worker_id,status) VALUES ('job{n}','worker{n}','completed')")
+        add_worker(db, worker=f"worker{n}")
+        add_job(db, job=f"job{n}")
+        db(
+            f"INSERT INTO runs(job_id,worker_id,status) VALUES ('job{n}','worker{n}','completed')"
+        )
     page = json.loads(db(f"SELECT get_cost_report('{ORG}',1,1)", claims=claims()))
     full = report(db)
-    assert page['job_count'] == 3 and page['worker_count'] == 3
-    assert len(page['jobs']) == len(page['workers']) == 1
-    assert page['total_usd'] == pytest.approx(full['total_usd'], abs=.01)
-    assert len(page['api_keys']) == 1
-    assert 'Invalid cost report pagination' in db(f"SELECT get_cost_report('{ORG}',0,0)", claims=claims(), error=True)
+    assert page["job_count"] == 3 and page["worker_count"] == 3
+    assert len(page["jobs"]) == len(page["workers"]) == 1
+    assert page["total_usd"] == pytest.approx(full["total_usd"], abs=0.01)
+    assert len(page["api_keys"]) == 1
+    assert "Invalid cost report pagination" in db(
+        f"SELECT get_cost_report('{ORG}',0,0)", claims=claims(), error=True
+    )
+
+
+def test_already_deleted_pod_finishes_accounting():
+    provider = Mock()
+    provider.terminate_pod.side_effect = RuntimeError("Unauthorized")
+    provider.get_pod.return_value = None
+    terminate_worker_pod("pod", provider)
+    provider.get_pod.assert_called_once_with("pod")
+
+
+def test_failed_termination_of_existing_pod_is_retried():
+    provider = Mock()
+    provider.terminate_pod.side_effect = RuntimeError("termination failed")
+    provider.get_pod.return_value = {"id": "pod"}
+    with pytest.raises(RuntimeError, match="termination failed"):
+        terminate_worker_pod("pod", provider)
+
+
+def test_failed_lookup_does_not_stop_cost_clock():
+    provider = Mock()
+    provider.terminate_pod.side_effect = RuntimeError("termination failed")
+    provider.get_pod.side_effect = RuntimeError("lookup failed")
+    with pytest.raises(RuntimeError, match="lookup failed"):
+        terminate_worker_pod("pod", provider)
