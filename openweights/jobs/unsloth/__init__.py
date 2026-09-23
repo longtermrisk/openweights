@@ -46,9 +46,10 @@ class FineTuning(Jobs):
         model_naming_extra_parameters = (
             params.get("model_naming_extra_parameters") or {}
         )
+        hf_org_for_template = params.get("hf_org") or self._ow.hf_org
         params["finetuned_model_id"] = params["finetuned_model_id"].format(
             job_id=job_id,
-            org_id=self._ow.hf_org,
+            org_id=hf_org_for_template,
             model_name=model_name,
             **str_params,
             **model_naming_extra_parameters,
@@ -85,6 +86,28 @@ class FineTuning(Jobs):
         """Get the training config for a fine-tuning job"""
         _, params = self._prepare_job_params(params)
         return params
+
+    def compute_id(self, data: Dict[str, Any], docker_image: str = None) -> str:
+        """Compute job ID, excluding hf_token / hf_org from the content hash.
+
+        HF upload overrides target where results go, not what is computed.
+        Excluding them means rotating a token or retargeting the HF namespace
+        doesn't trigger a redundant re-run.
+
+        The params dict is shallow-copied before popping, because the same
+        reference is stored as the job's submitted params — stripping
+        hf_token / hf_org there would defeat the whole override.
+        """
+        vp_container = data.get("validated_params") and data or data.get("params")
+        if vp_container is not None and "validated_params" in vp_container:
+            scrubbed = {**vp_container["validated_params"]}
+            scrubbed.pop("hf_token", None)
+            scrubbed.pop("hf_org", None)
+            if data is vp_container:
+                data = {**data, "validated_params": scrubbed}
+            else:
+                data = {**data, "params": {**vp_container, "validated_params": scrubbed}}
+        return super().compute_id(data, docker_image=docker_image)
 
 
 @register("logprob")
