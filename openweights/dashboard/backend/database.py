@@ -88,7 +88,7 @@ class Database:
             print(f"Error verifying organization access: {e}")
             return False
 
-    async def create_organization(self, org_data: OrganizationCreate) -> Organization:
+    def create_organization(self, org_data: OrganizationCreate) -> Organization:
         """Create a new organization with the given name and secrets."""
         # First validate all secrets
         is_valid, error_message = validate_organization_secrets(org_data.secrets)
@@ -107,7 +107,7 @@ class Database:
             org_id = org_response.data
 
             # Create a default API token for the organization
-            token = await self.create_token(org_id, TokenCreate(name="Default API Key"))
+            token = self.create_token(org_id, TokenCreate(name="Default API Key"))
 
             # Store the API token as an organization secret
             secret_result = self.client.rpc(
@@ -150,7 +150,7 @@ class Database:
         except Exception as e:
             raise ValueError(f"Failed to create organization: {str(e)}")
 
-    async def update_organization_secret(
+    def update_organization_secret(
         self, organization_id: str, secret_name: str, secret_value: str
     ) -> bool:
         """Update or create an organization secret."""
@@ -192,7 +192,7 @@ class Database:
         except Exception as e:
             raise ValueError(f"Failed to update secret: {str(e)}")
 
-    async def update_organization_secrets(
+    def update_organization_secrets(
         self, organization_id: str, secrets: Dict[str, str]
     ) -> bool:
         """Update all organization secrets together. Deletes secrets not in the input dict.
@@ -355,7 +355,7 @@ class Database:
             for row in (result.data or [])
         ]
 
-    async def create_token(
+    def create_token(
         self, organization_id: str, token_data: TokenCreate
     ) -> Token:
         """Create a new API token with optional expiration."""
@@ -395,7 +395,7 @@ class Database:
             access_token=api_token,
         )
 
-    async def list_tokens(self, organization_id: str) -> List[Token]:
+    def list_tokens(self, organization_id: str) -> List[Token]:
         """List all API tokens for an organization."""
         self.set_organization_id(organization_id)
         result = (
@@ -407,7 +407,7 @@ class Database:
         )
         return [Token(**token) for token in result.data]
 
-    async def delete_token(self, organization_id: str, token_id: str):
+    def delete_token(self, organization_id: str, token_id: str):
         """Revoke an API token."""
         self.set_organization_id(organization_id)
 
@@ -429,6 +429,26 @@ class Database:
             query = query.eq("status", status)
         result = query.execute()
         return [Job(**job) for job in result.data]
+
+    def get_jobs_page(
+        self,
+        organization_id: str,
+        statuses: Optional[List[str]],
+        search: str,
+        limit: int,
+        offset: int,
+    ) -> dict:
+        self.set_organization_id(organization_id)
+        return self.client.rpc(
+            "get_dashboard_jobs",
+            {
+                "org_id": organization_id,
+                "statuses": statuses,
+                "search_text": search,
+                "page_limit": limit,
+                "page_offset": offset,
+            },
+        ).execute().data
 
     def get_job(self, organization_id: str, job_id: str) -> JobWithRuns:
         self.set_organization_id(organization_id)
@@ -602,7 +622,9 @@ class Database:
             return "No pod ID available for this worker"
 
         try:
-            response = requests.get(f"https://{pod_id}-10101.proxy.runpod.net/logs")
+            response = requests.get(
+                f"https://{pod_id}-10101.proxy.runpod.net/logs", timeout=(5, 10)
+            )
             if response.status_code == 200:
                 return clean_ansi(response.text)
             else:
@@ -664,7 +686,7 @@ class Database:
 
                     try:
                         response = requests.get(
-                            f"https://{pod_id}-10101.proxy.runpod.net/{run_id}"
+                            f"https://{pod_id}-10101.proxy.runpod.net/{run_id}", timeout=(5, 10)
                         )
                         if response.status_code == 200:
                             return clean_ansi(response.text)

@@ -1,7 +1,7 @@
 import os
 import json
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 from postgrest.exceptions import APIError
@@ -10,10 +10,12 @@ from database import Database
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from models import (
     Job,
+    JobPage,
     JobWithRuns,
     Member,
     MemberInvite,
@@ -37,7 +39,10 @@ from openweights.client import (
 )
 
 load_dotenv()
+# The database SDK and log downloads are synchronous. Plain def handlers let
+# FastAPI run them in its thread pool without blocking every other request.
 app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Configure CORS with specific origins
 app.add_middleware(
@@ -54,7 +59,7 @@ app.add_middleware(
 )
 
 
-async def get_db(authorization: str = Header(None)) -> Database:
+def get_db(authorization: str = Header(None)) -> Database:
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header is required")
 
@@ -75,7 +80,7 @@ async def get_db(authorization: str = Header(None)) -> Database:
 
 
 @app.get("/config.js", include_in_schema=False)
-async def dashboard_config():
+def dashboard_config():
     """Public browser configuration; never expose service-role credentials."""
     config = {"supabaseUrl": _SUPABASE_URL, "supabaseAnonKey": _SUPABASE_ANON_KEY}
     return Response(
@@ -87,7 +92,7 @@ async def dashboard_config():
 
 # Auth endpoints
 @app.post("/auth/exchange-api-key")
-async def exchange_api_key(api_key: dict):
+def exchange_api_key(api_key: dict):
     """Exchange an OpenWeights API key for a JWT token.
 
     Args:
@@ -121,11 +126,11 @@ async def exchange_api_key(api_key: dict):
 
 # Organization endpoints
 @app.post("/organizations/", response_model=Organization)
-async def create_organization(
+def create_organization(
     org_data: OrganizationCreate, db: Database = Depends(get_db)
 ):
     try:
-        return await db.create_organization(org_data)
+        return db.create_organization(org_data)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
@@ -133,14 +138,14 @@ async def create_organization(
 
 
 @app.get("/organizations/", response_model=List[Organization])
-async def get_organizations(db: Database = Depends(get_db)):
+def get_organizations(db: Database = Depends(get_db)):
     """Get list of organizations the current user has access to."""
     result = db.client.from_("organizations").select("*").execute()
     return result.data
 
 
 @app.get("/organizations/{organization_id}", response_model=Organization)
-async def get_organization(organization_id: str, db: Database = Depends(get_db)):
+def get_organization(organization_id: str, db: Database = Depends(get_db)):
     """Get details of a specific organization."""
     try:
         if not db.verify_organization_access(organization_id):
@@ -166,12 +171,12 @@ async def get_organization(organization_id: str, db: Database = Depends(get_db))
 
 
 @app.put("/organizations/{organization_id}/secrets")
-async def update_organization_secrets(
+def update_organization_secrets(
     organization_id: str, secrets: Dict[str, str], db: Database = Depends(get_db)
 ):
     """Update all organization secrets together."""
     try:
-        success = await db.update_organization_secrets(organization_id, secrets)
+        success = db.update_organization_secrets(organization_id, secrets)
         return {"status": "success" if success else "failed"}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -183,7 +188,7 @@ async def update_organization_secrets(
     "/organizations/{organization_id}/secrets",
     response_model=List[OrganizationSecret],
 )
-async def list_organization_secrets(
+def list_organization_secrets(
     organization_id: str, db: Database = Depends(get_db)
 ):
     """List all secrets for an organization (admin-only)."""
@@ -196,7 +201,7 @@ async def list_organization_secrets(
 
 
 @app.put("/organizations/{organization_id}", response_model=Organization)
-async def update_organization(
+def update_organization(
     organization_id: str,
     payload: OrganizationUpdate,
     db: Database = Depends(get_db),
@@ -211,7 +216,7 @@ async def update_organization(
 
 
 @app.get("/organizations/{organization_id}/members", response_model=List[Member])
-async def list_organization_members(
+def list_organization_members(
     organization_id: str, db: Database = Depends(get_db)
 ):
     """List members of an organization."""
@@ -224,7 +229,7 @@ async def list_organization_members(
 
 
 @app.post("/organizations/{organization_id}/members", response_model=Member)
-async def invite_organization_member(
+def invite_organization_member(
     organization_id: str,
     payload: MemberInvite,
     db: Database = Depends(get_db),
@@ -241,7 +246,7 @@ async def invite_organization_member(
 
 
 @app.put("/organizations/{organization_id}/members/{user_id}")
-async def update_organization_member(
+def update_organization_member(
     organization_id: str,
     user_id: str,
     payload: MemberRoleUpdate,
@@ -258,7 +263,7 @@ async def update_organization_member(
 
 
 @app.delete("/organizations/{organization_id}/members/{user_id}")
-async def remove_organization_member(
+def remove_organization_member(
     organization_id: str, user_id: str, db: Database = Depends(get_db)
 ):
     """Remove a member from the organization."""
@@ -272,7 +277,7 @@ async def remove_organization_member(
 
 
 @app.get("/organizations/{organization_id}/jobs/", response_model=List[Job])
-async def get_jobs(
+def get_jobs(
     organization_id: str, status: Optional[str] = None, db: Database = Depends(get_db)
 ):
     try:
@@ -281,8 +286,29 @@ async def get_jobs(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+@app.get(
+    "/organizations/{organization_id}/jobs/page",
+    response_model=JobPage,
+    response_model_exclude_unset=True,
+)
+def get_jobs_page(
+    organization_id: str,
+    status: Optional[
+        List[Literal["pending", "in_progress", "completed", "failed", "canceled"]]
+    ] = Query(None),
+    search: str = Query("", max_length=1000),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Database = Depends(get_db),
+):
+    try:
+        return db.get_jobs_page(organization_id, status, search, limit, offset)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
 @app.get("/organizations/{organization_id}/jobs/{job_id}", response_model=JobWithRuns)
-async def get_job(organization_id: str, job_id: str, db: Database = Depends(get_db)):
+def get_job(organization_id: str, job_id: str, db: Database = Depends(get_db)):
     try:
         return db.get_job(organization_id, job_id)
     except ValueError as e:
@@ -292,7 +318,7 @@ async def get_job(organization_id: str, job_id: str, db: Database = Depends(get_
 
 
 @app.post("/organizations/{organization_id}/jobs/{job_id}/cancel")
-async def cancel_job(organization_id: str, job_id: str, db: Database = Depends(get_db)):
+def cancel_job(organization_id: str, job_id: str, db: Database = Depends(get_db)):
     try:
         return db.cancel_job(organization_id, job_id)
     except ValueError as e:
@@ -302,7 +328,7 @@ async def cancel_job(organization_id: str, job_id: str, db: Database = Depends(g
 
 
 @app.post("/organizations/{organization_id}/jobs/{job_id}/restart")
-async def restart_job(
+def restart_job(
     organization_id: str, job_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -314,7 +340,7 @@ async def restart_job(
 
 
 @app.get("/organizations/{organization_id}/runs/", response_model=List[Run])
-async def get_runs(
+def get_runs(
     organization_id: str, status: Optional[str] = None, db: Database = Depends(get_db)
 ):
     try:
@@ -326,7 +352,7 @@ async def get_runs(
 @app.get(
     "/organizations/{organization_id}/runs/{run_id}", response_model=RunWithJobAndWorker
 )
-async def get_run(organization_id: str, run_id: str, db: Database = Depends(get_db)):
+def get_run(organization_id: str, run_id: str, db: Database = Depends(get_db)):
     try:
         return db.get_run(organization_id, run_id)
     except ValueError as e:
@@ -339,7 +365,7 @@ async def get_run(organization_id: str, run_id: str, db: Database = Depends(get_
     "/organizations/{organization_id}/runs/{run_id}/logs",
     response_class=PlainTextResponse,
 )
-async def get_run_logs(
+def get_run_logs(
     organization_id: str, run_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -351,7 +377,7 @@ async def get_run_logs(
 
 
 @app.get("/organizations/{organization_id}/runs/{run_id}/events")
-async def get_run_events(
+def get_run_events(
     organization_id: str, run_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -363,7 +389,7 @@ async def get_run_events(
 
 
 @app.get("/organizations/{organization_id}/workers/", response_model=List[Worker])
-async def get_workers(
+def get_workers(
     organization_id: str, status: Optional[str] = None, db: Database = Depends(get_db)
 ):
     try:
@@ -376,7 +402,7 @@ async def get_workers(
     "/organizations/{organization_id}/workers/{worker_id}",
     response_model=WorkerWithRuns,
 )
-async def get_worker(
+def get_worker(
     organization_id: str, worker_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -391,7 +417,7 @@ async def get_worker(
     "/organizations/{organization_id}/workers/{worker_id}/logs",
     response_class=PlainTextResponse,
 )
-async def get_worker_logs(
+def get_worker_logs(
     organization_id: str, worker_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -403,7 +429,7 @@ async def get_worker_logs(
 
 
 @app.post("/organizations/{organization_id}/workers/{worker_id}/shutdown")
-async def shutdown_worker(
+def shutdown_worker(
     organization_id: str, worker_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -418,7 +444,7 @@ async def shutdown_worker(
     "/organizations/{organization_id}/files/{file_id}/content",
     response_class=PlainTextResponse,
 )
-async def get_file_content(
+def get_file_content(
     organization_id: str, file_id: str, db: Database = Depends(get_db)
 ):
     try:
@@ -435,11 +461,11 @@ async def get_file_content(
 
 
 @app.post("/organizations/{organization_id}/tokens", response_model=Token)
-async def create_token(
+def create_token(
     organization_id: str, token_data: TokenCreate, db: Database = Depends(get_db)
 ):
     try:
-        return await db.create_token(organization_id, token_data)
+        return db.create_token(organization_id, token_data)
     except APIError as exc:
         raise HTTPException(
             status_code=403 if exc.code == "42501" else 400, detail=exc.message
@@ -451,9 +477,9 @@ async def create_token(
 
 
 @app.get("/organizations/{organization_id}/tokens", response_model=List[Token])
-async def list_tokens(organization_id: str, db: Database = Depends(get_db)):
+def list_tokens(organization_id: str, db: Database = Depends(get_db)):
     try:
-        return await db.list_tokens(organization_id)
+        return db.list_tokens(organization_id)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
@@ -461,11 +487,11 @@ async def list_tokens(organization_id: str, db: Database = Depends(get_db)):
 
 
 @app.delete("/organizations/{organization_id}/tokens/{token_id}")
-async def delete_token(
+def delete_token(
     organization_id: str, token_id: str, db: Database = Depends(get_db)
 ):
     try:
-        await db.delete_token(organization_id, token_id)
+        db.delete_token(organization_id, token_id)
         return {"status": "success"}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -478,7 +504,7 @@ class SpendingLimitUpdate(BaseModel):
 
 
 @app.get("/organizations/{organization_id}/costs")
-async def get_costs(
+def get_costs(
     organization_id: str,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -500,7 +526,7 @@ async def get_costs(
 
 
 @app.put("/organizations/{organization_id}/costs/limits/{token_id}")
-async def set_cost_limit(
+def set_cost_limit(
     organization_id: str,
     token_id: str,
     body: SpendingLimitUpdate,
@@ -530,16 +556,16 @@ if os.path.exists("static"):
     app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
 
     @app.get("/ow.svg")
-    async def serve_ow():
+    def serve_ow():
         return FileResponse("static/ow.svg")
 
     @app.get("/vite.svg")
-    async def serve_vite():
+    def serve_vite():
         return FileResponse("static/vite.svg")
 
     # Catch all other routes and serve index.html
     @app.get("/{full_path:path}")
-    async def serve_app(full_path: str):
+    def serve_app(full_path: str):
         # Only treat it as an API call if it starts with "organizations/" AND
         # is followed by known API endpoints
         api_endpoints = [

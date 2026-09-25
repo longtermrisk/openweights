@@ -32,7 +32,7 @@ const getStatusChipColor = (status: string) => {
 
 interface JobsListViewProps {
     jobs: Job[];
-    filter: string;
+    total: number;
     page: number;
     rowsPerPage: number;
     onPageChange: (event: unknown, newPage: number) => void;
@@ -44,7 +44,7 @@ interface JobsListViewProps {
 
 export const JobsListView: React.FC<JobsListViewProps> = ({
     jobs,
-    filter,
+    total,
     page,
     rowsPerPage,
     onPageChange,
@@ -53,21 +53,6 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
     onCancelJob,
     onRetryJob,
 }) => {
-    const filteredJobs = jobs.filter(job => {
-        const searchStr = filter.toLowerCase();
-        const jobId = String(job.id);
-        const model = job.model ? job.model.toLowerCase() : '';
-        const dockerImage = job.docker_image ? job.docker_image.toLowerCase() : '';
-
-        return jobId.includes(searchStr) ||
-            model.includes(searchStr) ||
-            dockerImage.includes(searchStr) ||
-            JSON.stringify(job.params).toLowerCase().includes(searchStr) ||
-            JSON.stringify(job.outputs).toLowerCase().includes(searchStr);
-    });
-
-    const emptyRows = page > 0 ? Math.max(0, (1 + page) * rowsPerPage - filteredJobs.length) : 0;
-
     return (
         <Box sx={{ width: '100%' }}>
             <TableContainer component={Paper}>
@@ -85,8 +70,7 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {filteredJobs
-                            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                        {jobs
                             .map((job) => (
                                 <TableRow key={job.id}>
                                     <TableCell component="th" scope="row">
@@ -139,18 +123,13 @@ export const JobsListView: React.FC<JobsListViewProps> = ({
                                     </TableCell>
                                 </TableRow>
                             ))}
-                        {emptyRows > 0 && (
-                            <TableRow style={{ height: 53 * emptyRows }}>
-                                <TableCell colSpan={7} />
-                            </TableRow>
-                        )}
                     </TableBody>
                 </Table>
             </TableContainer>
             <TablePagination
                 rowsPerPageOptions={[5, 10, 25]}
                 component="div"
-                count={filteredJobs.length}
+                count={total}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={onPageChange}

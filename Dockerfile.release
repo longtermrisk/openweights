@@ -1,0 +1,12 @@
+# Patch the application while keeping the verified GPU/framework dependencies.
+# Pass a digest-pinned cluster, Unsloth or vLLM image as BASE_IMAGE.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG RELEASE_VERSION
+WORKDIR /openweights
+COPY README.md pyproject.toml ./
+COPY openweights openweights
+RUN if [ -x /opt/venv/bin/python ]; then OW_PYTHON=/opt/venv/bin/python; else OW_PYTHON=python3; fi; \
+    "$OW_PYTHON" -m pip install --no-cache-dir --no-deps -e . && \
+    "$OW_PYTHON" -m pip check && \
+    "$OW_PYTHON" -c 'import sys; from importlib.metadata import version; from openweights.images import IMAGE_VERSION; assert version("openweights") == sys.argv[1]; assert IMAGE_VERSION == "v" + sys.argv[1]; print("Release", sys.argv[1], "validated")' "$RELEASE_VERSION"

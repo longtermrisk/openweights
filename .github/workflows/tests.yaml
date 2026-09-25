@@ -37,3 +37,4 @@ jobs:
           pip install playwright
           playwright install --with-deps chromium
           python tests/dashboard_browser_smoke.py
+          python tests/dashboard_jobs_browser.py
