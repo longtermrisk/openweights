@@ -53,6 +53,11 @@ class Job(BaseModel):
     created_at: datetime
 
 
+class JobPage(BaseModel):
+    items: List[Job]
+    total: int
+
+
 class Run(BaseModel):
     id: int
     job_id: str

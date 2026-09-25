@@ -256,6 +256,13 @@ export const api = {
     },
 
     // Jobs
+    getJobsPage: async (orgId: string, statuses: string[], search: string, limit: number, offset: number, signal?: AbortSignal): Promise<{ items: Job[]; total: number }> => {
+        const config = await getAuthHeaders();
+        const params = new URLSearchParams({ search, limit: String(limit), offset: String(offset) });
+        statuses.forEach(status => params.append('status', status));
+        const response = await axios.get(`${API_URL}/organizations/${orgId}/jobs/page`, { ...config, params, signal });
+        return response.data;
+    },
     getJobs: async (orgId: string, status?: string) => {
         try {
             const config = await getAuthHeaders();

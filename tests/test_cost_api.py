@@ -110,9 +110,8 @@ def test_invalid_initial_token_limit(client, amount):
     db.rpc.assert_not_called()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("amount", [None, "0", "12.34"])
-async def test_database_token_creation_uses_atomic_budget(client, amount):
+def test_database_token_creation_uses_atomic_budget(client, amount):
     from database import Database
     from models import TokenCreate
 
@@ -122,7 +121,7 @@ async def test_database_token_creation_uses_atomic_budget(client, amount):
     db.client.rpc.return_value.execute.return_value.data = [
         {"token_id": "key", "token": "ow_test"}
     ]
-    result = await db.create_token(
+    result = db.create_token(
         "org", TokenCreate(name="test", spending_limit_usd=amount)
     )
     assert result.access_token == "ow_test"
