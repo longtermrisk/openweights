@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 import axios from 'axios';
@@ -11,7 +12,9 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithApiKey: (apiKey: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  // needsConfirmation: the project requires email confirmation, so there is no
+  // session yet — the user has to click the link in the confirmation email.
+  signUp: (email: string, password: string) => Promise<{ error: Error | null; needsConfirmation?: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   refreshToken: () => Promise<{ error: Error | null }>;
@@ -23,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Check for stored JWT from API key login
@@ -61,7 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // A recovery link signs the user in. If Supabase redirected it to the
+      // Site URL instead of /reset-password (redirect URL not allow-listed),
+      // the user would just look logged in — send them to set a password.
+      if (event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/reset-password') {
+        navigate('/reset-password', { replace: true });
+      }
       // Only update if not using API key auth
       if (!localStorage.getItem('openweights_jwt')) {
         setSession(session);
@@ -184,14 +194,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: `${window.location.origin}/organizations`,
         },
       });
-      return { error };
+      return { error, needsConfirmation: !error && !data.session };
     } catch (error) {
       return { error: error as Error };
     }
