@@ -44,14 +44,14 @@ export function Auth() {
           setError('Passwords do not match');
           return;
         }
-        const { error } = await signUp(email, password);
+        const { error, needsConfirmation } = await signUp(email, password);
         if (error) throw error;
-        setSuccess('Sign up successful! Please check your email for verification.');
-        // After successful signup, sign in and redirect to organizations
-        const { error: signInError } = await signIn(email, password);
-        if (!signInError) {
-          navigate('/organizations');
+        if (needsConfirmation) {
+          // No session until the address is confirmed via the emailed link.
+          setSuccess(`Almost done! We sent a confirmation link to ${email}. Open it to activate your account (check your spam folder if it doesn't arrive).`);
+          return;
         }
+        navigate('/organizations');
       } else if (mode === 'signin') {
         const { error } = await signIn(email, password);
         if (error) throw error;
