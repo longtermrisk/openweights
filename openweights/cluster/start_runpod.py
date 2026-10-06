@@ -240,6 +240,66 @@ if not len(gpu_full) == len(set(gpu_full)):
 # Build map of memory -> hardware configu
 HARDWARE_CONFIG = {}
 
+# Other spellings people use in allowed_hardware (mostly RunPod console display names).
+# Keys of GPUs and the full RunPod ids are accepted as well, see canonical_gpu_name.
+GPU_ALIASES = {
+    "A100 80GB": "A100",
+    "A100 PCIe": "A100",
+    "A100 SXM": "A100S",
+    "A100 SXM 80GB": "A100S",
+    "A100 SXM4": "A100S",
+    "H100 NVL": "H100N",
+    "H100 SXM": "H100S",
+    "H100 SXM 80GB": "H100S",
+    "H200 SXM": "H200",
+    "RTX 6000 Ada": "6000Ada",
+    "RTX 4000 Ada": "4000Ada",
+    "RTX 3090": "RTX3090",
+    "RTX 4090": "RTX4090",
+    "RTX A6000": "A6000",
+}
+
+
+def _compact_gpu_name(name: str) -> str:
+    name = name.lower().replace("nvidia", "")
+    return "".join(ch for ch in name if ch.isalnum())
+
+
+_GPU_NAME_LOOKUP: Dict[str, str] = {}
+for _short, _full in GPUs.items():
+    _GPU_NAME_LOOKUP[_compact_gpu_name(_full)] = _short
+for _alias, _short in GPU_ALIASES.items():
+    _GPU_NAME_LOOKUP[_compact_gpu_name(_alias)] = _short
+# Short names win over everything else, e.g. "A100S" must never resolve to something else.
+for _short in GPUs:
+    _GPU_NAME_LOOKUP[_compact_gpu_name(_short)] = _short
+
+
+def canonical_gpu_name(name: str) -> Optional[str]:
+    """Map a GPU name ('A100', 'A100 SXM 80GB', 'NVIDIA A100-SXM4-80GB', ...) to its GPUs key."""
+    return _GPU_NAME_LOOKUP.get(_compact_gpu_name(name))
+
+
+def normalize_hardware_type(hardware_type: str) -> str:
+    """Return the canonical '<count>x <GPU key>' spelling of a hardware type.
+
+    Workers register as e.g. '1x A100S', and allowed_hardware entries are matched
+    against that string literally, so every entry must use this spelling.
+    Raises ValueError for GPUs we don't know.
+    """
+    text = hardware_type.strip()
+    count = 1
+    head, sep, rest = text.partition("x ")
+    if sep and head.strip().isdigit():
+        count, text = int(head.strip()), rest.strip()
+    gpu = canonical_gpu_name(text)
+    if gpu is None or count < 1:
+        raise ValueError(
+            f"Invalid hardware configuration: '{hardware_type}'. Use '<count>x <GPU>' "
+            f"with GPU one of: {', '.join(GPUs.keys())} (e.g. '1x A100', '2x H100S')"
+        )
+    return f"{count}x {gpu}"
+
 
 def parse_hardware_config(hardware_type: str) -> tuple[int, str]:
     count, gpu = hardware_type.split("x ", maxsplit=1)

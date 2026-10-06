@@ -10,7 +10,7 @@ from postgrest.exceptions import APIError
 from pydantic import BaseModel
 
 from openweights.client.decorators import supabase_retry
-from openweights.cluster.start_runpod import GPUs
+from openweights.cluster.start_runpod import normalize_hardware_type
 from openweights.images import OW_UNSLOTH_IMAGE
 
 logger = logging.getLogger(__name__)
@@ -199,18 +199,16 @@ class Jobs:
         If job exists and is [failed, canceled] reset it to pending and return it.
         If job doesn't exist, create it and return it.
         """
+        # Normalize allowed_hardware (e.g. '1x A100 SXM 80GB' -> '1x A100S') before
+        # hashing, because workers match it literally against their hardware type.
+        if data.get("allowed_hardware") is not None:
+            data["allowed_hardware"] = [
+                normalize_hardware_type(hardware)
+                for hardware in data["allowed_hardware"]
+            ]
+
         data["id"] = data.get("id", self.compute_id(data))
         data["organization_id"] = self._org_id
-
-        # Validate allowed_hardware if provided
-        if "allowed_hardware" in data and data["allowed_hardware"] is not None:
-            valid_suffixes = list(GPUs.keys())
-            for hardware in data["allowed_hardware"]:
-                if not any(hardware.endswith(suffix) for suffix in valid_suffixes):
-                    raise ValueError(
-                        f"Invalid hardware configuration: '{hardware}'. "
-                        f"Each entry must end with one of: {', '.join(valid_suffixes)}"
-                    )
 
         try:
             result = (
