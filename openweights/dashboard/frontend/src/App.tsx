@@ -21,6 +21,7 @@ import { ResetPassword } from './components/Auth/ResetPassword';
 import { OrganizationList } from './components/Organizations/OrganizationList';
 import { OrganizationDetail } from './components/Organizations/OrganizationDetail';
 import { OrganizationSwitcher } from './components/Organizations/OrganizationSwitcher';
+import { ClusterView } from './components/ClusterView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { OrganizationProvider, useOrganization } from './contexts/OrganizationContext';
 import { useState, useEffect } from 'react';
@@ -88,6 +89,7 @@ function NavBar() {
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/jobs`}>Jobs</Button>
 
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/workers`}>Workers</Button>
+                        <Button color="inherit" component={Link} to={`/${currentOrganization.id}/cluster`}>Cluster</Button>
                         <Button color="inherit" component={Link} to={`/${currentOrganization.id}/costs`}>Costs</Button>
                     </>
                 )}
@@ -184,6 +186,7 @@ function OrganizationRoutes() {
             <Route path="costs" element={<CostsView />} />
             <Route path="workers" element={<WorkersView />} />
             <Route path="workers/:workerId" element={<WorkerDetailView />} />
+            <Route path="cluster" element={<ClusterView />} />
             <Route path="runs/:runId" element={<RunDetailView />} />
             <Route path="settings" element={<OrganizationDetail />} />
             <Route path="/" element={<Navigate to="jobs" />} />
