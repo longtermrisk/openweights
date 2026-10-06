@@ -398,6 +398,19 @@ export const api = {
         }
     },
 
+    getClusterLogs: async (orgId: string): Promise<string> => {
+        try {
+            const config = await getAuthHeaders();
+            const response = await axios.get(`${API_URL}/organizations/${orgId}/cluster/logs`, {
+                ...config,
+                responseType: 'text'
+            });
+            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
     shutdownWorker: async (orgId: string, workerId: string) => {
         try {
             const config = await getAuthHeaders();
