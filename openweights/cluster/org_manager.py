@@ -27,6 +27,7 @@ from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
     is_spending_limit_error,
+    normalize_hardware_type,
     parse_hardware_config,
     populate_hardware_config,
 )
@@ -374,6 +375,42 @@ class OrganizationManager:
                     "id", worker["id"]
                 ).execute()
 
+    def normalize_allowed_hardware(self, pending_jobs):
+        """Rewrite allowed_hardware aliases to canonical names; fail jobs with unknown GPUs.
+
+        Jobs can reach the queue without going through the client's validation (older
+        clients, direct inserts). An unknown hardware string would otherwise crash
+        provisioning and put perfectly fine GPU types on a failure cooldown, and a
+        worker would never match an alias like '1x A100 80GB' against its '1x A100'.
+        """
+        valid_jobs = []
+        for job in pending_jobs:
+            allowed_hardware = job.get("allowed_hardware")
+            if not allowed_hardware:
+                valid_jobs.append(job)
+                continue
+            try:
+                normalized = [normalize_hardware_type(hw) for hw in allowed_hardware]
+            except ValueError as e:
+                logger.error("Failing job %s: %s", job["id"], e)
+                self._ow._supabase.table("jobs").update(
+                    {"status": "failed", "outputs": {"error": str(e)}}
+                ).eq("id", job["id"]).eq("status", "pending").execute()
+                continue
+            if normalized != allowed_hardware:
+                logger.info(
+                    "Normalizing allowed_hardware of job %s: %s -> %s",
+                    job["id"],
+                    allowed_hardware,
+                    normalized,
+                )
+                self._ow._supabase.table("jobs").update(
+                    {"allowed_hardware": normalized}
+                ).eq("id", job["id"]).execute()
+                job["allowed_hardware"] = normalized
+            valid_jobs.append(job)
+        return valid_jobs
+
     def group_jobs_by_hardware_requirements(self, pending_jobs):
         """Group jobs by their hardware requirements."""
         job_groups = {}
@@ -700,7 +737,7 @@ class OrganizationManager:
             # Get active workers and pending jobs
             self.enforce_spending_limits()
             running_workers = self.get_running_workers()
-            pending_jobs = self.get_pending_jobs()
+            pending_jobs = self.normalize_allowed_hardware(self.get_pending_jobs())
 
             # Log status
             status_counts: dict[str, int] = {}
