@@ -6,6 +6,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from postgrest.exceptions import APIError
 
+from cluster_logs import read_cluster_log
 from database import Database
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -426,6 +427,28 @@ def get_worker_logs(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get(
+    "/organizations/{organization_id}/cluster/logs",
+    response_class=PlainTextResponse,
+)
+def get_cluster_logs(
+    organization_id: str,
+    lines: int = Query(5000, ge=1, le=20000),
+    db: Database = Depends(get_db),
+):
+    """Tail of the cluster manager log for this organization."""
+    try:
+        has_access = db.verify_organization_access(organization_id)
+    except Exception:
+        has_access = False
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this organization")
+    try:
+        return read_cluster_log(organization_id, lines)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Organization not found")
 
 
 @app.post("/organizations/{organization_id}/workers/{worker_id}/shutdown")
