@@ -89,8 +89,8 @@ class ManagerSupervisor:
         logger_name = f"org_manager_{org_id}_{stream_name}"
         output_logger = logging.getLogger(logger_name)
         if not output_logger.handlers:
-            log_dir = Path("logs")
-            log_dir.mkdir(exist_ok=True)
+            log_dir = Path(os.environ.get("OW_ORG_MANAGER_LOG_DIR", "logs"))
+            log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / f"org_{org_id}_{stream_name}.log"
             handler = RotatingFileHandler(log_file, maxBytes=2_000_000, backupCount=5)
             formatter = logging.Formatter("%(asctime)s - %(message)s")

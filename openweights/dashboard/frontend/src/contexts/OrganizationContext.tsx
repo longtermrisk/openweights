@@ -66,10 +66,15 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const handleSetOrganization = (org: Organization) => {
     console.log('Setting organization:', org);
     setCurrentOrganization(org);
-    // If we're on the organizations page, navigate to jobs
-    if (location.pathname === '/organizations') {
-      navigate(`/${org.id}/jobs`);
+    // The org id in the URL is the source of truth (OrganizationRoutes resets the
+    // current org from it), so switching has to navigate. Stay in the same section,
+    // but drop detail ids like a job id, which belong to the previous org.
+    const [, urlOrgId, section] = location.pathname.split('/');
+    if (urlOrgId === org.id) {
+      return;
     }
+    const sections = ['jobs', 'workers', 'cluster', 'costs', 'settings'];
+    navigate(`/${org.id}/${sections.includes(section) ? section : 'jobs'}`);
   };
 
   return (
