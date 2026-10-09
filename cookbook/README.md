@@ -14,6 +14,7 @@ This folder contains examples that demonstrate usgae of openweights features.
     - [Minimal example](api-deployment/context_manager_api.py) to deploy a huggingface model as openai-compatible vllm API
     - Starting a [gradio playground](api-deployment/gradio_ui.py) to chat with multiple LoRA finetunes of the same parent model
 - [Writing a custom job](custom_job)
+- [Submitting parametric fine-tuning sweeps](SWEEPS.md) — dataset × hyperparameter matrices, manifests, idempotency, and downstream inference
 
 
 ## Data formats
