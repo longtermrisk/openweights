@@ -76,6 +76,25 @@ v0.13.1.
 Choosing a new token's initial budget uses existing token-creation permissions.
 Changing or removing an existing budget still requires a signed-in admin user.
 
+**A budgeted key is not an organization admin** (migration
+`20261010000000_api_key_budget_containment.sql`). It can still submit and manage
+jobs and files, but it cannot read organization secrets, manage members, write or
+revoke API keys, or create an unbudgeted key. It may create a key only with
+`--spending-limit-usd` no larger than its own remaining budget, and that amount is
+moved out of its own limit:
+
+```sh
+# with a key that has $10 left
+ow token create --name child --spending-limit-usd 4   # child gets $4, this key keeps $6
+ow token create --name child2                          # refused: no unbudgeted keys
+```
+
+The total budget of a key and everything created from it therefore never exceeds
+what an admin granted. Unbudgeted keys and signed-in admin users are unaffected.
+Setting a limit on a key takes away its admin rights immediately, so do not put a
+limit on the key an organization's manager uses (`OPENWEIGHTS_API_KEY` in its
+secrets).
+
 A signed-in organization **admin user** can choose an API key in the Costs page and
 save a lifetime USD limit. `0` blocks work; blank removes the limit. API-key logins
 can view costs but cannot edit budgets, even though older organization APIs treat
@@ -108,10 +127,9 @@ For example, if 60 out of 100 jobs have completed when a key exhausts its budget
 the 60 completed jobs remain completed and the remaining queued/running jobs are
 marked `canceled`. Jobs attributed to other keys are unaffected. Previously canceled
 jobs require an explicit restart after increasing a limit.
-Limits attach to individual keys, not to all credentials held by a person; this
-feature does not turn the existing organization-admin API keys into untrusted,
-restricted credentials. Use independently managed keys and trusted organization
-members. Unallocated overhead cannot be assigned to a key or user.
+Limits attach to individual keys, not to all credentials held by a person: a
+person who also holds an unbudgeted key or an admin login is not limited by it.
+Unallocated overhead cannot be assigned to a key or user.
 
 ## Rollout
 
