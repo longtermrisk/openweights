@@ -143,6 +143,12 @@ def db():
                 ROOT / "supabase/migrations/20260922180000_token_creation_limit.sql"
             ).read_text()
         )
+        sql(
+            (
+                ROOT
+                / "supabase/migrations/20261010000000_api_key_budget_containment.sql"
+            ).read_text()
+        )
         sql(f"""
             INSERT INTO organizations(id,name) VALUES ('{ORG}','test'), ('{OTHER}','other');
             INSERT INTO auth.users(id) VALUES ('{USER}');
@@ -482,3 +488,120 @@ def test_hundred_jobs_exhausted_after_sixty_preserves_completed_and_other_keys(d
         claims=claims(),
         error=True,
     )
+
+
+SIBLING = "00000000-0000-0000-0000-000000000005"
+
+
+def budget_key(db, limit="10"):
+    """Give KEY a human-set budget and add an unbudgeted sibling key in the org."""
+    db(f"SELECT set_spending_limit('{ORG}','{KEY}',{limit})", claims={"sub": USER})
+    db(
+        f"""INSERT INTO api_tokens(id,organization_id,name,token_prefix,token_hash,created_by)
+        VALUES ('{SIBLING}','{ORG}','sibling','ow_sib','sibling-hash','{USER}')"""
+    )
+
+
+def test_budgeted_key_cannot_mint_unbudgeted_key(db):
+    budget_key(db)
+    assert "Budgeted API keys" in db(
+        f"SELECT * FROM create_api_token('{ORG}','escape')", claims=claims(), error=True
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='escape'") == "0"
+
+
+def test_budgeted_key_cannot_write_token_rows_directly(db):
+    budget_key(db)
+    db(
+        f"""INSERT INTO api_tokens(organization_id,name,token_prefix,token_hash,created_by)
+        VALUES ('{ORG}','direct','ow_x','attacker-hash','{USER}')""",
+        claims=claims(),
+        error=True,
+    )
+    # Taking over an unbudgeted sibling by swapping its hash must not work either.
+    db(
+        f"UPDATE api_tokens SET token_hash='attacker-hash' WHERE id='{SIBLING}'",
+        claims=claims(),
+    )
+    assert db(f"SELECT token_hash FROM api_tokens WHERE id='{SIBLING}'") == "sibling-hash"
+    assert db("SELECT count(*) FROM api_tokens WHERE token_hash='attacker-hash'") == "0"
+
+
+def test_budgeted_key_cannot_become_admin_or_read_provider_secrets(db):
+    budget_key(db)
+    db(
+        f"INSERT INTO organization_secrets(organization_id,name,value) VALUES ('{ORG}','RUNPOD_API_KEY','rp')"
+    )
+    assert db("SELECT count(*) FROM organization_secrets", claims=claims()) == "0"
+    db(
+        f"INSERT INTO organization_members(organization_id,user_id,role) VALUES ('{ORG}','{OTHER}','admin')",
+        claims=claims(),
+        error=True,
+    )
+
+
+def test_budgeted_key_sub_key_is_capped_by_and_carved_from_remaining_budget(db):
+    budget_key(db, "10")
+    add_worker(db)
+    add_job(db)
+    db("INSERT INTO runs(job_id,worker_id,status) VALUES ('job','worker','completed')")
+    db("UPDATE cost_runs SET started_at=now()-interval '1 hour', ended_at=now()")
+    # 4h worker at $2/h, all of it attributed to KEY's only job: ~$8 spent, ~$2 left.
+    assert "remaining budget" in db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','too-big',3)",
+        claims=claims(),
+        error=True,
+    )
+    assert db("SELECT count(*) FROM api_tokens WHERE name='too-big'") == "0"
+    child = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','child',1.5)",
+        claims=claims(),
+    )
+    assert db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{child}'") == "1.5"
+    # The delegated amount leaves the parent, so repeated minting cannot multiply it.
+    assert db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{KEY}'") == "8.5"
+    assert "remaining budget" in db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','second',1)",
+        claims=claims(),
+        error=True,
+    )
+
+
+def test_children_of_children_stay_within_the_root_budget(db):
+    budget_key(db, "10")
+    child = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','child',4)",
+        claims=claims(),
+    )
+    db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','grandchild',4)",
+        claims=claims(key=child),
+    )
+    assert "Budgeted API keys" in db(
+        f"SELECT * FROM create_api_token('{ORG}','escape')",
+        claims=claims(key=child),
+        error=True,
+    )
+    assert db("SELECT sum(limit_usd) FROM spending_limits") == "10"
+
+
+def test_human_admin_and_unbudgeted_key_keep_full_power(db):
+    # Signed-in admin: unbudgeted keys and any initial budget, nothing carved.
+    db(f"SELECT * FROM create_api_token('{ORG}','human')", claims={"sub": USER})
+    db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','human-limited',1000)",
+        claims={"sub": USER},
+    )
+    # An unbudgeted key (what `ow token create` uses) is unchanged.
+    db(f"SELECT * FROM create_api_token('{ORG}','from-key')", claims=claims())
+    db(
+        f"SELECT * FROM create_api_token_with_limit('{ORG}','from-key-limited',1000)",
+        claims=claims(),
+    )
+    assert db("SELECT count(*) FROM spending_limits") == "2"
+    human = db("SELECT id FROM api_tokens WHERE name='human'")
+    assert db(f"SELECT revoke_api_token('{human}')", claims=claims()) == "t"
+    db(
+        f"INSERT INTO organization_secrets(organization_id,name,value) VALUES ('{ORG}','RUNPOD_API_KEY','rp')"
+    )
+    assert db("SELECT count(*) FROM organization_secrets", claims=claims()) == "1"
