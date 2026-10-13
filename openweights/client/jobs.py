@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Any, Dict, List, Type
 
@@ -34,7 +34,17 @@ class Job:
     timeout: datetime | None
     allowed_hardware: List[str] | None = None
 
+    submitted_by: str | None = None
+    api_token_id: str | None = None
+
     _manager: "Jobs" = None
+
+    @classmethod
+    def from_row(cls, row: Dict[str, Any], manager: "Jobs") -> "Job":
+        """Build a Job from a database row, ignoring columns this client does not
+        know about, so adding a column to the jobs table does not break clients."""
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in row.items() if k in known}, _manager=manager)
 
     def _update(self, job):
         self.__dict__.update(job.__dict__)
@@ -134,7 +144,7 @@ class Jobs:
             .limit(limit)
             .execute()
         )
-        return [Job(**row, _manager=self) for row in result.data]
+        return [Job.from_row(row, self) for row in result.data]
 
     @supabase_retry()
     def retrieve(self, job_id: str) -> Dict[str, Any]:
@@ -146,7 +156,7 @@ class Jobs:
             .single()
             .execute()
         )
-        return Job(**result.data, _manager=self)
+        return Job.from_row(result.data, self)
 
     @supabase_retry()
     def cancel(self, job_id: str) -> Dict[str, Any]:
@@ -159,7 +169,7 @@ class Jobs:
             .execute()
         )
         logger.info(f"Job canceled: {job_id}")
-        return Job(**result.data[0], _manager=self)
+        return Job.from_row(result.data[0], self)
 
     @supabase_retry()
     def restart(self, job_id: str) -> Dict[str, Any]:
@@ -172,7 +182,7 @@ class Jobs:
             .execute()
         )
         logger.info(f"Job restarted: {job_id}")
-        return Job(**result.data[0], _manager=self)
+        return Job.from_row(result.data[0], self)
 
     def compute_id(self, data: Dict[str, Any], docker_image: str = None) -> str:
         """Compute job ID from data"""
@@ -225,7 +235,7 @@ class Jobs:
                 )
                 result = self._ow._supabase.table("jobs").insert(data).execute()
                 logger.info(f"Job created: {data['id']}")
-                return Job(**result.data[0], _manager=self)
+                return Job.from_row(result.data[0], self)
             else:
                 raise
         job = result.data
@@ -253,7 +263,7 @@ class Jobs:
                 .eq("id", data["id"])
                 .execute()
             )
-            return Job(**result.data[0], _manager=self)
+            return Job.from_row(result.data[0], self)
         elif job["status"] in ["pending", "in_progress", "completed"]:
             # Update fields if they've changed
             if needs_update:
@@ -267,8 +277,8 @@ class Jobs:
                     .eq("id", data["id"])
                     .execute()
                 )
-                return Job(**result.data[0], _manager=self)
-            return Job(**job, _manager=self)
+                return Job.from_row(result.data[0], self)
+            return Job.from_row(job, self)
         else:
             raise ValueError(f"Invalid job status: {job['status']}")
 
@@ -294,7 +304,7 @@ class Jobs:
 
         data = query.execute().data
 
-        return [Job(**row, _manager=self) for row in data]
+        return [Job.from_row(row, self) for row in data]
 
     def create(self, **params) -> Dict[str, Any]:
         """Create and submit a custom job.

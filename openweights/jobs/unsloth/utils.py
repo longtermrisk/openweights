@@ -25,6 +25,21 @@ def get_fallback_chat_template_model(model_id):
     return None
 
 
+def _refresh_unsloth_layer_devices(model):
+    """Re-record each decoder layer's device after moving the model.
+
+    Unsloth records the device of every decoder layer in from_pretrained, and its fast
+    generation path moves activations to that recorded device. A model loaded on CPU
+    and then moved with model.to("cuda") keeps the stale CPU record, so generate()
+    fails with "Expected all tensors to be on the same device, cuda:0 and cpu".
+    """
+    from unsloth_zoo.patching_utils import verify_and_set_device
+
+    for module in model.modules():
+        if "_per_layer_device_index" in module.__dict__:
+            verify_and_set_device(module)
+
+
 def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
     from unsloth import FastLanguageModel, is_bfloat16_supported
 
@@ -41,6 +56,7 @@ def load_model_and_tokenizer(model_id, load_in_4bit=False, max_seq_length=2048):
         not load_in_4bit
     ):  # we get an error otherwise, but the 4bit models are automatically placed on cuda
         model = model.to("cuda")
+        _refresh_unsloth_layer_devices(model)
     # Unsloth may return a multimodal processor (e.g. Qwen3VLProcessor) instead
     # of a tokenizer for some models. Extract the underlying tokenizer.
     if hasattr(tokenizer, "tokenizer") and not hasattr(tokenizer, "pad"):
