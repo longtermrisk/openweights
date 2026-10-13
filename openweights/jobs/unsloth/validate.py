@@ -27,6 +27,24 @@ class TrainingConfig(BaseModel):
     )
     job_id_suffix: Optional[str] = Field(None, description="Suffix for the job id")
 
+    # Per-job HF upload overrides. If unset, the worker falls back to the
+    # pod-env HF_TOKEN and the client's org-level hf_org.
+    hf_token: Optional[str] = Field(
+        None,
+        description=(
+            "Optional HF token used only for pushing the fine-tuned model to "
+            "the Hub. If not set, the worker uses os.environ['HF_TOKEN']. "
+            "The base model download always uses the pod-env token."
+        ),
+    )
+    hf_org: Optional[str] = Field(
+        None,
+        description=(
+            "Optional HF org/user namespace for the {org_id} slot in "
+            "finetuned_model_id. Overrides the client's org-level hf_org."
+        ),
+    )
+
     # Model configuration
     max_seq_length: int = Field(
         2048, description="Maximum sequence length for training"
