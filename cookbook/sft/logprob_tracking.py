@@ -1,3 +1,4 @@
+import math
 import os
 import time
 
@@ -41,6 +42,23 @@ def wait_for_completion(job):
     return job
 
 
+def verify(job):
+    """Check that log-probs were logged during training and that the trained-on
+    "<response>" prefix became more likely."""
+    events = [event["data"] for event in ow.events.list(run_id=job.runs[-1].id)]
+    by_step = {}
+    for data in events:
+        if data.get("type") == "logprob_block" and data.get("tag") == "prefix":
+            assert math.isfinite(data["logprobs"]), data
+            by_step.setdefault(data["step"], []).append(data["logprobs"])
+    steps = sorted(by_step)
+    assert steps and steps[0] == 0 and len(steps) > 2, f"Logged steps: {steps}"
+    first = sum(by_step[steps[0]]) / len(by_step[steps[0]])
+    last = sum(by_step[steps[-1]]) / len(by_step[steps[-1]])
+    print(f"Mean log p('<response>'): step 0 {first:.3f}, step {steps[-1]} {last:.3f}")
+    assert last > first, "Log-probs did not reflect training"
+
+
 def plot_metrics(job, target_dir="outputs/logp_tracking"):
     os.makedirs(target_dir, exist_ok=True)
     events = ow.events.list(run_id=job.runs[-1].id)
@@ -82,6 +100,7 @@ def plot_metrics(job, target_dir="outputs/logp_tracking"):
 if __name__ == "__main__":
     job = submit_job()
     job = wait_for_completion(job)
+    verify(job)
     plot_metrics(job)
     # Optionally download all artifacts
     job.download("outputs/logp_tracking", only_last_run=False)

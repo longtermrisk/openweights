@@ -110,6 +110,7 @@ class IntegrationTestRunner:
         (self.logs_dir / "cookbook").mkdir(exist_ok=True)
 
     DOCKER_BUILD_TIMEOUT_SECONDS = 3600
+    COOKBOOK_SCRIPT_TIMEOUT_SECONDS = 900
 
     def backup_env(self):
         """Backup .env.worker file"""
@@ -1109,8 +1110,27 @@ print("cluster runtime validation ok")
                     )
 
                     logs = ""
+                    error = None if is_success else f"Job {status}"
                     if not is_success:
                         logs = self._fetch_run_logs(ow, job_id)
+                    elif process is not None:
+                        # Examples check their results after the job finishes
+                        # (e.g. that callbacks logged events), so a completed
+                        # job only counts once the script itself exits cleanly.
+                        try:
+                            returncode = process.wait(
+                                timeout=self.COOKBOOK_SCRIPT_TIMEOUT_SECONDS
+                            )
+                        except subprocess.TimeoutExpired:
+                            returncode = None
+                        if returncode != 0:
+                            status = "script_failed"
+                            error = f"Script exited with {returncode}"
+                            log_path = self.logs_dir / f"{log_name}.log"
+                            if log_path.exists():
+                                lines = log_path.read_text(errors="replace")
+                                logs = "\n".join(lines.splitlines()[-100:])
+                            is_success = False
 
                     if process is not None and process.poll() is None:
                         self._cleanup_subprocess(process, timeout=5)
@@ -1121,7 +1141,7 @@ print("cluster runtime validation ok")
                         "status": "completed" if is_success else status,
                         "logs": logs,
                         "duration": duration,
-                        "error": None if is_success else f"Job {status}",
+                        "error": error,
                     }
 
                 elapsed = time.time() - poll_start
@@ -1161,7 +1181,13 @@ print("cluster runtime validation ok")
 
             if status == "completed":
                 status_display = f"✓ {status}"
-            elif status in ("failed", "canceled", "timeout", "no_job_found"):
+            elif status in (
+                "failed",
+                "canceled",
+                "timeout",
+                "no_job_found",
+                "script_failed",
+            ):
                 status_display = f"✗ {status}"
             else:
                 status_display = f"⧗ {status}"

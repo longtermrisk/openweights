@@ -173,7 +173,25 @@ GPU_COST_PER_HOUR: Dict[str, float] = {
 }
 _DEFAULT_GPU_COST = 999.0  # fallback for unlisted GPUs
 GPU_COUNT = 1
-allowed_cuda_versions = ["12.8"]
+# CUDA versions RunPod reports for a host's driver. A driver runs images built for its
+# CUDA version or older, so each image gets every version at or above its own.
+RUNPOD_CUDA_VERSIONS = ["12.8", "12.9", "13.0", "13.1", "13.2"]
+allowed_cuda_versions = RUNPOD_CUDA_VERSIONS
+
+
+def allowed_cuda_versions_for(image: str, gpu: str) -> List[str]:
+    """Host CUDA versions that can start `image` on `gpu` (a RunPod GPU type id).
+
+    The vLLM image is based on vllm/vllm-openai, whose NVIDIA_REQUIRE_CUDA is
+    "cuda>=13.0", with exceptions for older driver branches (535 to 575) that apply to
+    datacenter and professional GPUs only (CUDA forward compatibility). A GeForce card
+    on a CUDA 12.x host therefore never starts the container: the worker never pings
+    and the cluster manager replaces the pod every 10 minutes indefinitely.
+    """
+    minimum = "13.0" if "ow-vllm" in image and "GeForce" in gpu else "12.8"
+    return RUNPOD_CUDA_VERSIONS[RUNPOD_CUDA_VERSIONS.index(minimum) :]
+
+
 HARDWARE_REFRESH_INTERVAL_SECONDS = int(
     os.getenv("OW_RUNPOD_HARDWARE_REFRESH_INTERVAL_SECONDS", "900")
 )
@@ -738,7 +756,7 @@ def _start_worker(
         volume_in_gb=volume_in_gb,
         volume_mount_path="/workspace",
         gpu_count=count,
-        allowed_cuda_versions=allowed_cuda_versions,
+        allowed_cuda_versions=allowed_cuda_versions_for(image, gpu),
         data_center_id=RUNPOD_DATA_CENTER_ID,
         country_code=RUNPOD_COUNTRY_CODE,
         min_download=int(RUNPOD_MIN_DOWNLOAD) if RUNPOD_MIN_DOWNLOAD else None,

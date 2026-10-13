@@ -220,3 +220,17 @@ def test_cooldown_duration_escalates_per_provisioning_failure_wave() -> None:
     until_fourth = registry.get_cooldown_info("1x L40")
     assert until_fourth is not None
     assert until_fourth == pytest.approx(1103.0)
+
+
+def test_vllm_image_on_geforce_only_gets_cuda_13_hosts():
+    from openweights.cluster.start_runpod import allowed_cuda_versions_for
+
+    vllm, unsloth = "nielsrolf/ow-vllm:v0.14.0", "nielsrolf/ow-unsloth:v0.14.0"
+    assert allowed_cuda_versions_for(vllm, "NVIDIA GeForce RTX 3090") == [
+        "13.0",
+        "13.1",
+        "13.2",
+    ]
+    # Datacenter GPUs run it on 12.x drivers through CUDA forward compatibility.
+    assert "12.8" in allowed_cuda_versions_for(vllm, "NVIDIA H100 NVL")
+    assert "12.8" in allowed_cuda_versions_for(unsloth, "NVIDIA GeForce RTX 3090")

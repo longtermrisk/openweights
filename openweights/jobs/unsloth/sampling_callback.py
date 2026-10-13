@@ -5,6 +5,7 @@ import os
 import torch
 import torch.nn.functional as F
 from transformers import TrainerCallback
+from unsloth import FastLanguageModel
 from utils import client, load_jsonl
 
 
@@ -18,17 +19,9 @@ def _sample(
     stop=[],
     prefix="",
 ):
-    # Workaround for unsloth bug #3538: FastLanguageModel.for_inference corrupts
-    # device placement. We manually fix _per_layer_device_index on all layers.
-    was_training = model.training
-    model.eval()
-    # Fix unsloth's device tracking which can be None during training
-    for module in model.modules():
-        if (
-            hasattr(module, "_per_layer_device_index")
-            and module._per_layer_device_index is None
-        ):
-            module._per_layer_device_index = 0
+    is_training = model.training
+    if is_training:
+        FastLanguageModel.for_inference(model)
     texts = []
     for conversation in conversations:
         messages = conversation["messages"]
@@ -60,15 +53,14 @@ def _sample(
         "attention_mask": attention_mask,
         "stop_strings": [tokenizer.eos_token],
         "tokenizer": tokenizer,
-        "use_cache": False,  # bypass unsloth's fast inference path which has shape bugs
     }
     with torch.no_grad():
         output_sequences = model.generate(input_ids=input_ids, **gen_kwargs)
     decoded_outputs = tokenizer.batch_decode(
         output_sequences[:, input_ids.shape[1] :], skip_special_tokens=True
     )
-    if was_training:
-        model.train()
+    if is_training:
+        FastLanguageModel.for_training(model)
     return [prefix + output for output in decoded_outputs]
 
 

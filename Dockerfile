@@ -36,7 +36,7 @@ RUN python3 -m pip uninstall --break-system-packages -y spin && \
     python3 -m venv --system-site-packages /opt/venv && \
     /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip && \
     /opt/venv/bin/python -m pip install --no-cache-dir \
-        "unsloth[cu128-torch2100]==2026.9.2" \
+        "unsloth[cu128-torch2100]==2026.10.4" "unsloth_zoo==2026.10.4" \
         "huggingface-hub>=1.23,<2" "safetensors>=0.8" hf_transfer -e . && \
     /opt/venv/bin/python -m pip check
 
