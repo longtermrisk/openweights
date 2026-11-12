@@ -23,6 +23,7 @@ from openweights.client import (
     OpenWeights,
 )
 from openweights.client.decorators import supabase_retry
+from openweights.client.jobs import JOB_SELECT, priority_sort_key, with_priority
 from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
@@ -201,17 +202,18 @@ class OrganizationManager:
 
     @supabase_retry()
     def get_pending_jobs(self):
-        """Get all pending jobs for this organization."""
-        return (
+        """Get all pending jobs for this organization, in scheduling order:
+        highest priority first, so that those jobs get workers first when the
+        number of workers is limited."""
+        jobs = (
             self._ow._supabase.table("jobs")
-            .select("*")
+            .select(JOB_SELECT)
             .eq("organization_id", self.org_id)
             .eq("status", "pending")
-            .order("requires_vram_gb", desc=True)
-            .order("created_at", desc=False)
             .execute()
             .data
         )
+        return sorted((with_priority(job) for job in jobs), key=priority_sort_key)
 
     @supabase_retry()
     def get_idle_workers(self, running_workers):
