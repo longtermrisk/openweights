@@ -68,6 +68,7 @@ OpenWeights follows a queue-based architecture with three main components:
 - `events`: Structured logs and outputs from runs
 - `files`: File metadata (actual files stored in Supabase Storage)
 - `worker`: Worker registration and health tracking
+- `job_priority`: Optional priority per job (jobs without a row have priority 0)
 - `organizations`: Multi-tenant isolation
 - `organization_secrets`: API keys and credentials (HF_TOKEN, RUNPOD_API_KEY, etc.)
 - `service_account_tokens`: JWT tokens for API authentication
@@ -110,6 +111,7 @@ OpenWeights follows a queue-based architecture with three main components:
 2. **Job Acquisition:**
    - Polls database for pending jobs matching its Docker image
    - Filters by hardware compatibility (VRAM or `allowed_hardware`)
+   - Keeps only the jobs with the highest priority (see "Job Priority")
    - Prefers jobs with cached models
    - Uses `acquire_job()` RPC for atomic job claiming
 
@@ -328,6 +330,19 @@ The `openweights/jobs/` directory contains several built-in job implementations:
 - Workers filter jobs by Docker image first
 - Then by hardware compatibility (VRAM or `allowed_hardware` match)
 - Prefer jobs with cached models
+
+## Job Priority
+
+- Every job has an integer priority (default 0); pending jobs with a higher priority are started first.
+- Set at submission (`ow.<job_type>.create(..., priority=10)`, `ow exec --priority 10`) or later
+  (`job.set_priority(n)`, `ow.jobs.set_priority(job_id, n)`); exposed as `job.priority`.
+- Stored in the `job_priority` table (`job_id` → `priority`, RLS via the job's organization), **not** as a
+  `jobs` column: SDKs <= 0.13.7 build `Job` from all columns of a jobs row and crash on unknown ones.
+  Jobs are read together with their priority via `JOB_SELECT` (`"*, job_priority(priority)"`) and
+  `with_priority()` in `client/jobs.py`.
+- The priority is not part of the content hash, so it does not change the job ID.
+- Workers pick only among the highest-priority pending jobs they can run; the cluster manager orders pending
+  jobs by priority (then VRAM, then age) before provisioning. Running jobs are never preempted.
 
 ## Fault Tolerance
 

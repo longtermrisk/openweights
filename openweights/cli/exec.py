@@ -23,6 +23,12 @@ def add_exec_parser(parser):
         help="Allowed hardware configurations (e.g., '2x A100'). Can be specified multiple times.",
     )
     parser.add_argument(
+        "--priority",
+        type=int,
+        default=None,
+        help="Job priority; pending jobs with a higher priority are started first (default: 0).",
+    )
+    parser.add_argument(
         "--wait",
         action="store_true",
         help="Wait for job completion and stream logs.",
@@ -51,6 +57,8 @@ def handle_exec(args) -> int:
     job_params = {"command": args.command}
     if args.allowed_hardware:
         job_params["allowed_hardware"] = args.allowed_hardware
+    if args.priority is not None:
+        job_params["priority"] = args.priority
 
     print(f"[ow] Submitting job: {args.command}")
     job = exec_job.create(**job_params)
