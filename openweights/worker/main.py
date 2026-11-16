@@ -19,6 +19,7 @@ import torch
 
 from openweights.client import Files, OpenWeights, Run
 from openweights.client.decorators import supabase_retry
+from openweights.client.jobs import JOB_SELECT, with_priority
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
 from openweights.worker.gpu_reclaim import ForeignGpuHolderError, reclaim_gpu
@@ -404,7 +405,7 @@ class Worker:
         """Fetch pending jobs from database with retry logic."""
         return (
             self._ow._supabase.table("jobs")
-            .select("*")
+            .select(JOB_SELECT)
             .eq("status", "pending")
             .eq("docker_image", self.docker_image)
             .order("requires_vram_gb", desc=True)
@@ -414,9 +415,12 @@ class Worker:
         )
 
     def _find_job(self):
-        """Fetch pending jobs for this docker image, sorted by required VRAM desc, then oldest first."""
+        """Pick a pending job for this docker image that fits this worker's hardware.
+
+        Only jobs with the highest priority among the suitable ones are considered;
+        among those, a job whose model is already cached is preferred."""
         logging.info("Fetching jobs from the database...")
-        jobs = self._fetch_pending_jobs()
+        jobs = [with_priority(job) for job in self._fetch_pending_jobs()]
         logging.info(f"Fetched {len(jobs)} pending jobs from the database")
 
         # Further filter jobs by hardware requirements
@@ -436,11 +440,20 @@ class Worker:
             f"Found {len(suitable_jobs)} suitable jobs after hardware filtering"
         )
 
-        # Shuffle suitable jobs to get different workers to cache different models
-        random.shuffle(suitable_jobs)
-
         if not suitable_jobs:
             return None
+
+        # Higher priority jobs go first
+        top_priority = max(job["priority"] for job in suitable_jobs)
+        suitable_jobs = [
+            job for job in suitable_jobs if job["priority"] == top_priority
+        ]
+        logging.info(
+            f"{len(suitable_jobs)} suitable jobs have the highest priority ({top_priority})"
+        )
+
+        # Shuffle suitable jobs to get different workers to cache different models
+        random.shuffle(suitable_jobs)
 
         # Prefer a job with a cached model
         for j in suitable_jobs:

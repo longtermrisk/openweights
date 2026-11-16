@@ -44,6 +44,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
         requires_vram_gb="guess",
         allowed_hardware=None,
         docker_image=None,
+        priority=None,
         **params,
     ) -> Dict[str, Any]:
         """Create an inference job"""
@@ -86,6 +87,7 @@ class InferenceJobs(Jobs, OpenAIInferenceSupport):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
+            "priority": priority,
             "docker_image": docker_image or self.base_image,
             "script": self.get_entrypoint(InferenceConfig(**params)),
         }

@@ -170,6 +170,25 @@ For developing custom jobs, `ow ssh` is great - it starts a pod, connects via ss
 ### Job and file IDs are content hashes
 The `job_id` is based on the params hash, which means that if you submit the same job many times, it will only run once. If you resubmit a failed or canceled job, it will reset the job status to `pending`.
 
+### Job priority
+Pending jobs with a higher `priority` are started first. The priority is an integer, the default is `0`, and negative values put a job behind everything else:
+```python
+job = ow.fine_tuning.create(model=model, training_file=file_id, priority=10)   # any job type accepts priority=
+job = ow.jobs.retrieve(job_id)
+job.set_priority(-1)                  # change it later, e.g. for a job that is still pending
+ow.jobs.set_priority(job_id, 5)       # same, by ID
+print(job.priority)
+```
+```bash
+ow exec "python train.py" --priority 10
+```
+How it works:
+- Priorities are compared within one organization. When a worker looks for its next job, it takes one with the highest priority among the pending jobs it can run (matching Docker image and hardware). Among jobs of equal priority the behavior is unchanged: a job whose model the worker has cached is preferred, otherwise the choice is random.
+- The cluster manager starts workers for the highest-priority jobs first when the organization is at its worker limit.
+- Running jobs are never preempted: a high-priority job waits until a suitable worker is free or has been started.
+- The priority is not part of the job ID. Resubmitting an identical job with a different `priority` updates the existing job; resubmitting without `priority` keeps the one it has.
+- Requires the worker images of `openweights>=0.15.0` (the default for jobs submitted with that SDK) and the `job_priority` database migration; older workers ignore priorities.
+
 ---
 ### Citation
 Originally created by Niels Warncke ([@nielsrolf](github.com/nielsrolf)).

@@ -27,7 +27,12 @@ class FineTuning(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb=24, allowed_hardware=None, docker_image=None, **params
+        self,
+        requires_vram_gb=24,
+        allowed_hardware=None,
+        docker_image=None,
+        priority=None,
+        **params,
     ) -> Dict[str, Any]:
         """Create a fine-tuning job"""
         docker_image = docker_image or self.base_image
@@ -72,6 +77,7 @@ class FineTuning(Jobs):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
+            "priority": priority,
             "docker_image": docker_image,
             "script": f"accelerate launch training.py {job_id}",
         }
@@ -100,7 +106,7 @@ class LogProb(Jobs):
 
     @supabase_retry()
     def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, **params
+        self, requires_vram_gb="guess", allowed_hardware=None, priority=None, **params
     ) -> Dict[str, Any]:
         """Create a logprob evaluation job"""
         if requires_vram_gb == "guess":
@@ -119,6 +125,7 @@ class LogProb(Jobs):
             "status": "pending",
             "requires_vram_gb": requires_vram_gb,
             "allowed_hardware": allowed_hardware,
+            "priority": priority,
             "docker_image": self.base_image,
             "script": f"python logprobs.py {job_id}",
         }

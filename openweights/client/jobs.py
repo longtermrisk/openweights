@@ -15,6 +15,42 @@ from openweights.images import OW_UNSLOTH_IMAGE
 
 logger = logging.getLogger(__name__)
 
+# Jobs rows together with their priority, which lives in the job_priority table
+# (see supabase/migrations/20261112000000_job_priority.sql).
+JOB_SELECT = "*, job_priority(priority)"
+
+
+def validate_priority(priority) -> int:
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise ValueError(f"priority must be an integer, got {priority!r}")
+    if not -(2**31) <= priority < 2**31:
+        raise ValueError(f"priority out of range: {priority}")
+    return priority
+
+
+def with_priority(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a jobs row fetched with JOB_SELECT with the embedded job_priority
+    record flattened into an integer ``priority`` (0 if the job has none)."""
+    row = dict(row)
+    embedded = row.pop("job_priority", None)
+    if isinstance(embedded, list):
+        embedded = embedded[0] if embedded else None
+    if embedded:
+        row["priority"] = embedded.get("priority") or 0
+    else:
+        row["priority"] = row.get("priority") or 0
+    return row
+
+
+def priority_sort_key(job: Dict[str, Any]):
+    """Scheduling order of pending jobs: highest priority first, then largest VRAM
+    requirement, then oldest."""
+    return (
+        -(job.get("priority") or 0),
+        -(job.get("requires_vram_gb") or 0),
+        job.get("created_at") or "",
+    )
+
 
 @dataclass
 class Job:
@@ -33,6 +69,7 @@ class Job:
     worker_id: str | None
     timeout: datetime | None
     allowed_hardware: List[str] | None = None
+    priority: int = 0
 
     submitted_by: str | None = None
     api_token_id: str | None = None
@@ -44,6 +81,7 @@ class Job:
         """Build a Job from a database row, ignoring columns this client does not
         know about, so adding a column to the jobs table does not break clients."""
         known = {f.name for f in fields(cls)}
+        row = with_priority(row)
         return cls(**{k: v for k, v in row.items() if k in known}, _manager=manager)
 
     def _update(self, job):
@@ -55,6 +93,11 @@ class Job:
 
     def restart(self):
         return self._update(self._manager.restart(self.id))
+
+    def set_priority(self, priority: int):
+        """Change the priority of this job. Pending jobs with a higher priority
+        are started first; the default is 0."""
+        return self._update(self._manager.set_priority(self.id, priority))
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -139,7 +182,7 @@ class Jobs:
         """List jobs"""
         result = (
             self._ow._supabase.table("jobs")
-            .select("*")
+            .select(JOB_SELECT)
             .order("updated_at", desc=True)
             .limit(limit)
             .execute()
@@ -151,7 +194,7 @@ class Jobs:
         """Get job details"""
         result = (
             self._ow._supabase.table("jobs")
-            .select("*")
+            .select(JOB_SELECT)
             .eq("id", job_id)
             .single()
             .execute()
@@ -169,7 +212,7 @@ class Jobs:
             .execute()
         )
         logger.info(f"Job canceled: {job_id}")
-        return Job.from_row(result.data[0], self)
+        return self.retrieve(job_id)
 
     @supabase_retry()
     def restart(self, job_id: str) -> Dict[str, Any]:
@@ -182,7 +225,17 @@ class Jobs:
             .execute()
         )
         logger.info(f"Job restarted: {job_id}")
-        return Job.from_row(result.data[0], self)
+        return self.retrieve(job_id)
+
+    @supabase_retry()
+    def set_priority(self, job_id: str, priority: int) -> Job:
+        """Set the priority of a job. Pending jobs with a higher priority are
+        started first; jobs without an explicit priority have priority 0."""
+        priority = validate_priority(priority)
+        self._ow._supabase.table("job_priority").upsert(
+            {"job_id": job_id, "priority": priority}, on_conflict="job_id"
+        ).execute()
+        return self.retrieve(job_id)
 
     def compute_id(self, data: Dict[str, Any], docker_image: str = None) -> str:
         """Compute job ID from data"""
@@ -209,6 +262,21 @@ class Jobs:
         If job exists and is [failed, canceled] reset it to pending and return it.
         If job doesn't exist, create it and return it.
         """
+        # The priority is not part of the job's identity and is stored in its own
+        # table. None keeps the priority of an existing job (0 for a new one).
+        priority = data.get("priority")
+        if priority is not None:
+            priority = validate_priority(priority)
+        job, current_priority = self._get_or_create_or_reset(
+            {k: v for k, v in data.items() if k != "priority"}
+        )
+        if priority is not None and priority != current_priority:
+            return self.set_priority(job.id, priority)
+        job.priority = current_priority
+        return job
+
+    def _get_or_create_or_reset(self, data: Dict[str, Any]):
+        """Returns the job and the priority it has in the database."""
         # Normalize allowed_hardware (e.g. '1x A100 SXM 80GB' -> '1x A100S') before
         # hashing, because workers match it literally against their hardware type.
         if data.get("allowed_hardware") is not None:
@@ -223,7 +291,7 @@ class Jobs:
         try:
             result = (
                 self._ow._supabase.table("jobs")
-                .select("*")
+                .select(JOB_SELECT)
                 .eq("id", data["id"])
                 .single()
                 .execute()
@@ -235,10 +303,11 @@ class Jobs:
                 )
                 result = self._ow._supabase.table("jobs").insert(data).execute()
                 logger.info(f"Job created: {data['id']}")
-                return Job.from_row(result.data[0], self)
+                return Job.from_row(result.data[0], self), 0
             else:
                 raise
-        job = result.data
+        job = with_priority(result.data)
+        current_priority = job["priority"]
         logger.info(f"Job already exists: {data['id']} (status: {job['status']})")
 
         # Check if any of the key fields have changed and need updating
@@ -263,7 +332,7 @@ class Jobs:
                 .eq("id", data["id"])
                 .execute()
             )
-            return Job.from_row(result.data[0], self)
+            return Job.from_row(result.data[0], self), current_priority
         elif job["status"] in ["pending", "in_progress", "completed"]:
             # Update fields if they've changed
             if needs_update:
@@ -277,8 +346,8 @@ class Jobs:
                     .eq("id", data["id"])
                     .execute()
                 )
-                return Job.from_row(result.data[0], self)
-            return Job.from_row(job, self)
+                return Job.from_row(result.data[0], self), current_priority
+            return Job.from_row(job, self), current_priority
         else:
             raise ValueError(f"Invalid job status: {job['status']}")
 
@@ -289,7 +358,7 @@ class Jobs:
             jobs = ow.jobs.find(training_file='result:file-abc123')
             jobs = ow.jobs.find(meta={'group': 'hparams'})
         """
-        query = self._ow._supabase.table("jobs").select("*")
+        query = self._ow._supabase.table("jobs").select(JOB_SELECT)
 
         for key, value in params.items():
             if isinstance(value, dict):
@@ -313,6 +382,7 @@ class Jobs:
             **params: Parameters for the job, will be validated against self.params
             allowed_hardware: Optional list of allowed hardware configurations (e.g. ['2x A100', '4x H100'])
             docker_image: Optional override for the Docker image to use
+            priority: Optional integer; pending jobs with a higher priority are started first (default 0)
 
         Returns:
             The created job object
@@ -320,6 +390,7 @@ class Jobs:
         # Extract allowed_hardware and docker_image if provided
         allowed_hardware = params.pop("allowed_hardware", None)
         docker_image = params.pop("docker_image", None) or self.base_image
+        priority = params.pop("priority", None)
 
         # Validate parameters
         validated_params = self.params(**params)
@@ -337,6 +408,7 @@ class Jobs:
             "requires_vram_gb": params.get("requires_vram_gb", self.requires_vram_gb),
             "script": entrypoint,
             "allowed_hardware": allowed_hardware,
+            "priority": priority,
             "params": {
                 "validated_params": validated_params.model_dump(),
                 "mounted_files": mounted_files,
