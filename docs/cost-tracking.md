@@ -74,7 +74,8 @@ before upgrading the dashboard or using the new CLI option. Worker images remain
 v0.13.1.
 
 Choosing a new token's initial budget uses existing token-creation permissions.
-Changing or removing an existing budget still requires a signed-in admin user.
+Changing or removing an existing budget needs a signed-in admin user or an API key
+without a spending limit (see below).
 
 **A budgeted key is not an organization admin** (migration
 `20261010000000_api_key_budget_containment.sql`). It can still submit and manage
@@ -96,16 +97,17 @@ limit on the key an organization's manager uses (`OPENWEIGHTS_API_KEY` in its
 secrets).
 
 A signed-in organization **admin user** can choose an API key in the Costs page and
-save a lifetime USD limit. `0` blocks work; blank removes the limit. API-key logins
-can view costs but cannot edit budgets, even though older organization APIs treat
-API keys as administrators.
+save a lifetime USD limit. `0` blocks work; blank removes the limit.
 
-For automation with an administrator's Supabase user JWT:
+An **API key without a spending limit** can do the same for any other key of its
+organization (migration `20261117000000_api_key_set_spending_limit.sql`), so a service
+that mints one budgeted key per project can later raise or lower that budget. A key
+with a spending limit cannot change any limit, and no key can change its own.
 
 ```python
-admin = OpenWeights(auth_token=admin_user_jwt, organization_id=organization_id)
-admin.costs.set_limit(api_token_id, 25)
-admin.costs.set_limit(api_token_id, None)  # remove limit
+ow = OpenWeights()  # an unbudgeted OPENWEIGHTS_API_KEY, or auth_token=admin_user_jwt
+ow.costs.set_limit(api_token_id, 25)
+ow.costs.set_limit(api_token_id, None)  # remove limit
 ```
 
 The REST equivalents are `GET /organizations/{org_id}/costs` and

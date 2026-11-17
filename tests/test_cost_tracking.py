@@ -149,6 +149,12 @@ def db():
                 / "supabase/migrations/20261010000000_api_key_budget_containment.sql"
             ).read_text()
         )
+        sql(
+            (
+                ROOT
+                / "supabase/migrations/20261117000000_api_key_set_spending_limit.sql"
+            ).read_text()
+        )
         sql(f"""
             INSERT INTO organizations(id,name) VALUES ('{ORG}','test'), ('{OTHER}','other');
             INSERT INTO auth.users(id) VALUES ('{USER}');
@@ -267,10 +273,11 @@ def test_tenant_and_ledger_access(db):
     )
 
 
-def test_only_human_admin_can_change_limits(db):
-    assert "Only a signed-in" in db(
+def test_admin_user_can_change_limits_and_a_key_cannot_change_its_own(db):
+    assert "cannot change its own spending limit" in db(
         f"SELECT set_spending_limit('{ORG}','{KEY}',10)", claims=claims(), error=True
     )
+    assert report(db)["limits"] == []
     db(f"SELECT set_spending_limit('{ORG}','{KEY}',10)", claims={"sub": USER})
     assert report(db)["limits"][0]["limit_usd"] == 10
     db(f"SELECT set_spending_limit('{ORG}','{KEY}',NULL)", claims={"sub": USER})
@@ -421,17 +428,61 @@ def test_invalid_initial_limit_does_not_create_token(db, limit):
     assert db("SELECT count(*) FROM api_tokens WHERE name='invalid'") == "0"
 
 
-def test_api_key_can_choose_initial_budget_but_not_change_it(db):
+def test_unbudgeted_api_key_can_change_the_budget_of_a_key_it_created(db):
     key = db(
         f"SELECT token_id FROM create_api_token_with_limit('{ORG}','limited',10)",
         claims=claims(),
     )
+    limit = f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{key}'"
+    assert db(limit) == "10"
+    db(f"SELECT set_spending_limit('{ORG}','{key}',100)", claims=claims())
+    assert db(limit) == "100"
+    db(f"SELECT set_spending_limit('{ORG}','{key}',2.5)", claims=claims())
+    assert db(limit) == "2.5"
+    db(f"SELECT set_spending_limit('{ORG}','{key}',NULL)", claims=claims())
+    assert db(limit) == ""
+
+
+def test_budgeted_api_key_cannot_change_any_budget(db):
+    budgeted = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','limited',10)",
+        claims=claims(),
+    )
+    sibling = db(
+        f"SELECT token_id FROM create_api_token_with_limit('{ORG}','sibling',10)",
+        claims=claims(),
+    )
+    as_budgeted = claims(key=budgeted)
+    for target in (budgeted, sibling, KEY):
+        assert "without a spending limit" in db(
+            f"SELECT set_spending_limit('{ORG}','{target}',1000)",
+            claims=as_budgeted,
+            error=True,
+        )
+        assert "without a spending limit" in db(
+            f"SELECT set_spending_limit('{ORG}','{target}',NULL)",
+            claims=as_budgeted,
+            error=True,
+        )
     assert (
-        db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{key}'") == "10"
+        db(f"SELECT limit_usd FROM spending_limits WHERE api_token_id='{budgeted}'")
+        == "10"
     )
-    assert "signed-in organization admin" in db(
-        f"SELECT set_spending_limit('{ORG}','{key}',100)", claims=claims(), error=True
+    assert db(f"SELECT count(*) FROM spending_limits WHERE api_token_id='{KEY}'") == "0"
+
+
+def test_api_key_cannot_change_budgets_of_another_organization(db):
+    db(
+        f"""INSERT INTO api_tokens(id,organization_id,name,token_prefix,token_hash,created_by)
+        VALUES ('00000000-0000-0000-0000-000000000009','{OTHER}','foreign','ow_other','hash2','{USER}')"""
     )
+    for org in (OTHER, ORG):
+        db(
+            f"SELECT set_spending_limit('{org}','00000000-0000-0000-0000-000000000009',5)",
+            claims=claims(),
+            error=True,
+        )
+    assert db("SELECT count(*) FROM spending_limits") == "0"
 
 
 def test_initial_limit_denial_creates_no_token(db):
