@@ -74,7 +74,8 @@ before upgrading the dashboard or using the new CLI option. Worker images remain
 v0.13.1.
 
 Choosing a new token's initial budget uses existing token-creation permissions.
-Changing or removing an existing budget still requires a signed-in admin user.
+Changing or removing an existing budget needs a signed-in admin user or an API key
+without a spending limit (see below).
 
 **A budgeted key is not an organization admin** (migration
 `20261010000000_api_key_budget_containment.sql`). It can still submit and manage
@@ -96,16 +97,17 @@ limit on the key an organization's manager uses (`OPENWEIGHTS_API_KEY` in its
 secrets).
 
 A signed-in organization **admin user** can choose an API key in the Costs page and
-save a lifetime USD limit. `0` blocks work; blank removes the limit. API-key logins
-can view costs but cannot edit budgets, even though older organization APIs treat
-API keys as administrators.
+save a lifetime USD limit. `0` blocks work; blank removes the limit.
 
-For automation with an administrator's Supabase user JWT:
+An **API key without a spending limit** can do the same for any other key of its
+organization (migration `20261117000000_api_key_set_spending_limit.sql`), so a service
+that mints one budgeted key per project can later raise or lower that budget. A key
+with a spending limit cannot change any limit, and no key can change its own.
 
 ```python
-admin = OpenWeights(auth_token=admin_user_jwt, organization_id=organization_id)
-admin.costs.set_limit(api_token_id, 25)
-admin.costs.set_limit(api_token_id, None)  # remove limit
+ow = OpenWeights()  # an unbudgeted OPENWEIGHTS_API_KEY, or auth_token=admin_user_jwt
+ow.costs.set_limit(api_token_id, 25)
+ow.costs.set_limit(api_token_id, None)  # remove limit
 ```
 
 The REST equivalents are `GET /organizations/{org_id}/costs` and
@@ -138,10 +140,10 @@ Unallocated overhead cannot be assigned to a key or user.
    Supabase migration process (or SQL editor). It is transactional and must run
    exactly once. It adds columns, accounting tables, protected RPCs and triggers;
    it does not reprice old usage. Do not apply the original schema to production.
-   With Supabase CLI management login, an explicit project can be migrated using
-   `supabase db query --linked --project-ref YOUR_PROJECT_REF --file supabase/migrations/20260922000000_cost_tracking.sql`.
-   This runs SQL directly; record the migration in your deployment history if your
-   environment also uses `supabase db push`.
+   Apply it with `supabase db push --remote=YOUR_PROJECT_REF`, which also records it in the
+   migration history (see "Database Migrations" in `CLAUDE.md`). Running the file with
+   `supabase db query --file` or the SQL editor applies it without recording it, and the
+   next `db push` then tries to run it again.
 2. Upgrade the manager/dashboard and managed worker images to v0.13.1, and upgrade
    SDK clients with `pip install --upgrade openweights==0.13.1`. Run the migration
    **before** the new manager starts: it deliberately fails closed if the budget

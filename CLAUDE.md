@@ -189,6 +189,35 @@ Workers can operate in two modes:
 
 Both approaches leverage RLS to ensure workers can only access their organization's data.
 
+## Database Migrations
+
+The production database is the Supabase project `prod-ow` (ref `cmaguqyuzweixkrqjvnf`). Schema changes are
+files in `supabase/migrations/` (`<timestamp>_<name>.sql`) and are applied **only with the Supabase CLI's
+`db push`**, which records them in the migration history. Do not apply a migration with `db query --file`
+or the dashboard's SQL editor: the change takes effect but the history does not know it, and the next
+`db push` tries to run it again. (Three migrations were applied that way before 2026-11-17 and had to be
+marked afterwards with `migration repair --status applied <version>`.)
+
+```bash
+set -a && . ~/envs/supabase.env && set +a                               # SUPABASE_ACCESS_TOKEN
+npx supabase migration list --remote=cmaguqyuzweixkrqjvnf               # local vs remote history
+npx supabase db push --dry-run --remote=cmaguqyuzweixkrqjvnf            # must list only your new file(s)
+npx supabase db push --remote=cmaguqyuzweixkrqjvnf                      # applies and records them
+npx supabase db query --remote=cmaguqyuzweixkrqjvnf --read-only "select ..."   # checks; read-only
+```
+
+- **Authenticate with `SUPABASE_ACCESS_TOKEN`** (a personal access token from the Supabase dashboard,
+  kept in `~/envs/supabase.env`, mode 600), not with `supabase login`. On a machine with a desktop keyring
+  the CLI saves and reads its login over D-Bus and waits forever for an unlock prompt: `supabase login`
+  hangs after the verification code and ignores Ctrl+C, and later commands hang the same way. With the
+  environment variable set the keyring is never touched.
+- Pass `--remote=<project ref>` explicitly. CLI 3.x replaced `--linked`, and does not pick up a project
+  link made by an older version.
+- If the dry run lists a migration that is already live, stop and find out why before pushing.
+- Migrations must be safe while the old manager, dashboard and SDKs are still running (see the release
+  notes in `docs/` for how earlier ones handled this), and are tested against a disposable Postgres:
+  `OW_COST_TEST_CONTAINER=ow-cost-tests pytest tests/test_cost_tracking.py`.
+
 ## Client SDK (`openweights/client/`)
 
 ### Main Components
