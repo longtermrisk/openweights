@@ -140,10 +140,10 @@ Unallocated overhead cannot be assigned to a key or user.
    Supabase migration process (or SQL editor). It is transactional and must run
    exactly once. It adds columns, accounting tables, protected RPCs and triggers;
    it does not reprice old usage. Do not apply the original schema to production.
-   With Supabase CLI management login, an explicit project can be migrated using
-   `supabase db query --linked --project-ref YOUR_PROJECT_REF --file supabase/migrations/20260922000000_cost_tracking.sql`.
-   This runs SQL directly; record the migration in your deployment history if your
-   environment also uses `supabase db push`.
+   Apply it with `supabase db push --remote=YOUR_PROJECT_REF`, which also records it in the
+   migration history (see "Database Migrations" in `CLAUDE.md`). Running the file with
+   `supabase db query --file` or the SQL editor applies it without recording it, and the
+   next `db push` then tries to run it again.
 2. Upgrade the manager/dashboard and managed worker images to v0.13.1, and upgrade
    SDK clients with `pip install --upgrade openweights==0.13.1`. Run the migration
    **before** the new manager starts: it deliberately fails closed if the budget
