@@ -26,10 +26,20 @@ def guess_model_size(model: str) -> int:
         return 32
 
 
+def hf_endpoint() -> str:
+    """The Hugging Face Hub base URL, honouring HF_ENDPOINT like huggingface_hub does.
+
+    Environments that route Hub traffic through a proxy (a mirror, or a credential
+    broker that holds the real token) set HF_ENDPOINT; a hard-coded huggingface.co
+    would bypass it and send whatever token the environment holds to the real Hub.
+    """
+    return (os.environ.get("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+
+
 @lru_cache
 def model_exists(model_name):
     token = os.environ["HF_TOKEN"]
-    url = f"https://huggingface.co/api/models/{model_name}"
+    url = f"{hf_endpoint()}/api/models/{model_name}"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.head(url, headers=headers)
     return response.status_code == 200
