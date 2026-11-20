@@ -517,7 +517,9 @@ export function OrganizationDetail() {
             autoFocus={!!secretDialog?.name}
             margin="dense"
             label={secretDialog?.name ? 'New Value' : 'Value'}
-            type={secretDialog?.name && PLAIN_SETTINGS.includes(secretDialog.name) ? 'text' : 'password'}
+            // Only a secret is hidden while typing. An environment variable is shown:
+            // jobs can read it anyway, and a typo in it is easier to spot.
+            type={SECRET_NAMES.includes(secretDialog?.name ?? newSecretName.trim()) ? 'password' : 'text'}
             autoComplete="new-password"
             fullWidth
             value={newSecretValue}
