@@ -26,6 +26,7 @@ from openweights.client import (
 )
 from openweights.client.decorators import supabase_retry
 from openweights.client.jobs import JOB_SELECT, priority_sort_key, with_priority
+from openweights.broker import HF_PREFIX, hf_stand_in_token
 from openweights.secret_store import (
     MANAGED_SECRETS,
     SECRETS_STILL_PASSED_TO_WORKERS,
@@ -163,6 +164,11 @@ class OrganizationManager:
             **secrets,
         )
 
+    # Set by get_secrets(): which secrets came from the secret store. Only those can
+    # be served by the broker, which reads the store and nothing else.
+    managed_secrets = None
+    secrets_from_store = frozenset()
+
     def create_worker_token(self, worker_id: str) -> Optional[str]:
         """An OpenWeights token for one worker, to stand in for the organization's key.
 
@@ -214,6 +220,13 @@ class OrganizationManager:
                 env.pop(name, None)
         if worker_token:
             env["OPENWEIGHTS_API_KEY"] = worker_token
+            broker_url = os.environ.get("OW_BROKER_URL", "").rstrip("/")
+            if broker_url and "HF_TOKEN" in self.secrets_from_store:
+                # The organization's Hugging Face token stays in the secret store.
+                # The worker reaches the Hub through the broker, which accepts the
+                # worker's own token and puts in the real one (openweights/broker).
+                env["HF_TOKEN"] = hf_stand_in_token(worker_token)
+                env["HF_ENDPOINT"] = broker_url + HF_PREFIX
         return env
 
     @supabase_retry()
@@ -270,9 +283,9 @@ class OrganizationManager:
         if self.managed_secrets is not None:
             try:
                 # The store wins over a row left from before the secret moved there.
-                secrets.update(
-                    self.managed_secrets.read(self._ow._supabase, self.org_id)
-                )
+                stored = self.managed_secrets.read(self._ow._supabase, self.org_id)
+                secrets.update(stored)
+                self.secrets_from_store = frozenset(stored)
             except Exception as e:
                 # Keep running on the values this process was started with.
                 logger.warning(f"Could not read the secret store: {e}")
