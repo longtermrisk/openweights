@@ -40,22 +40,24 @@ could terminate its own pod.
 - The manager also terminates, as before, every worker that stops pinging (2 minutes; 10
   minutes while starting). That covers workers that exit without asking: a crashed or
   killed process, a pod that never came up, an old image whose own termination failed.
-- The TTL monitor on the pod asks the manager in the same way when the TTL expires.
-- The manager passes `RUNPOD_API_KEY` only to worker images that still need it: official
-  images older than v0.16.0 and custom images (`worker_image_needs_runpod_key`). Those
-  keep terminating their own pod exactly as before. Pods started with `ow ssh` keep
-  receiving the caller's own key, because no manager watches them.
+- When the TTL expires, the TTL monitor on the pod sets `status='shutdown'` and
+  `termination_requested_at`: the worker stops (it gives its job back and takes no new
+  one) and the manager terminates the pod.
+- The manager passes `RUNPOD_API_KEY` only to official worker images older than v0.16.0
+  (`worker_image_needs_runpod_key`), which keep terminating their own pod exactly as
+  before. Pods started with `ow ssh` keep receiving the caller's own key, because no
+  manager watches them.
 
 ### Behaviour changes to be aware of
 
-- **The TTL is no longer a backstop against a dead manager** for v0.16.0 workers. Before,
-  a pod terminated itself after `TTL_HOURS` even if the cluster manager was down; now it
-  can only ask. If the manager is down for long, pods run until it is back. (The TTL
-  monitor still terminates the pod itself whenever a `RUNPOD_API_KEY` is in its
-  environment. RunPod may inject a pod-scoped key under that name when we do not set one;
-  this was not verified.)
-- Custom worker images keep receiving the key until `worker_image_needs_runpod_key`
-  is told otherwise.
+- **Custom worker images get no RunPod key.** They are assumed to be built on a current
+  official image. A custom image built on an image older than v0.16.0 still tries to
+  terminate its own pod and fails; the manager then terminates the pod when the pings
+  stop, about 2 minutes later. Rebuild such images on v0.16.0.
+- **An expired TTL shuts the worker down but cannot end the pod without a manager.**
+  Before, a pod terminated itself after `TTL_HOURS` even if the cluster manager was down.
+  Now the worker stops working at that point, and the pod stays up (and billed) until a
+  manager terminates it. The open work is listed in `TODO.md`.
 
 ## Migration
 

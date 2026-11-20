@@ -198,12 +198,15 @@ one org manager per organization with them in its environment; the org manager a
 with the organization's API key and passes every secret **except `RUNPOD_API_KEY`** to the pods it starts.
 
 - **RunPod key: manager only.** It can terminate every pod of the account. A worker that is done sets
-  `worker.termination_requested_at` (`openweights/worker/termination.py`), as does the TTL monitor when
-  the pod's TTL expires, and `OrganizationManager.clean_up_workers` terminates the pod. The same method
-  terminates workers that stop pinging, which covers every worker that dies without asking. Exceptions
-  that still get the key: worker images older than `KEYLESS_WORKER_IMAGE_VERSION` and custom images
-  (`worker_image_needs_runpod_key`), which terminate their own pod, and `ow ssh` pods, which receive the
-  caller's own key because no manager watches them.
+  `worker.termination_requested_at` (`openweights/worker/termination.py`), and
+  `OrganizationManager.clean_up_workers` terminates the pod. The same method terminates workers that stop
+  pinging, which covers every worker that dies without asking. When a pod's TTL expires, the TTL monitor
+  sets `status='shutdown'` together with the request, so the worker stops even if no manager is running
+  (the pod itself then stays up until a manager terminates it). Exceptions that still get the key:
+  official worker images older than `KEYLESS_WORKER_IMAGE_VERSION` (`worker_image_needs_runpod_key`),
+  which terminate their own pod, and `ow ssh` pods, which receive the caller's own key because no manager
+  watches them. Custom images get no key: they are assumed to be built on a current official image.
+- **Open credential work** is listed in `TODO.md`.
 - **Dashboard: write-only secrets.** `GET /organizations/{id}/secrets` returns name, last four
   characters and update time (`list_organization_secrets_masked`); values can be replaced
   (`PUT .../secrets/{name}`) or deleted, never read. RLS lets signed-in users read only the non-secret

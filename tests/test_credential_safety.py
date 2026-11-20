@@ -469,13 +469,14 @@ def test_worker_shutdown_requests_termination_and_never_calls_runpod(
         ("nielsrolf/ow-unsloth:v0.16.0-candidate", False),
         ("nielsrolf/ow-unsloth:v0.15.0", True),
         ("nielsrolf/ow-vllm:v0.9.12", True),
-        ("nielsrolf/ow-unsloth:latest", True),
-        ("someone/custom-image:v0.16.0", True),
-        ("runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04", True),
-        (None, True),
+        # Custom images are assumed to be built on a current official image.
+        ("nielsrolf/ow-unsloth:latest", False),
+        ("someone/custom-image:v0.15.0", False),
+        ("runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04", False),
+        (None, False),
     ],
 )
-def test_only_images_that_predate_manager_termination_get_the_key(image, needs_key):
+def test_only_old_official_images_get_the_key(image, needs_key):
     assert worker_image_needs_runpod_key(image) is needs_key
 
 
@@ -673,7 +674,8 @@ def test_expired_managed_pod_asks_the_manager(monkeypatch):
 
     # Not "done": the monitor keeps running (and asking) until the pod is gone.
     assert ttl_monitor.terminate_expired_pod() is False
-    assert requested == [("worker-1", None)]
+    # The worker is told to shut down too, so it stops even if no manager is running.
+    assert requested == [("worker-1", "shutdown")]
 
 
 def test_expired_dev_pod_terminates_itself_with_the_callers_key(monkeypatch):

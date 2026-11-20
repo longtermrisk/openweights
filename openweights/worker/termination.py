@@ -26,8 +26,8 @@ def _column_is_missing(error: APIError) -> bool:
 def request_termination(supabase, worker_id: str, status: Optional[str] = None) -> bool:
     """Ask the cluster manager to terminate this worker's pod.
 
-    ``status`` is written in the same update (a worker that has shut down passes
-    ``"shutdown"``; the TTL monitor leaves the status alone).
+    ``status`` is written in the same update: a worker that has shut down, and the
+    TTL monitor of an expired pod, pass ``"shutdown"``.
 
     Returns False if the database has no ``termination_requested_at`` column yet. The
     status is still written then, and the manager falls back to terminating the pod

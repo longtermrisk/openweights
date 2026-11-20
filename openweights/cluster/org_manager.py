@@ -60,13 +60,15 @@ _OFFICIAL_IMAGE_VERSION = re.compile(r"nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\
 def worker_image_needs_runpod_key(image: str) -> bool:
     """Whether a worker image still terminates its own pod and needs the key for it.
 
-    Official images from KEYLESS_WORKER_IMAGE_VERSION on do not. Older official images
-    and custom images (whose worker code is unknown) keep receiving the key, so
-    that they shut down as before.
+    Only official images older than KEYLESS_WORKER_IMAGE_VERSION do. Everything else
+    gets no key: current official images, and custom images, which are assumed to be
+    built on top of a current official image. (A custom image built on an old one
+    fails to terminate itself, and the manager terminates its pod when the pings
+    stop.)
     """
     match = _OFFICIAL_IMAGE_VERSION.match(image or "")
     if not match:
-        return True
+        return False
     return tuple(int(part) for part in match.groups()) < KEYLESS_WORKER_IMAGE_VERSION
 
 
@@ -151,7 +153,7 @@ class OrganizationManager:
         """The environment of a new worker pod: the manager's, minus the RunPod key.
 
         The key can terminate every pod of the account. Only the manager uses it;
-        worker images that predate manager-side termination are the exception.
+        official worker images that predate manager-side termination are the exception.
         """
         env = self.worker_env
         if not worker_image_needs_runpod_key(docker_image):

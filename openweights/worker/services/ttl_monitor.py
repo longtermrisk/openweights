@@ -46,11 +46,13 @@ def get_pod_id():
 
 
 def request_termination_by_manager():
-    """Ask the cluster manager to terminate this pod (the normal path).
+    """Shut the worker down and ask the cluster manager to terminate this pod.
 
-    A managed worker holds no RunPod key. It sets ``termination_requested_at`` on
-    its worker row instead, and the manager terminates the pod. Returns True once the
-    request is stored.
+    A managed worker holds no RunPod key, so an expired TTL cannot end the pod from
+    inside. Setting ``status='shutdown'`` makes the worker process stop (it gives its
+    job back and takes no new one), whether or not a manager is running;
+    ``termination_requested_at`` makes the manager terminate the pod. Returns True
+    once the request is stored.
     """
     worker_id = os.environ.get("WORKER_ID")
     if not worker_id or not os.environ.get("OPENWEIGHTS_API_KEY"):
@@ -59,8 +61,12 @@ def request_termination_by_manager():
         from openweights import OpenWeights
         from openweights.worker.termination import request_termination
 
-        stored = request_termination(OpenWeights()._supabase, worker_id)
-        print(f"Asked the cluster manager to terminate worker {worker_id}")
+        stored = request_termination(
+            OpenWeights()._supabase, worker_id, status="shutdown"
+        )
+        print(
+            f"Shut down worker {worker_id} and asked the cluster manager to terminate it"
+        )
         return stored
     except Exception as e:
         print(f"ERROR: Could not ask the cluster manager for termination: {e}")
