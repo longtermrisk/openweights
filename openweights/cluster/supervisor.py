@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict
 
 from dotenv import load_dotenv
+
+from openweights.secret_store import ManagedSecretReader, secret_store_from_env
 from supabase.lib.client_options import ClientOptions
 
 from supabase import Client, create_client
@@ -48,6 +50,9 @@ class ManagerSupervisor:
             ),
         )
         self.processes: Dict[str, subprocess.Popen] = {}
+        # Secrets kept outside the database, if the deployment has a secret store.
+        store = secret_store_from_env()
+        self.managed_secrets = ManagedSecretReader(store) if store else None
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self.handle_shutdown)
@@ -62,7 +67,11 @@ class ManagerSupervisor:
             .execute()
         )
 
-        return {secret["name"]: secret["value"] for secret in result.data}
+        secrets = {secret["name"]: secret["value"] for secret in result.data}
+        if self.managed_secrets is not None:
+            # The store wins over a row left from before the secret moved there.
+            secrets.update(self.managed_secrets.read(self.supabase, org_id))
+        return secrets
 
     def is_org_managed(self, secrets: Dict[str, str]) -> bool:
         """Check if organization has OW_MANAGED=true."""

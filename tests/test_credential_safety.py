@@ -103,6 +103,7 @@ def test_mask_shows_last_four_of_secrets_and_all_of_plain_settings(database_modu
     mask = database_module.mask_secret_row
     assert mask({"name": "HF_TOKEN", "value": SECRET}) == {
         "name": "HF_TOKEN",
+        "kind": "secret",
         "plain_value": None,
         "last_four": "1234",
         "updated_at": None,
@@ -118,6 +119,7 @@ def test_list_uses_masked_rpc(database_module):
     client.rpc.return_value.execute.return_value.data = [
         {
             "name": "HF_TOKEN",
+            "kind": "secret",
             "plain_value": None,
             "last_four": "1234",
             "updated_at": None,
@@ -160,6 +162,7 @@ def test_secret_model_has_no_field_that_could_carry_a_value(dashboard):  # noqa:
 
     assert set(models.OrganizationSecret.model_fields) == {
         "name",
+        "kind",
         "plain_value",
         "last_four",
         "updated_at",
@@ -174,7 +177,7 @@ def test_secrets_endpoint_returns_masked_rows_only(dashboard):  # noqa: F811
 
     app, database = dashboard
     database.list_organization_secrets.return_value = [
-        models.OrganizationSecret(name="HF_TOKEN", last_four="1234"),
+        models.OrganizationSecret(name="HF_TOKEN", kind="secret", last_four="1234"),
         models.OrganizationSecret(name="HF_ORG", plain_value="my-org"),
     ]
     response = TestClient(app).get(f"/organizations/{ORG}/secrets")
@@ -182,12 +185,14 @@ def test_secrets_endpoint_returns_masked_rows_only(dashboard):  # noqa: F811
     assert response.json() == [
         {
             "name": "HF_TOKEN",
+            "kind": "secret",
             "plain_value": None,
             "last_four": "1234",
             "updated_at": None,
         },
         {
             "name": "HF_ORG",
+            "kind": "env",
             "plain_value": "my-org",
             "last_four": None,
             "updated_at": None,

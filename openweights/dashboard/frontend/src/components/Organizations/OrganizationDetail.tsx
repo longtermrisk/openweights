@@ -28,6 +28,7 @@ import {
   Breadcrumbs,
   Alert,
   Tooltip,
+  Chip,
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
@@ -56,6 +57,10 @@ interface TabPanelProps {
 // Required secrets that cannot be deleted
 const REQUIRED_SECRETS = ['HF_ORG', 'HF_USER', 'HF_TOKEN', 'RUNPOD_API_KEY', 'OPENWEIGHTS_API_KEY'];
 // Settings that are not secrets; the backend returns these in full.
+// Credentials, write-only. Mirrors MANAGED_SECRETS in openweights/secret_store.py.
+const SECRET_NAMES = ['HF_TOKEN', 'OPENWEIGHTS_API_KEY', 'RUNPOD_API_KEY', 'LITELLM_API_KEY'];
+const looksLikeCredential = (name: string) =>
+  !PLAIN_SETTINGS.includes(name) && /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name);
 const PLAIN_SETTINGS = ['HF_USER', 'HF_ORG', 'OW_MANAGED', 'MAX_WORKERS'];
 
 function TabPanel(props: TabPanelProps) {
@@ -247,7 +252,7 @@ export function OrganizationDetail() {
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
           <Tab label="Members" />
-          {isAdmin && <Tab label="Secrets" />}
+          {isAdmin && <Tab label="Secrets & Environment" />}
           {isAdmin && <Tab label="API Tokens" />}
         </Tabs>
       </Box>
@@ -307,28 +312,74 @@ export function OrganizationDetail() {
 
       {isAdmin && (
         <TabPanel value={tabValue} index={1}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">Secrets</Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => setSecretDialog({ name: null })}
-            >
-              Add Secret
-            </Button>
-          </Box>
-
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Stored secrets cannot be viewed, only replaced or deleted. A secret is
-            identified by its last four characters.
-          </Typography>
-
           {secretError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {secretError}
             </Alert>
           )}
 
+          <Typography variant="h6">Secrets</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Credentials OpenWeights uses on your behalf. A stored secret cannot be
+            viewed, only replaced; it is identified by its last four characters.
+          </Typography>
+          <TableContainer component={Paper} sx={{ mb: 4 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Value</TableCell>
+                  <TableCell>Last changed</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {SECRET_NAMES.map((name) => {
+                  const secret = secrets.find((s) => s.name === name);
+                  return (
+                    <TableRow key={name}>
+                      <TableCell>{name}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace' }}>
+                        {secret ? `••••••••${secret.last_four ?? ''}` : (
+                          <Typography variant="body2" color="text.secondary">not set</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {secret?.updated_at ? new Date(secret.updated_at).toLocaleString() : ''}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button size="small" onClick={() => setSecretDialog({ name })}>
+                          {secret ? 'Replace' : 'Set'}
+                        </Button>
+                        {secret && !REQUIRED_SECRETS.includes(name) && (
+                          <Tooltip title="Delete">
+                            <IconButton onClick={() => handleDeleteSecret(name)} color="error">
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="h6">Environment variables</Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setSecretDialog({ name: null })}
+            >
+              Add Variable
+            </Button>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Passed to every worker, where the code of a job can read them. Do not
+            store credentials here: call other APIs from your own machine instead.
+          </Typography>
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
@@ -340,9 +391,16 @@ export function OrganizationDetail() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {secrets.map((secret) => (
+                {secrets.filter((s) => !SECRET_NAMES.includes(s.name)).map((secret) => (
                   <TableRow key={secret.name}>
-                    <TableCell>{secret.name}</TableCell>
+                    <TableCell>
+                      {secret.name}
+                      {looksLikeCredential(secret.name) && (
+                        <Tooltip title="This looks like a credential. Every job of this organization can read it.">
+                          <Chip label="readable by jobs" color="warning" size="small" sx={{ ml: 1 }} />
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     <TableCell sx={{ fontFamily: 'monospace' }}>
                       {secret.plain_value ?? `••••••••${secret.last_four ?? ''}`}
                     </TableCell>
@@ -438,14 +496,14 @@ export function OrganizationDetail() {
       {/* Add or replace a secret. The value is write-only. */}
       <Dialog open={secretDialog !== null} onClose={closeSecretDialog}>
         <DialogTitle>
-          {secretDialog?.name ? `Replace ${secretDialog.name}` : 'Add New Secret'}
+          {secretDialog?.name ? `Set ${secretDialog.name}` : 'Add Environment Variable'}
         </DialogTitle>
         <DialogContent>
           {!secretDialog?.name && (
             <TextField
               autoFocus
               margin="dense"
-              label="Secret Name"
+              label="Name"
               type="text"
               fullWidth
               value={newSecretName}
@@ -456,7 +514,7 @@ export function OrganizationDetail() {
           <TextField
             autoFocus={!!secretDialog?.name}
             margin="dense"
-            label={secretDialog?.name ? 'New Value' : 'Secret Value'}
+            label={secretDialog?.name ? 'New Value' : 'Value'}
             type={secretDialog?.name && PLAIN_SETTINGS.includes(secretDialog.name) ? 'text' : 'password'}
             autoComplete="new-password"
             fullWidth
@@ -473,7 +531,7 @@ export function OrganizationDetail() {
             color="primary"
             disabled={savingSecret || !newSecretValue || !(secretDialog?.name || newSecretName.trim())}
           >
-            {secretDialog?.name ? 'Replace' : 'Add Secret'}
+            {secretDialog?.name ? 'Save' : 'Add Variable'}
           </Button>
         </DialogActions>
       </Dialog>

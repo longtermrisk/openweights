@@ -28,6 +28,12 @@ from utils import (
 )
 
 from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
+from openweights.secret_store import (
+    SecretStoreError,
+    is_managed_secret,
+    last_four,
+    secret_store_from_env,
+)
 from supabase import Client, create_client
 
 # Settings stored next to the secrets that are not credentials and may be shown.
@@ -35,6 +41,11 @@ from supabase import Client, create_client
 PLAIN_SETTINGS = frozenset({"HF_USER", "HF_ORG", "OW_MANAGED", "MAX_WORKERS"})
 HF_SECRET_NAMES = frozenset({"HF_TOKEN", "HF_USER", "HF_ORG"})
 SECRET_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def secret_kind(name: str) -> str:
+    """"secret": a credential, write-only. "env": passed to every worker as is."""
+    return "secret" if is_managed_secret(name) else "env"
 
 
 def mask_secret_row(row: dict) -> dict:
@@ -46,6 +57,7 @@ def mask_secret_row(row: dict) -> dict:
     plain = name in PLAIN_SETTINGS
     return {
         "name": name,
+        "kind": secret_kind(name),
         "plain_value": value if plain else None,
         # Four characters of a short value would be most of it.
         "last_four": value[-4:] if not plain and len(value) >= 12 else None,
@@ -54,11 +66,16 @@ def mask_secret_row(row: dict) -> dict:
 
 
 class Database:
+    secret_store = None
+
     def __init__(self, auth_token: Optional[str] = None):
         self.supabase_url = _SUPABASE_URL
         self.supabase_anon_key = _SUPABASE_ANON_KEY
         self.auth_token = auth_token
         self._current_org_id = None
+        # None on a deployment without a secret store: secrets then stay rows of
+        # organization_secrets, like environment variables.
+        self.secret_store = secret_store_from_env()
 
         if not self.supabase_url or not self.supabase_anon_key:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
@@ -132,31 +149,10 @@ class Database:
             token = self.create_token(org_id, TokenCreate(name="Default API Key"))
 
             # Store the API token as an organization secret
-            secret_result = self.client.rpc(
-                "manage_organization_secret",
-                {
-                    "org_id": org_id,
-                    "secret_name": "OPENWEIGHTS_API_KEY",
-                    "secret_value": token.access_token,
-                },
-            ).execute()
+            self._write_setting(org_id, "OPENWEIGHTS_API_KEY", token.access_token)
 
-            if not secret_result.data:
-                raise ValueError("Failed to add OPENWEIGHTS_API_KEY secret")
-
-            # Add user-provided secrets using RPC
             for secret_name, secret_value in org_data.secrets.items():
-                secret_result = self.client.rpc(
-                    "manage_organization_secret",
-                    {
-                        "org_id": org_id,
-                        "secret_name": secret_name,
-                        "secret_value": secret_value,
-                    },
-                ).execute()
-
-                if not secret_result.data:
-                    raise ValueError(f"Failed to add secret: {secret_name}")
+                self._write_setting(org_id, secret_name, secret_value)
 
             # Fetch the created organization to return
             org_result = (
@@ -213,19 +209,50 @@ class Database:
             if not is_valid:
                 raise ValueError(f"Invalid secret configuration: {error_message}")
 
+        self._write_setting(organization_id, secret_name, secret_value)
+
+    def _stores_in_secret_store(self, name: str) -> bool:
+        return self.secret_store is not None and is_managed_secret(name)
+
+    def _require_admin(self, organization_id: str) -> None:
+        """The secret store does not know our users: ask the database first."""
+        is_admin = self.client.rpc(
+            "is_organization_admin", {"org_id": organization_id}
+        ).execute()
+        if is_admin.data is not True:
+            raise ValueError("Only organization admins can manage secrets")
+
+    def _write_setting(self, organization_id: str, name: str, value: str) -> None:
+        """Write a secret to the secret store, anything else to the database."""
         try:
+            if self._stores_in_secret_store(name):
+                self._require_admin(organization_id)
+                self.secret_store.set(organization_id, name, value)
+                # Records what may be displayed and removes a copy of this secret
+                # that an earlier version stored in organization_secrets.
+                self.client.rpc(
+                    "record_organization_secret",
+                    {
+                        "org_id": organization_id,
+                        "secret_name": name,
+                        "secret_last_four": last_four(value),
+                    },
+                ).execute()
+                return
             result = self.client.rpc(
                 "manage_organization_secret",
                 {
                     "org_id": organization_id,
-                    "secret_name": secret_name,
-                    "secret_value": secret_value,
+                    "secret_name": name,
+                    "secret_value": value,
                 },
             ).execute()
         except APIError as e:
-            raise ValueError(f"Failed to update secret: {e.message}")
+            raise ValueError(f"Failed to update {name}: {e.message}")
+        except SecretStoreError as e:
+            raise ValueError(f"Failed to update {name}: {e}")
         if not result.data:
-            raise ValueError(f"Failed to update secret: {secret_name}")
+            raise ValueError(f"Failed to update {name}")
 
     def delete_organization_secret(
         self, organization_id: str, secret_name: str
@@ -237,12 +264,24 @@ class Database:
                 "OPENWEIGHTS_API_KEY cannot be deleted: the cluster manager needs it"
             )
         try:
+            if self._stores_in_secret_store(secret_name):
+                self._require_admin(organization_id)
+                self.secret_store.delete(organization_id, secret_name)
+                forgotten = self.client.rpc(
+                    "forget_organization_secret",
+                    {"org_id": organization_id, "secret_name": secret_name},
+                ).execute()
+                if forgotten.data:
+                    return
+                # Not in the store: it may still be a row from before the store.
             result = self.client.rpc(
                 "delete_organization_secret",
                 {"org_id": organization_id, "secret_name": secret_name},
             ).execute()
         except APIError as e:
             raise ValueError(f"Failed to delete secret: {e.message}")
+        except SecretStoreError as e:
+            raise ValueError(f"Failed to delete secret: {e}")
         if not result.data:
             raise ValueError(f"Secret not found: {secret_name}")
 
@@ -366,7 +405,10 @@ class Database:
                     or []
                 )
             ]
-        return [OrganizationSecret(**row) for row in (rows or [])]
+        return [
+            OrganizationSecret(**{**row, "kind": secret_kind(row["name"])})
+            for row in (rows or [])
+        ]
 
     def create_token(
         self, organization_id: str, token_data: TokenCreate
