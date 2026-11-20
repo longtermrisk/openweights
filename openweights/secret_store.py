@@ -40,9 +40,10 @@ MANAGED_SECRETS = frozenset(
     {"HF_TOKEN", "OPENWEIGHTS_API_KEY", "RUNPOD_API_KEY", "LITELLM_API_KEY"}
 )
 # Managed secrets the cluster manager still copies into a worker's environment. This
-# list shrinks as workers move to their own tokens and to the broker; a secret that
-# was never passed to workers (LITELLM_API_KEY) does not start now.
-SECRETS_STILL_PASSED_TO_WORKERS = frozenset({"HF_TOKEN", "OPENWEIGHTS_API_KEY"})
+# list shrinks as workers move to the broker; a secret that was never passed to
+# workers (LITELLM_API_KEY) does not start now. OPENWEIGHTS_API_KEY is not in it: a
+# worker gets a token of its own under that name, not the organization's key.
+SECRETS_STILL_PASSED_TO_WORKERS = frozenset({"HF_TOKEN"})
 
 SECRET_STORE_ENV = "OW_SECRET_STORE"
 GCP_SCHEME = "gcp-secret-manager://"

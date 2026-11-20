@@ -201,7 +201,16 @@ for organizations that run their own cluster (`OW_MANAGED` not true: that cluste
 they are rows of `organization_secrets` too. The supervisor (service role) and each org manager (the
 organization's API key) read the table, then overlay the store (`ManagedSecretReader`, which asks the
 store only when `updated_at` changed). `OrganizationManager.worker_env_for` decides what a pod gets:
-all environment variables, and of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`.
+all environment variables, of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`, and as
+`OPENWEIGHTS_API_KEY` a token of the worker's own.
+
+- **Worker tokens.** `OrganizationManager.create_worker_token` calls `create_worker_token()` in the
+  database for each pod it starts: an API token with `api_tokens.worker_id` set, expiring after
+  `WORKER_TOKEN_LIFETIME_HOURS`, revoked by a trigger when the worker row becomes `terminated` or is
+  deleted. `is_organization_admin` is false for it, so everything gated on admin rights (settings,
+  keys, limits, members) is out of its reach; it is an ordinary member otherwise. When you add a
+  function or policy that only the organization's own key or an admin user should pass, gate it on
+  `is_organization_admin`, never on `is_organization_member`.
 
 - **Adding a secret name** means changing `MANAGED_SECRETS`, `is_managed_organization_secret()` in a
   migration, and `SECRET_NAMES` in the dashboard frontend together.

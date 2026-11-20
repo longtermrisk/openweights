@@ -493,12 +493,15 @@ class Database:
         self.set_organization_id(organization_id)
         result = (
             self.client.table("api_tokens")
-            .select("id, name, expires_at, created_at, revoked_at")
+            .select("*")
             .eq("organization_id", organization_id)
             .order("created_at", desc=True)
             .execute()
         )
-        return [Token(**token) for token in result.data]
+        # Workers' own tokens (one per pod, short-lived) are not the user's keys.
+        return [
+            Token(**token) for token in result.data if not token.get("worker_id")
+        ]
 
     def delete_token(self, organization_id: str, token_id: str):
         """Revoke an API token."""
