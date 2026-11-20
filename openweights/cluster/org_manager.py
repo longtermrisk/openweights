@@ -25,6 +25,12 @@ from openweights.client import (
 )
 from openweights.client.decorators import supabase_retry
 from openweights.client.jobs import JOB_SELECT, priority_sort_key, with_priority
+from openweights.secret_store import (
+    MANAGED_SECRETS,
+    SECRETS_STILL_PASSED_TO_WORKERS,
+    ManagedSecretReader,
+    secret_store_from_env,
+)
 from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
@@ -127,6 +133,10 @@ class OrganizationManager:
         print("org name", self._ow.org_name)
         self.shutdown_flag = False
 
+        # Secrets kept outside the database, if the deployment has a secret store.
+        store = secret_store_from_env()
+        self.managed_secrets = ManagedSecretReader(store) if store else None
+
         # Set up RunPod client
         runpod.api_key = os.environ["RUNPOD_API_KEY"]
         self.hardware_registry = HARDWARE_REGISTRY
@@ -158,6 +168,11 @@ class OrganizationManager:
         env = self.worker_env
         if not worker_image_needs_runpod_key(docker_image):
             env.pop("RUNPOD_API_KEY", None)
+        # Secrets a worker has no use for. (The two it still gets, its Hugging Face
+        # token and its OpenWeights key, are to be replaced by tokens of its own.)
+        for name in MANAGED_SECRETS - SECRETS_STILL_PASSED_TO_WORKERS:
+            if name != "RUNPOD_API_KEY":
+                env.pop(name, None)
         return env
 
     @supabase_retry()
@@ -210,6 +225,16 @@ class OrganizationManager:
             # If database query fails, just use environment variables
             logger.warning(f"Could not fetch secrets from database: {e}")
             logger.info("Using only local environment variables for secrets")
+
+        if self.managed_secrets is not None:
+            try:
+                # The store wins over a row left from before the secret moved there.
+                secrets.update(
+                    self.managed_secrets.read(self._ow._supabase, self.org_id)
+                )
+            except Exception as e:
+                # Keep running on the values this process was started with.
+                logger.warning(f"Could not read the secret store: {e}")
 
         return secrets
 

@@ -24,6 +24,8 @@ class OrganizationSecret(BaseModel):
     """A stored secret as the dashboard may see it: never the value itself."""
 
     name: str
+    # "secret": a credential, write-only. "env": an environment variable of the workers.
+    kind: str = "env"
     plain_value: Optional[str] = None  # only for settings that are not secrets
     last_four: Optional[str] = None  # only for secrets of 12+ characters
     updated_at: Optional[datetime] = None

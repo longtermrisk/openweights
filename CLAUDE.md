@@ -192,11 +192,20 @@ Both approaches leverage RLS to ensure workers can only access their organizatio
 
 ### Credentials
 
-Organization secrets (`HF_TOKEN`, `RUNPOD_API_KEY`, `OPENWEIGHTS_API_KEY`, custom ones) are rows of
-`organization_secrets`, stored in plaintext. The supervisor reads them with the service role and starts
-one org manager per organization with them in its environment; the org manager also reads the table
-with the organization's API key and passes every secret **except `RUNPOD_API_KEY`** to the pods it starts.
+An organization has **secrets** (`MANAGED_SECRETS` in `openweights/secret_store.py`: `HF_TOKEN`,
+`OPENWEIGHTS_API_KEY`, `RUNPOD_API_KEY`, `LITELLM_API_KEY`) and **environment variables** (everything
+else). Environment variables are rows of `organization_secrets` and go to every worker. Secrets are kept
+in a secret store when the deployment has one (`OW_SECRET_STORE=gcp-secret-manager://<project>`), with
+only name, last four characters and update time in `organization_secret_metadata`; without a store they
+are rows of `organization_secrets` too. The supervisor (service role) and each org manager (the
+organization's API key) read the table, then overlay the store (`ManagedSecretReader`, which asks the
+store only when `updated_at` changed). `OrganizationManager.worker_env_for` decides what a pod gets:
+all environment variables, and of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`.
 
+- **Adding a secret name** means changing `MANAGED_SECRETS`, `is_managed_organization_secret()` in a
+  migration, and `SECRET_NAMES` in the dashboard frontend together.
+- **The dashboard cannot read the store** (its service account lacks `versions.access`); it asks the
+  database whether the caller is an admin before writing. Never add a code path that returns a value.
 - **RunPod key: manager only.** It can terminate every pod of the account. A worker that is done sets
   `worker.termination_requested_at` (`openweights/worker/termination.py`), and
   `OrganizationManager.clean_up_workers` terminates the pod. The same method terminates workers that stop

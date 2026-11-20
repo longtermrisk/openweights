@@ -114,6 +114,7 @@ interface CreateOrganizationData {
 
 export interface OrganizationSecret {
     name: string;
+    kind: 'secret' | 'env';      // secrets are write-only; envs are passed to workers
     plain_value: string | null;  // only for settings that are not secrets
     last_four: string | null;    // only for secrets long enough to show a hint
     updated_at: string | null;
