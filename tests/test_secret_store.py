@@ -268,11 +268,14 @@ def test_workers_do_not_get_secrets_they_have_no_use_for():
 # --- The dashboard backend ---------------------------------------------------------
 
 
-class RpcSupabase(FakeSupabase):
-    """Like FakeSupabase, with a chosen answer per RPC."""
+MANAGED = {"organization_secrets": [{"name": "OW_MANAGED", "value": "true"}]}
 
-    def __init__(self, answers=None, **kwargs):
-        super().__init__(**kwargs)
+
+class RpcSupabase(FakeSupabase):
+    """Like FakeSupabase, with a chosen answer per RPC. The organization is managed."""
+
+    def __init__(self, answers=None, rows=MANAGED, **kwargs):
+        super().__init__(rows=rows, **kwargs)
         self.answers = answers or {}
 
     def rpc(self, name, params):
@@ -302,6 +305,24 @@ def test_dashboard_writes_a_secret_to_the_store_and_only_a_hint_to_the_database(
         ),
     ]
     assert SECRET not in json.dumps(client.rpcs)
+
+
+def test_dashboard_keeps_secrets_of_self_managed_organizations_in_the_database(
+    database_module,
+):
+    """Their own cluster reads the table; it cannot read our secret store."""
+    for rows in (
+        {},
+        {"organization_secrets": [{"name": "OW_MANAGED", "value": "false"}]},
+    ):
+        client = RpcSupabase(rows=rows)
+        database = make_database(database_module, client)
+        database.secret_store = InMemorySecretStore()
+
+        database.set_organization_secret(ORG, "LITELLM_API_KEY", "sk-some-value-00001")
+
+        assert database.secret_store.values == {}
+        assert [name for name, _ in client.rpcs] == ["manage_organization_secret"]
 
 
 def test_dashboard_keeps_environment_variables_in_the_database(database_module):
@@ -434,6 +455,14 @@ class MigrationQuery:
 
 def stored_rows():
     return [
+        {"organization_id": ORG, "name": "OW_MANAGED", "value": "true"},
+        {"organization_id": OTHER, "name": "OW_MANAGED", "value": "True"},
+        {"organization_id": KEY, "name": "OW_MANAGED", "value": "false"},
+        {
+            "organization_id": KEY,
+            "name": "HF_TOKEN",
+            "value": "hf_self_managed_cluster",
+        },
         {"organization_id": ORG, "name": "HF_TOKEN", "value": SECRET},
         {"organization_id": ORG, "name": "HF_USER", "value": "me"},
         {"organization_id": ORG, "name": "OPENAI_API_KEY", "value": "sk-env-var"},
@@ -448,7 +477,7 @@ def stored_rows():
 def test_migration_dry_run_changes_nothing_and_prints_no_values():
     supabase, store, lines = MigrationSupabase(stored_rows()), InMemorySecretStore(), []
     assert migrate(supabase, store, apply=False, out=lines.append) == 2
-    assert store.values == {} and len(supabase.tables["organization_secrets"]) == 4
+    assert store.values == {} and len(supabase.tables["organization_secrets"]) == 8
     assert SECRET not in "\n".join(lines)
 
 
@@ -458,10 +487,14 @@ def test_migration_moves_secrets_and_leaves_environment_variables():
 
     assert store.get(ORG, "HF_TOKEN") == SECRET
     assert store.get(OTHER, "RUNPOD_API_KEY") == "rpa_" + "x" * 20
-    assert sorted(r["name"] for r in supabase.tables["organization_secrets"]) == [
-        "HF_USER",
-        "OPENAI_API_KEY",
-    ]
+    # Environment variables stay, and so do the secrets of an organization that
+    # runs its own cluster: that cluster cannot read our secret store.
+    assert sorted(
+        (r["organization_id"], r["name"])
+        for r in supabase.tables["organization_secrets"]
+        if r["name"] != "OW_MANAGED"
+    ) == [(ORG, "HF_USER"), (ORG, "OPENAI_API_KEY"), (KEY, "HF_TOKEN")]
+    assert (KEY, "HF_TOKEN") not in store.values
     recorded = supabase.tables["organization_secret_metadata"]
     assert {(r["organization_id"], r["name"], r["last_four"]) for r in recorded} == {
         (ORG, "HF_TOKEN", "1234"),
@@ -480,7 +513,7 @@ def test_migration_keeps_the_row_when_the_store_does_not_hold_the_value():
     supabase = MigrationSupabase(stored_rows())
     with pytest.raises(RuntimeError, match="left in place"):
         migrate(supabase, ForgetfulStore(), apply=True, out=lambda _line: None)
-    assert len(supabase.tables["organization_secrets"]) == 4
+    assert len(supabase.tables["organization_secrets"]) == 8
 
 
 # --- The database (real PostgreSQL) --------------------------------------------------

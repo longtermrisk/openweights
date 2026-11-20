@@ -3,8 +3,11 @@
     OW_SECRET_STORE=gcp-secret-manager://<project> SUPABASE_SERVICE_ROLE_KEY=... \
         python -m openweights.secret_store_migration [--apply] [--organization <id>]
 
-Without ``--apply`` it only reports what it would move. For every managed secret
-(``openweights.secret_store.MANAGED_SECRETS``) of every organization it
+Without ``--apply`` it only reports what it would move. It covers the organizations
+the hosted cluster manager serves (``OW_MANAGED`` is true): a self-managed cluster
+cannot read the deployment's secret store, so its organization's secrets stay in the
+table. For every managed secret (``openweights.secret_store.MANAGED_SECRETS``) of
+those organizations it
 
 1. writes the value to the store and reads it back,
 2. records the secret in ``organization_secret_metadata``,
@@ -35,9 +38,24 @@ def migrate(supabase, store, apply: bool, organization_id=None, out=print) -> in
     if organization_id:
         query = query.eq("organization_id", organization_id)
     rows = query.execute().data or []
+    flags = (
+        supabase.table("organization_secrets")
+        .select("organization_id, name, value")
+        .in_("name", ["OW_MANAGED"])
+        .execute()
+        .data
+        or []
+    )
+    served = {
+        flag["organization_id"]
+        for flag in flags
+        if (flag["value"] or "").lower() in ("true", "1", "yes")
+    }
     moved = 0
     for row in rows:
         org_id, name, value = row["organization_id"], row["name"], row["value"]
+        if org_id not in served:
+            continue
         if not value:
             out(f"{org_id} {name}: empty, skipped")
             continue

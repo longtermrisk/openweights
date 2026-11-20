@@ -191,8 +191,9 @@ An organization has **secrets** (`MANAGED_SECRETS` in `openweights/secret_store.
 `OPENWEIGHTS_API_KEY`, `RUNPOD_API_KEY`, `LITELLM_API_KEY`) and **environment variables** (everything
 else). Environment variables are rows of `organization_secrets` and go to every worker. Secrets are kept
 in a secret store when the deployment has one (`OW_SECRET_STORE=gcp-secret-manager://<project>`), with
-only name, last four characters and update time in `organization_secret_metadata`; without a store they
-are rows of `organization_secrets` too. The supervisor (service role) and each org manager (the
+only name, last four characters and update time in `organization_secret_metadata`; without a store, and
+for organizations that run their own cluster (`OW_MANAGED` not true: that cluster cannot read our store),
+they are rows of `organization_secrets` too. The supervisor (service role) and each org manager (the
 organization's API key) read the table, then overlay the store (`ManagedSecretReader`, which asks the
 store only when `updated_at` changed). `OrganizationManager.worker_env_for` decides what a pod gets:
 all environment variables, and of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`.
