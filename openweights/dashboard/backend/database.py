@@ -38,7 +38,9 @@ from supabase import Client, create_client
 
 # Settings stored next to the secrets that are not credentials and may be shown.
 # Mirrors is_plain_organization_setting() in the database.
-PLAIN_SETTINGS = frozenset({"HF_USER", "HF_ORG", "OW_MANAGED", "MAX_WORKERS"})
+PLAIN_SETTINGS = frozenset(
+    {"HF_USER", "HF_ORG", "OW_MANAGED", "MAX_WORKERS", "LITELLM_BASE_URL"}
+)
 HF_SECRET_NAMES = frozenset({"HF_TOKEN", "HF_USER", "HF_ORG"})
 SECRET_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -204,6 +206,11 @@ class Database:
             )
         if not secret_value:
             raise ValueError("Secret value must not be empty")
+        if secret_name == "LITELLM_BASE_URL" and not re.fullmatch(
+            r"https://\S+", secret_value.strip()
+        ):
+            # The broker sends the organization's LiteLLM key to this address.
+            raise ValueError("LITELLM_BASE_URL must be an https URL")
 
         if secret_name in HF_SECRET_NAMES:
             # Validate the Hugging Face settings together, as far as the stored

@@ -8,9 +8,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from openweights.broker import HF_PREFIX, hf_stand_in_token
+from openweights.broker import HF_PREFIX, LITELLM_PREFIX, hf_stand_in_token
 from openweights.broker.app import (
     OrganizationSecrets,
+    UpstreamNotAllowed,
+    checked_upstream,
     WorkerIdentity,
     WorkerTokenValidator,
     create_app,
@@ -55,7 +57,11 @@ class Hub:
         return self.respond(request)
 
 
-def make_broker(hub=None, validator=None, store_values=None):
+LITELLM = "https://litellm.example/proxy"
+LITELLM_KEY = "sk-REALlitellmKEY0987654321"
+
+
+def make_broker(hub=None, validator=None, store_values=None, check_upstream=None):
     hub = hub or Hub()
     store = InMemorySecretStore()
     values = {"HF_TOKEN": REAL} if store_values is None else store_values
@@ -69,6 +75,8 @@ def make_broker(hub=None, validator=None, store_values=None):
             transport=httpx.MockTransport(hub), follow_redirects=False
         ),
         public_url=BROKER,
+        # Tests do not resolve names; the check itself is tested on its own.
+        check_upstream=check_upstream or (lambda url: url.rstrip("/")),
     )
     client = TestClient(app, follow_redirects=False)
     client.headers.pop("accept-encoding", None)
@@ -320,6 +328,175 @@ def test_secrets_are_read_from_the_store_once_per_period():
     assert Counting.reads == 2
 
 
+# --- LiteLLM ------------------------------------------------------------------------
+
+
+def litellm_broker(settings={"litellm_base_url": LITELLM}, **kwargs):  # noqa: B006
+    validator = FakeValidator(WorkerIdentity(ORG, "worker-1", "token-id", settings))
+    kwargs.setdefault("store_values", {"LITELLM_API_KEY": LITELLM_KEY})
+    return make_broker(validator=validator, **kwargs)
+
+
+def test_litellm_request_goes_to_the_organizations_proxy_with_its_key():
+    def respond(request):
+        return httpx.Response(
+            200,
+            content=b'data: {"delta": "Hel"}\n\ndata: {"delta": "lo"}\n\ndata: [DONE]\n\n',
+            headers={"content-type": "text/event-stream"},
+        )
+
+    client, hub, _, _ = litellm_broker(hub=Hub(respond))
+    body = {"model": "m", "messages": [], "stream": True}
+    response = client.post(
+        f"{LITELLM_PREFIX}/v1/chat/completions?x=1",
+        headers={
+            "Authorization": f"Bearer {WORKER_TOKEN}",
+            "Metadata-Flavor": "Google",
+            "X-Stainless-Lang": "python",
+        },
+        json=body,
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.text.count("data:") == 3
+
+    (sent,) = hub.requests
+    assert str(sent.url) == f"{LITELLM}/v1/chat/completions?x=1"
+    assert sent.headers["authorization"] == f"Bearer {LITELLM_KEY}"
+    assert json.loads(sent.content) == body
+    assert sent.headers["x-stainless-lang"] == "python"
+    # Never forwarded: the header a cloud metadata server insists on.
+    assert "metadata-flavor" not in sent.headers
+    assert WORKER_TOKEN not in str(sent.headers)
+    assert LITELLM_KEY not in response.text and LITELLM_KEY not in str(response.headers)
+
+
+def test_litellm_accepts_the_worker_token_as_x_api_key_and_does_not_pass_it_on():
+    client, hub, _, _ = litellm_broker()
+    response = client.get(
+        f"{LITELLM_PREFIX}/v1/models", headers={"x-api-key": WORKER_TOKEN}
+    )
+    assert response.status_code == 200
+    (sent,) = hub.requests
+    assert "x-api-key" not in sent.headers
+    assert sent.headers["authorization"] == f"Bearer {LITELLM_KEY}"
+
+
+@pytest.mark.parametrize(
+    "settings, store_values, message",
+    [
+        ({}, {"LITELLM_API_KEY": LITELLM_KEY}, "no LITELLM_BASE_URL"),
+        ({"litellm_base_url": LITELLM}, {}, "no LITELLM_API_KEY"),
+        # Having a Hugging Face token does not open the LiteLLM route.
+        ({"litellm_base_url": LITELLM}, {"HF_TOKEN": REAL}, "no LITELLM_API_KEY"),
+    ],
+)
+def test_litellm_needs_both_the_key_and_the_address(settings, store_values, message):
+    client, hub, _, _ = litellm_broker(settings=settings, store_values=store_values)
+    response = client.get(
+        f"{LITELLM_PREFIX}/v1/models",
+        headers={"Authorization": f"Bearer {WORKER_TOKEN}"},
+    )
+    assert response.status_code == 403 and message in response.json()["error"]
+    assert hub.requests == []
+
+
+def test_litellm_refuses_an_address_that_leads_inside_and_sends_nothing():
+    def refuse(url):
+        raise UpstreamNotAllowed("the address must be a public host")
+
+    client, hub, _, _ = litellm_broker(check_upstream=refuse)
+    response = client.post(
+        f"{LITELLM_PREFIX}/v1/chat/completions",
+        headers={"Authorization": f"Bearer {WORKER_TOKEN}"},
+        json={},
+    )
+    assert response.status_code == 403 and "not usable" in response.json()["error"]
+    assert hub.requests == []
+
+
+def test_litellm_does_not_hand_redirects_or_cookies_to_the_client():
+    def respond(request):
+        return httpx.Response(
+            307, headers={"location": "https://elsewhere.example/", "set-cookie": "a=1"}
+        )
+
+    client, hub, _, _ = litellm_broker(hub=Hub(respond))
+    response = client.get(
+        f"{LITELLM_PREFIX}/v1/models",
+        headers={"Authorization": f"Bearer {WORKER_TOKEN}"},
+    )
+    assert "location" not in response.headers and "set-cookie" not in response.headers
+    assert len(hub.requests) == 1  # and the broker did not follow it
+
+
+def test_without_a_valid_worker_token_litellm_is_closed():
+    client, hub, _, _ = litellm_broker()
+    for headers in (
+        {},
+        {"Authorization": f"Bearer {LITELLM_KEY}"},
+        {"x-api-key": "ow_short"},
+    ):
+        assert (
+            client.get(f"{LITELLM_PREFIX}/v1/models", headers=headers).status_code
+            == 401
+        )
+    assert hub.requests == []
+
+
+def resolver(*addresses):
+    return lambda host, port: [
+        (None, None, None, "", (address, port)) for address in addresses
+    ]
+
+
+def test_upstream_must_be_a_public_https_host():
+    public = resolver("93.184.216.34")
+    assert checked_upstream("https://litellm.example/proxy/", public) == (
+        "https://litellm.example/proxy"
+    )
+    for url in (
+        "http://litellm.example",  # not https
+        "https://user:pw@litellm.example",  # credentials in the address
+        "https://169.254.169.254/computeMetadata/v1/",  # the metadata server
+        "https://10.0.0.5",
+        "https://[::1]:8443",
+        "https://localhost",
+        "https://metadata.google.internal",
+        "https://service.local",
+        "ftp://litellm.example",
+        "https://",
+    ):
+        with pytest.raises(UpstreamNotAllowed):
+            checked_upstream(url, public)
+    # A public-looking name that resolves inside is refused too, even if only one
+    # of its addresses does.
+    for inside in (
+        "169.254.169.254",
+        "10.1.2.3",
+        "127.0.0.1",
+        "192.168.1.1",
+        "::1",
+        "fd00::1",
+    ):
+        with pytest.raises(UpstreamNotAllowed):
+            checked_upstream(
+                "https://sneaky.example", resolver("93.184.216.34", inside)
+            )
+
+    def unresolvable(host, port):
+        raise OSError("no such host")
+
+    with pytest.raises(UpstreamNotAllowed):
+        checked_upstream("https://nowhere.example", unresolvable)
+
+
+def test_health_answers_on_both_paths():
+    client, _, _, _ = make_broker()
+    assert client.get("/health").json() == {"ok": True}
+    assert client.get("/healthz").json() == {"ok": True}
+
+
 # --- Checking a worker token with the database -------------------------------------
 
 
@@ -342,6 +519,8 @@ class Database:
         self.personal = {"ow_" + "ee" * 24: ("personal-token-id", None)}
         self.exchanges = 0
         self.status = None
+        self.settings = {"litellm_base_url": LITELLM}
+        self.has_settings_column = True
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         assert request.headers["apikey"] == "anon-key"
@@ -362,6 +541,12 @@ class Database:
         worker = {v[0]: v[1] for v in {**self.tokens, **self.personal}.values()}[
             token_id
         ]
+        if "broker_settings" in request.url.params["select"]:
+            if not self.has_settings_column:
+                return httpx.Response(400, json={"message": "column does not exist"})
+            return httpx.Response(
+                200, json=[{"worker_id": worker, "broker_settings": self.settings}]
+            )
         return httpx.Response(200, json=[{"worker_id": worker}])
 
 
@@ -379,6 +564,14 @@ def test_validator_accepts_a_live_worker_token_and_learns_whose_it_is():
     validator = make_validator(Database(), [0.0])
     identity = asyncio.run(validator.validate(WORKER_TOKEN))
     assert (identity.organization_id, identity.worker_id) == (ORG, "worker-1")
+    assert identity.settings == {"litellm_base_url": LITELLM}
+
+
+def test_validator_works_with_a_database_from_before_broker_settings():
+    database = Database()
+    database.has_settings_column = False
+    identity = asyncio.run(make_validator(database, [0.0]).validate(WORKER_TOKEN))
+    assert identity.worker_id == "worker-1" and identity.settings == {}
 
 
 def test_validator_refuses_personal_keys_and_unknown_tokens():
@@ -459,3 +652,46 @@ def test_without_broker_store_or_worker_token_the_worker_keeps_the_real_token(
     manager = brokered_manager(monkeypatch, broker_url, from_store)
     env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", worker_token)
     assert env["HF_TOKEN"] == REAL and "HF_ENDPOINT" not in env
+
+
+def litellm_manager(monkeypatch, url="https://litellm.example/proxy/", in_store=True):
+    monkeypatch.setenv("OW_BROKER_URL", BROKER)
+    manager = make_manager(
+        secrets={
+            "RUNPOD_API_KEY": "rp",
+            "OPENWEIGHTS_API_KEY": "ow",
+            "LITELLM_API_KEY": LITELLM_KEY,
+            **({"LITELLM_BASE_URL": url} if url else {}),
+        }
+    )
+    manager.secrets_from_store = frozenset({"LITELLM_API_KEY"} if in_store else ())
+    return manager
+
+
+def test_worker_reaches_litellm_through_the_broker_with_its_own_token(monkeypatch):
+    manager = litellm_manager(monkeypatch)
+    assert manager.broker_settings() == {"litellm_base_url": LITELLM}
+    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", WORKER_TOKEN)
+    assert env["LITELLM_API_KEY"] == WORKER_TOKEN
+    assert env["LITELLM_BASE_URL"] == f"{BROKER}/litellm"
+    assert LITELLM_KEY not in env.values()
+
+
+@pytest.mark.parametrize(
+    "url, in_store",
+    [(None, True), ("http://litellm.example", True), (LITELLM, False)],
+)
+def test_without_address_or_stored_key_the_worker_gets_no_litellm_key(
+    monkeypatch, url, in_store
+):
+    manager = litellm_manager(monkeypatch, url=url, in_store=in_store)
+    assert manager.broker_settings() is None
+    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", WORKER_TOKEN)
+    assert "LITELLM_API_KEY" not in env and LITELLM_KEY not in env.values()
+    assert env.get("LITELLM_BASE_URL") != f"{BROKER}/litellm"
+
+
+def test_no_broker_settings_on_a_deployment_without_a_broker(monkeypatch):
+    manager = litellm_manager(monkeypatch)
+    monkeypatch.delenv("OW_BROKER_URL")
+    assert manager.broker_settings() is None

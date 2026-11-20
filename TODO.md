@@ -7,15 +7,18 @@ RunPod API key (`docs/release-0.16.0.md`). Done in 0.17.0: secrets (`HF_TOKEN`,
 `OPENWEIGHTS_API_KEY`, `RUNPOD_API_KEY`, `LITELLM_API_KEY`) are kept in a secret store,
 apart from environment variables (`docs/release-0.17.0.md`). Done in 0.18.0: a worker holds an
 OpenWeights token of its own, not the organization's key (`docs/release-0.18.0.md`). Done in 0.19.0: a
-broker keeps the Hugging Face token off the pod (`docs/release-0.19.0.md`).
+broker keeps the Hugging Face token off the pod (`docs/release-0.19.0.md`). Done in 0.20.0: the same
+for the organization's LiteLLM key (`docs/release-0.20.0.md`). With these, a worker of an organization
+that keeps its secrets in the secret store holds no organization credential.
 
-The plan, in the order to do it. The aim: no organization credential in a worker's
-environment; a worker holds one token of its own, which dies with the worker.
+Open items:
 
-1. **LiteLLM through the broker**: `LITELLM_BASE_URL` pointing at it, the worker
-   token as the key.
-
-Other open items:
+- **Self-managed clusters still pass their credentials to workers.** They have no
+  secret store and no broker; their workers get a token of their own (0.18.0) but the
+  real Hugging Face token. They would need to run a broker next to their manager.
+- **The broker resolves an upstream name twice** (once to check it, once to connect).
+  Pin the checked address before a broker gets access to a private network.
+- **No WebSocket through the broker** (LiteLLM's realtime API).
 
 - **A worker token is still a full member of its organization** for as long as it lives:
   it can read and change other jobs and submit jobs, without a spending limit even when

@@ -219,6 +219,11 @@ all environment variables, of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`
   file bytes go to signed storage URLs directly. `openweights/broker/__init__.py` must stay free of
   FastAPI imports, because the cluster manager imports it. Code that runs on a worker must build Hub
   URLs with `openweights.client.utils.hf_endpoint()`, never a literal `https://huggingface.co`.
+  LiteLLM works the same way (`LITELLM_BASE_URL=<broker>/litellm`, the worker token as the key). The
+  broker has no database credential: what it must know about a worker beyond its identity, such as the
+  organization's LiteLLM address, the manager writes onto the worker token (`api_tokens.broker_settings`
+  through `create_worker_token`). Any upstream address that comes from an organization's settings must
+  go through `checked_upstream` (https, public host) before the broker sends a key there.
 
 - **Adding a secret name** means changing `MANAGED_SECRETS`, `is_managed_organization_secret()` in a
   migration, and `SECRET_NAMES` in the dashboard frontend together.
