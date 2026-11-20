@@ -6,18 +6,13 @@ Done in 0.16.0: the dashboard does not reveal stored secrets, and workers do not
 RunPod API key (`docs/release-0.16.0.md`). Done in 0.17.0: secrets (`HF_TOKEN`,
 `OPENWEIGHTS_API_KEY`, `RUNPOD_API_KEY`, `LITELLM_API_KEY`) are kept in a secret store,
 apart from environment variables (`docs/release-0.17.0.md`). Done in 0.18.0: a worker holds an
-OpenWeights token of its own, not the organization's key (`docs/release-0.18.0.md`).
+OpenWeights token of its own, not the organization's key (`docs/release-0.18.0.md`). Done in 0.19.0: a
+broker keeps the Hugging Face token off the pod (`docs/release-0.19.0.md`).
 
 The plan, in the order to do it. The aim: no organization credential in a worker's
 environment; a worker holds one token of its own, which dies with the worker.
 
-1. **A broker for Hugging Face** (`ow broker`, a small public HTTP service that can read
-   the secret store). The worker gets `HF_ENDPOINT` pointing at the broker and its own
-   worker token as `HF_TOKEN`; the broker checks the token, puts in the organization's
-   real token and forwards API calls. File bytes do not pass through it: the Hub answers
-   with signed URLs. Worker images older than 0.15.2, which do not honour `HF_ENDPOINT`
-   everywhere, are not given the real token: their Hugging Face calls fail.
-2. **LiteLLM through the same broker**: `LITELLM_BASE_URL` pointing at it, the worker
+1. **LiteLLM through the broker**: `LITELLM_BASE_URL` pointing at it, the worker
    token as the key.
 
 Other open items:

@@ -90,6 +90,14 @@ def main():
     serve_parser = sub.add_parser("serve", help="Start the dashboard backend server.")
     add_serve_parser(serve_parser)
 
+    # broker command
+    from openweights.cli.broker import add_broker_parser, handle_broker
+
+    broker_parser = sub.add_parser(
+        "broker", help="Start the credential broker (workers use secrets through it)."
+    )
+    add_broker_parser(broker_parser)
+
     # deploy command
     from openweights.cli.deploy import add_deploy_parser, handle_deploy
 
@@ -138,6 +146,8 @@ def main():
         sys.exit(handle_fetch(args))
     elif args.cmd == "serve":
         sys.exit(handle_serve(args))
+    elif args.cmd == "broker":
+        sys.exit(handle_broker(args))
     elif args.cmd == "deploy":
         sys.exit(handle_deploy(args))
     elif args.cmd == "env":

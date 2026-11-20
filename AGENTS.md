@@ -206,6 +206,14 @@ all environment variables, of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`
   keys, limits, members) is out of its reach; it is an ordinary member otherwise. When you add a
   function or policy that only the organization's own key or an admin user should pass, gate it on
   `is_organization_admin`, never on `is_organization_member`.
+- **The broker** (`openweights/broker`, `ow broker`) lets a worker use the organization's Hugging Face
+  token without holding it: the manager, when it has `OW_BROKER_URL` and the token is in the secret
+  store, gives the pod `HF_ENDPOINT=<broker>/hf` and `HF_TOKEN=hf_<worker token>`. The broker checks
+  the worker token with the database (`WorkerTokenValidator`, answers cached 60 s), reads the real
+  token from the store and forwards to huggingface.co. It rewrites only URLs that lead back to the Hub;
+  file bytes go to signed storage URLs directly. `openweights/broker/__init__.py` must stay free of
+  FastAPI imports, because the cluster manager imports it. Code that runs on a worker must build Hub
+  URLs with `openweights.client.utils.hf_endpoint()`, never a literal `https://huggingface.co`.
 
 - **Adding a secret name** means changing `MANAGED_SECRETS`, `is_managed_organization_secret()` in a
   migration, and `SECRET_NAMES` in the dashboard frontend together.
