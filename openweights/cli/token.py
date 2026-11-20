@@ -90,6 +90,9 @@ def handle_token_ls(args) -> int:
             .execute()
         )
 
+        # Workers' own tokens (one per pod, short-lived) are not the user's keys.
+        result.data = [t for t in result.data or [] if not t.get("worker_id")]
+
         if not result.data:
             print(f"No tokens found for organization {org_id}")
             return 0

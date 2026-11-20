@@ -10,11 +10,12 @@ import signal
 import time
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import requests
 import runpod
+from postgrest.exceptions import APIError
 from dotenv import load_dotenv
 
 from openweights.client import (
@@ -60,6 +61,9 @@ logger = logging.getLogger(__name__)
 # The first worker image that asks the manager for termination (by setting
 # worker.termination_requested_at) instead of calling RunPod itself.
 KEYLESS_WORKER_IMAGE_VERSION = (0, 16, 0)
+# A worker's own OpenWeights token outlives the pod's TTL (24 hours for the pods the
+# manager starts) by a margin; the database revokes it when the worker is terminated.
+WORKER_TOKEN_LIFETIME_HOURS = 25
 _OFFICIAL_IMAGE_VERSION = re.compile(r"nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)")
 
 
@@ -159,20 +163,57 @@ class OrganizationManager:
             **secrets,
         )
 
-    def worker_env_for(self, docker_image: str) -> Dict[str, str]:
-        """The environment of a new worker pod: the manager's, minus the RunPod key.
+    def create_worker_token(self, worker_id: str) -> Optional[str]:
+        """An OpenWeights token for one worker, to stand in for the organization's key.
 
-        The key can terminate every pod of the account. Only the manager uses it;
-        official worker images that predate manager-side termination are the exception.
+        The token expires shortly after the pod's TTL and the database revokes it when
+        the worker is marked terminated. It is not an organization admin: it cannot
+        read settings or create tokens.
+
+        Returns None on a database that predates worker tokens; the worker then gets
+        the organization's key as before.
+        """
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=WORKER_TOKEN_LIFETIME_HOURS
+        )
+        try:
+            result = self._ow._supabase.rpc(
+                "create_worker_token",
+                {
+                    "org_id": self.org_id,
+                    "for_worker_id": worker_id,
+                    "expires_at": expires_at.isoformat(),
+                },
+            ).execute()
+        except APIError as error:
+            if error.code != "PGRST202":  # function not found
+                raise
+            logger.warning(
+                "The database has no create_worker_token(); workers get the "
+                "organization's API key"
+            )
+            return None
+        return result.data[0]["token"]
+
+    def worker_env_for(
+        self, docker_image: str, worker_token: Optional[str] = None
+    ) -> Dict[str, str]:
+        """The environment of a new worker pod: the manager's, minus what is not for it.
+
+        The RunPod key can terminate every pod of the account. Only the manager uses
+        it; official worker images that predate manager-side termination are the
+        exception. ``worker_token`` replaces the organization's OpenWeights key.
         """
         env = self.worker_env
         if not worker_image_needs_runpod_key(docker_image):
             env.pop("RUNPOD_API_KEY", None)
-        # Secrets a worker has no use for. (The two it still gets, its Hugging Face
-        # token and its OpenWeights key, are to be replaced by tokens of its own.)
+        # Secrets a worker has no use for. (The one it still gets, the Hugging Face
+        # token, is to be replaced by the broker.)
         for name in MANAGED_SECRETS - SECRETS_STILL_PASSED_TO_WORKERS:
-            if name != "RUNPOD_API_KEY":
+            if name not in ("RUNPOD_API_KEY", "OPENWEIGHTS_API_KEY"):
                 env.pop(name, None)
+        if worker_token:
+            env["OPENWEIGHTS_API_KEY"] = worker_token
         return env
 
     @supabase_retry()
@@ -647,6 +688,7 @@ class OrganizationManager:
 
                             worker_id = f"{self.org_id}-{uuid.uuid4().hex[:8]}"
                             worker_created = False
+                            worker_token = None
                             pod = None
                             last_error = None
 
@@ -687,6 +729,11 @@ class OrganizationManager:
                                         worker_update_data
                                     ).eq("id", worker_id).execute()
 
+                                # Outside the try: a database error here says nothing
+                                # about this hardware type.
+                                if worker_token is None:
+                                    worker_token = self.create_worker_token(worker_id)
+
                                 try:
                                     billing_started_at = datetime.now(
                                         timezone.utc
@@ -696,7 +743,9 @@ class OrganizationManager:
                                         count=count,
                                         worker_id=worker_id,
                                         image=docker_image,
-                                        env=self.worker_env_for(docker_image),
+                                        env=self.worker_env_for(
+                                            docker_image, worker_token
+                                        ),
                                         name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                         runpod_client=runpod,
                                     )
