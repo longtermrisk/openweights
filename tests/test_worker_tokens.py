@@ -24,6 +24,7 @@ MIGRATIONS = [
     ROOT / "supabase/migrations/20261120000000_credential_safety.sql",
     ROOT / "supabase/migrations/20261121000000_secret_metadata.sql",
     ROOT / "supabase/migrations/20261122000000_worker_tokens.sql",
+    ROOT / "supabase/migrations/20261123000000_worker_token_broker_settings.sql",
 ]
 WORKER = "worker-1"
 
@@ -102,6 +103,37 @@ def test_dashboard_does_not_list_worker_tokens_as_api_keys(database_module):
     )
     database = make_database(database_module, client)
     assert [token.id for token in database.list_tokens(ORG)] == ["a", "c"]
+
+
+def test_manager_writes_the_litellm_address_onto_the_token(monkeypatch):
+    supabase = TokenSupabase()
+    manager = make_manager(supabase=supabase)
+    monkeypatch.setattr(
+        manager, "broker_settings", lambda: {"litellm_base_url": "https://l.example"}
+    )
+    assert manager.create_worker_token(WORKER) == "ow_worker_token"
+    ((_, params),) = supabase.rpcs
+    assert params["broker_settings"] == {"litellm_base_url": "https://l.example"}
+
+
+def test_a_database_before_broker_settings_still_gives_a_worker_token(monkeypatch):
+    class OldDatabase(TokenSupabase):
+        def rpc(self, name, params):
+            self.error = (
+                APIError({"code": "PGRST202", "message": "function not found"})
+                if "broker_settings" in params
+                else None
+            )
+            return super().rpc(name, params)
+
+    supabase = OldDatabase()
+    manager = make_manager(supabase=supabase)
+    monkeypatch.setattr(
+        manager, "broker_settings", lambda: {"litellm_base_url": "https://l.example"}
+    )
+    # Not None: falling back to the organization's key would be a step backwards.
+    assert manager.create_worker_token(WORKER) == "ow_worker_token"
+    assert ["broker_settings" in params for _, params in supabase.rpcs] == [True, False]
 
 
 # --- The database (real PostgreSQL) --------------------------------------------------
@@ -289,4 +321,72 @@ def test_existing_keys_keep_their_rights(token_db):
     assert token_db("SELECT count(*) FROM organization_secrets", claims=claims()) == "2"
     assert (
         token_db("SELECT count(*) FROM api_tokens WHERE worker_id IS NOT NULL") == "0"
+    )
+
+
+def create_with_settings(db, settings, error=False):  # noqa: F811
+    return db(
+        f"SELECT token_id FROM create_worker_token('{ORG}','{WORKER}', now() + interval '25 hours', '{settings}'::jsonb)",
+        claims=claims(),
+        error=error,
+    )
+
+
+def test_manager_can_write_the_litellm_address_onto_a_worker_token(token_db):
+    token_id = create_with_settings(
+        token_db, '{"litellm_base_url": "https://litellm.example/proxy"}'
+    )
+    # The broker reads it with the worker token's own JWT.
+    assert token_db(
+        f"SELECT worker_id, broker_settings->>'litellm_base_url' FROM api_tokens WHERE id='{token_id}'",
+        claims=claims(key=token_id),
+    ) == (f"{WORKER}|https://litellm.example/proxy")
+    # The worker cannot point the broker somewhere else.
+    token_db(
+        f"""UPDATE api_tokens SET broker_settings = '{{"litellm_base_url": "https://evil.example"}}' WHERE id='{token_id}'""",
+        claims=claims(key=token_id),
+    )
+    assert (
+        token_db(
+            f"SELECT broker_settings->>'litellm_base_url' FROM api_tokens WHERE id='{token_id}'"
+        )
+        == "https://litellm.example/proxy"
+    )
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        '{"litellm_base_url": "http://litellm.example"}',
+        '{"litellm_base_url": "https://a b"}',
+        '{"litellm_base_url": "https://ok.example", "extra": 1}',
+        '{"something_else": "https://ok.example"}',
+        '["https://ok.example"]',
+        '"https://ok.example"',
+    ],
+)
+def test_broker_settings_hold_one_https_address_and_nothing_else(token_db, settings):
+    assert "broker_settings may only hold" in create_with_settings(
+        token_db, settings, error=True
+    )
+
+
+def test_three_argument_call_of_older_managers_still_works(token_db):
+    token_id, _ = create(token_db)
+    assert (
+        token_db(
+            f"SELECT broker_settings IS NULL FROM api_tokens WHERE id='{token_id}'"
+        )
+        == "t"
+    )
+
+
+def test_litellm_address_is_a_setting_the_dashboard_may_show(token_db):
+    token_db(
+        f"SELECT manage_organization_secret('{ORG}','LITELLM_BASE_URL','https://litellm.example')",
+        claims={"sub": USER},
+    )
+    assert "LITELLM_BASE_URL|https://litellm.example|" in token_db(
+        f"SELECT name, plain_value, last_four FROM list_organization_secrets_masked('{ORG}')",
+        claims={"sub": USER},
     )

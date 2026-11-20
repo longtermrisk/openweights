@@ -61,7 +61,7 @@ const REQUIRED_SECRETS = ['HF_ORG', 'HF_USER', 'HF_TOKEN', 'RUNPOD_API_KEY', 'OP
 const SECRET_NAMES = ['HF_TOKEN', 'OPENWEIGHTS_API_KEY', 'RUNPOD_API_KEY', 'LITELLM_API_KEY'];
 const looksLikeCredential = (name: string) =>
   !PLAIN_SETTINGS.includes(name) && /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(name);
-const PLAIN_SETTINGS = ['HF_USER', 'HF_ORG', 'OW_MANAGED', 'MAX_WORKERS'];
+const PLAIN_SETTINGS = ['HF_USER', 'HF_ORG', 'OW_MANAGED', 'MAX_WORKERS', 'LITELLM_BASE_URL'];
 
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props
@@ -322,6 +322,8 @@ export function OrganizationDetail() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Credentials OpenWeights uses on your behalf. A stored secret cannot be
             viewed, only replaced; it is identified by its last four characters.
+            {' '}To let jobs use your LiteLLM proxy, set LITELLM_API_KEY here and
+            LITELLM_BASE_URL (https) as an environment variable below.
           </Typography>
           <TableContainer component={Paper} sx={{ mb: 4 }}>
             <Table>

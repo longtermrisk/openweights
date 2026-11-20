@@ -17,6 +17,12 @@ File contents do not pass through here. The Hub answers downloads and uploads of
 large files with redirects to signed storage URLs and with short-lived Xet tokens,
 which the client uses directly; those are bound to one repository and expire.
 
+The same goes for the organization's LiteLLM proxy: the pod gets
+``LITELLM_BASE_URL = <broker url>/litellm`` and its worker token as ``LITELLM_API_KEY``;
+the broker puts in the organization's real key and forwards to the address the
+organization configured (``LITELLM_BASE_URL`` in its settings, which the cluster
+manager writes onto the worker token).
+
 What the broker does not do: stop a job from *using* the organization's Hugging Face
 access while its worker lives. It stops the token from being copied out and used
 later, and it logs which worker made which request.
@@ -28,6 +34,9 @@ The same design is in r-docs (lib/credential-broker), where it was tried first.
 
 # Where the broker serves the Hugging Face Hub: HF_ENDPOINT = <broker url> + HF_PREFIX.
 HF_PREFIX = "/hf"
+# Where it serves the organization's LiteLLM proxy:
+# LITELLM_BASE_URL = <broker url> + LITELLM_PREFIX, with the worker token as the key.
+LITELLM_PREFIX = "/litellm"
 # huggingface_hub and the Hub's own tooling expect tokens to look like this.
 HF_TOKEN_PREFIX = "hf_"
 

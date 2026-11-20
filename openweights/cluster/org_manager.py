@@ -26,7 +26,7 @@ from openweights.client import (
 )
 from openweights.client.decorators import supabase_retry
 from openweights.client.jobs import JOB_SELECT, priority_sort_key, with_priority
-from openweights.broker import HF_PREFIX, hf_stand_in_token
+from openweights.broker import HF_PREFIX, LITELLM_PREFIX, hf_stand_in_token
 from openweights.secret_store import (
     MANAGED_SECRETS,
     SECRETS_STILL_PASSED_TO_WORKERS,
@@ -66,6 +66,11 @@ KEYLESS_WORKER_IMAGE_VERSION = (0, 16, 0)
 # manager starts) by a margin; the database revokes it when the worker is terminated.
 WORKER_TOKEN_LIFETIME_HOURS = 25
 _OFFICIAL_IMAGE_VERSION = re.compile(r"nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)")
+
+
+def broker_url() -> str:
+    """Where workers reach the credential broker; empty on a deployment without one."""
+    return os.environ.get("OW_BROKER_URL", "").rstrip("/")
 
 
 def worker_image_needs_runpod_key(image: str) -> bool:
@@ -182,24 +187,45 @@ class OrganizationManager:
         expires_at = datetime.now(timezone.utc) + timedelta(
             hours=WORKER_TOKEN_LIFETIME_HOURS
         )
-        try:
-            result = self._ow._supabase.rpc(
-                "create_worker_token",
-                {
-                    "org_id": self.org_id,
-                    "for_worker_id": worker_id,
-                    "expires_at": expires_at.isoformat(),
-                },
-            ).execute()
-        except APIError as error:
-            if error.code != "PGRST202":  # function not found
-                raise
-            logger.warning(
-                "The database has no create_worker_token(); workers get the "
-                "organization's API key"
-            )
+        params = {
+            "org_id": self.org_id,
+            "for_worker_id": worker_id,
+            "expires_at": expires_at.isoformat(),
+        }
+        settings = self.broker_settings()
+        attempts = [{**params, "broker_settings": settings}] if settings else []
+        attempts.append(params)  # also what a database before broker settings takes
+        for attempt in attempts:
+            try:
+                result = self._ow._supabase.rpc(
+                    "create_worker_token", attempt
+                ).execute()
+            except APIError as error:
+                if error.code != "PGRST202":  # function (with these arguments) not found
+                    raise
+                continue
+            return result.data[0]["token"]
+        logger.warning(
+            "The database has no create_worker_token(); workers get the "
+            "organization's API key"
+        )
+        return None
+
+    def broker_settings(self) -> Optional[Dict[str, str]]:
+        """What the broker needs to serve this organization's workers, or None.
+
+        Written onto each worker token, which is where the broker reads it. Today:
+        where the organization's LiteLLM proxy is, if its key is in the secret store.
+        """
+        if not broker_url():
             return None
-        return result.data[0]["token"]
+        secrets = self.get_secrets()
+        litellm_url = (secrets.get("LITELLM_BASE_URL") or "").strip().rstrip("/")
+        if "LITELLM_API_KEY" in self.secrets_from_store and litellm_url.startswith(
+            "https://"
+        ):
+            return {"litellm_base_url": litellm_url}
+        return None
 
     def worker_env_for(
         self, docker_image: str, worker_token: Optional[str] = None
@@ -220,13 +246,20 @@ class OrganizationManager:
                 env.pop(name, None)
         if worker_token:
             env["OPENWEIGHTS_API_KEY"] = worker_token
-            broker_url = os.environ.get("OW_BROKER_URL", "").rstrip("/")
-            if broker_url and "HF_TOKEN" in self.secrets_from_store:
+            broker = broker_url()
+            if broker and "HF_TOKEN" in self.secrets_from_store:
                 # The organization's Hugging Face token stays in the secret store.
                 # The worker reaches the Hub through the broker, which accepts the
                 # worker's own token and puts in the real one (openweights/broker).
                 env["HF_TOKEN"] = hf_stand_in_token(worker_token)
-                env["HF_ENDPOINT"] = broker_url + HF_PREFIX
+                env["HF_ENDPOINT"] = broker + HF_PREFIX
+            if broker and "LITELLM_API_KEY" in self.secrets_from_store:
+                # Same for the organization's LiteLLM proxy. The broker forwards to
+                # the address in the organization's LITELLM_BASE_URL setting, which
+                # create_worker_token() wrote onto the worker's token.
+                if env.get("LITELLM_BASE_URL", "").strip().startswith("https://"):
+                    env["LITELLM_API_KEY"] = worker_token
+                    env["LITELLM_BASE_URL"] = broker + LITELLM_PREFIX
         return env
 
     @supabase_retry()

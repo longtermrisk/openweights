@@ -642,3 +642,15 @@ def test_metadata_never_holds_more_than_four_characters(metadata_db):
         claims={"sub": USER},
         error=True,
     )
+
+
+def test_litellm_address_must_be_https_because_the_key_is_sent_there(database_module):
+    client = RpcSupabase()
+    database = make_database(database_module, client)
+    for bad in ("http://litellm.example", "litellm.example", "https://a b"):
+        with pytest.raises(ValueError, match="https URL"):
+            database.set_organization_secret(ORG, "LITELLM_BASE_URL", bad)
+    assert client.rpcs == []
+    database.set_organization_secret(ORG, "LITELLM_BASE_URL", "https://litellm.example")
+    # An ordinary, visible setting: it goes to the database, not the secret store.
+    assert [name for name, _ in client.rpcs] == ["manage_organization_secret"]
