@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from typing import Dict
 
 import jwt
-import runpod
 import torch
 
 from openweights.client import Files, OpenWeights, Run
@@ -23,12 +22,11 @@ from openweights.client.jobs import JOB_SELECT, with_priority
 from openweights.cluster.start_runpod import GPUs
 from openweights.worker.gpu_health_check import GPUHealthCheck
 from openweights.worker.gpu_reclaim import ForeignGpuHolderError, reclaim_gpu
+from openweights.worker.termination import request_termination
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
-
-runpod.api_key = os.environ.get("RUNPOD_API_KEY")
 
 
 def maybe_read(path):
@@ -340,20 +338,11 @@ class Worker:
         except Exception as e:
             logging.error(f"Error updating worker logs during shutdown: {e}")
 
-        # Update worker status
+        # Mark the worker as shut down and ask the cluster manager to terminate the
+        # pod. The worker holds no RunPod credentials, so it cannot (and must not)
+        # do that itself.
         try:
-            result = (
-                self._ow._supabase.table("worker")
-                .update({"status": "shutdown"})
-                .eq("id", self.worker_id)
-                .execute()
-            )
-            # If the worker has a pod_id, terminate the pod
-            if result.data and result.data[0].get("pod_id"):
-                runpod.terminate_pod(result.data[0]["pod_id"])
-                self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
-                    "id", self.worker_id
-                ).execute()
+            request_termination(self._ow._supabase, self.worker_id, status="shutdown")
         except Exception as e:
             logging.error(f"Error updating worker status during shutdown: {e}")
 

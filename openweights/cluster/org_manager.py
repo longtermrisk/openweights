@@ -5,6 +5,7 @@ Organization-specific cluster manager.
 import io
 import logging
 import os
+import re
 import signal
 import time
 import traceback
@@ -49,6 +50,24 @@ logging.basicConfig(
     level=logging.WARNING, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# The first worker image that asks the manager for termination (by setting
+# worker.termination_requested_at) instead of calling RunPod itself.
+KEYLESS_WORKER_IMAGE_VERSION = (0, 16, 0)
+_OFFICIAL_IMAGE_VERSION = re.compile(r"nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)")
+
+
+def worker_image_needs_runpod_key(image: str) -> bool:
+    """Whether a worker image still terminates its own pod and needs the key for it.
+
+    Official images from KEYLESS_WORKER_IMAGE_VERSION on do not. Older official images
+    and custom images (whose worker code is unknown) keep receiving the key, so
+    that they shut down as before.
+    """
+    match = _OFFICIAL_IMAGE_VERSION.match(image or "")
+    if not match:
+        return True
+    return tuple(int(part) for part in match.groups()) < KEYLESS_WORKER_IMAGE_VERSION
 
 
 def format_cooldown_remaining(until: float, now: Optional[float] = None) -> str:
@@ -127,6 +146,17 @@ class OrganizationManager:
             SUPABASE_ANON_KEY=_SUPABASE_ANON_KEY,
             **secrets,
         )
+
+    def worker_env_for(self, docker_image: str) -> Dict[str, str]:
+        """The environment of a new worker pod: the manager's, minus the RunPod key.
+
+        The key can terminate every pod of the account. Only the manager uses it;
+        worker images that predate manager-side termination are the exception.
+        """
+        env = self.worker_env
+        if not worker_image_needs_runpod_key(docker_image):
+            env.pop("RUNPOD_API_KEY", None)
+        return env
 
     @supabase_retry()
     def get_secrets(self) -> Dict[str, str]:
@@ -290,92 +320,113 @@ class OrganizationManager:
             logger.error(f"Error saving logs for worker {worker['id']}: {e}")
             return None
 
-    @supabase_retry()
-    def clean_up_unresponsive_workers(self, workers):
-        """
-        Clean up workers that haven't pinged in more than UNRESPONSIVE_THRESHOLD seconds
-        and safely revert their in-progress jobs.
-        """
-        current_time = datetime.now(timezone.utc)
+    def termination_reason(self, worker, now: Optional[datetime] = None):
+        """Why this worker's pod must be terminated now, or None if it must not.
 
-        for worker in workers:
+        Two cases: the worker asked for it (termination_requested_at, set by a worker
+        that has shut down or whose TTL expired), or it stopped pinging. The second
+        also covers every worker that dies without asking: a crashed or killed
+        process, a pod that never came up, and workers from images that still set
+        only status='shutdown'.
+        """
+        if worker.get("termination_requested_at"):
+            return "worker requested termination"
+
+        now = now or datetime.now(timezone.utc)
+        try:
+            last_ping = datetime.fromisoformat(
+                worker["ping"].replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            time_since_ping = (now - last_ping).total_seconds()
+        except Exception:
+            # If parsing ping time fails, treat worker as unresponsive
+            return "no valid ping"
+        # Fresh pods can spend several minutes pulling large images before
+        # the worker process starts pinging. Reuse STARTUP_THRESHOLD here
+        # so cold boots are not killed as "unresponsive" prematurely.
+        threshold = (
+            STARTUP_THRESHOLD
+            if worker["status"] == "starting"
+            else UNRESPONSIVE_THRESHOLD
+        )
+        if time_since_ping > threshold:
+            return f"no ping for {int(time_since_ping)} seconds"
+        return None
+
+    def terminate_worker(self, worker, reason: str) -> bool:
+        """Revert the worker's running jobs, terminate its pod and mark it terminated.
+
+        Returns False if the pod could not be terminated; the worker then stays in
+        its current state (and keeps accruing cost) and is retried next cycle.
+        """
+        logger.info(f"Terminating worker {worker['id']}: {reason}")
+
+        # Save worker logs before termination. A worker that asked for termination
+        # has usually uploaded its own log already.
+        if not (worker.get("termination_requested_at") and worker.get("logfile")):
+            self.fetch_and_save_worker_logs(worker)
+
+        # 1) Find any runs currently 'in_progress' for this worker.
+        runs = (
+            self._ow._supabase.table("runs")
+            .select("*")
+            .eq("worker_id", worker["id"])
+            .eq("status", "in_progress")
+            .execute()
+            .data
+        )
+
+        # 2) For each run, set run to 'failed', and revert the job to 'pending'
+        #    *only if* it's still in_progress for THIS worker.
+        for run in runs:
+            self._ow._supabase.table("runs").update({"status": "failed"}).eq(
+                "id", run["id"]
+            ).execute()
+
             try:
-                # Parse ping time as UTC
-                last_ping = datetime.fromisoformat(
-                    worker["ping"].replace("Z", "+00:00")
-                ).astimezone(timezone.utc)
-                time_since_ping = (current_time - last_ping).total_seconds()
-                # Fresh pods can spend several minutes pulling large images before
-                # the worker process starts pinging. Reuse STARTUP_THRESHOLD here
-                # so cold boots are not killed as "unresponsive" prematurely.
-                threshold = (
-                    STARTUP_THRESHOLD
-                    if worker["status"] == "starting"
-                    else UNRESPONSIVE_THRESHOLD
-                )
-                is_unresponsive = time_since_ping > threshold
-            except Exception as e:
-                # If parsing ping time fails, treat worker as unresponsive
-                is_unresponsive = True
-                time_since_ping = "unknown"
-
-            if is_unresponsive:
-                logger.info(
-                    f"Worker {worker['id']} hasn't pinged for {time_since_ping} seconds. Cleaning up..."
-                )
-
-                # Save worker logs before termination (if applicable)
-                self.fetch_and_save_worker_logs(worker)
-
-                # 1) Find any runs currently 'in_progress' for this worker.
-                runs = (
-                    self._ow._supabase.table("runs")
-                    .select("*")
-                    .eq("worker_id", worker["id"])
-                    .eq("status", "in_progress")
-                    .execute()
-                    .data
-                )
-
-                # 2) For each run, set run to 'failed' (or 'canceled'), and
-                #    revert the job to 'pending' *only if* it's still in_progress for THIS worker.
-                for run in runs:
-                    # Mark the run as failed
-                    self._ow._supabase.table("runs").update({"status": "failed"}).eq(
-                        "id", run["id"]
-                    ).execute()
-
-                    # Safely revert the job to 'pending' using your RPC that only updates
-                    # if status='in_progress' for the same worker_id.
-                    try:
-                        self._ow._supabase.rpc(
-                            "update_job_status_if_in_progress",
-                            {
-                                "_job_id": run["job_id"],
-                                "_new_status": "pending",  # Must be valid enum label
-                                "_worker_id": worker["id"],
-                                "_job_outputs": None,
-                                "_job_script": None,
-                            },
-                        ).execute()
-                    except Exception as e:
-                        logger.error(
-                            f"Error reverting job {run['job_id']} to pending: {e}"
-                        )
-
-                # 3) If this worker has a RunPod pod, terminate it
-                if worker.get("pod_id"):
-                    try:
-                        logger.info(f"Terminating pod {worker['pod_id']}")
-                        terminate_worker_pod(worker["pod_id"], runpod)
-                    except Exception as e:
-                        logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
-                        continue  # Keep accruing cost and retry termination next cycle.
-
-                # 4) Finally, mark the worker as 'terminated' in the DB
-                self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
-                    "id", worker["id"]
+                self._ow._supabase.rpc(
+                    "update_job_status_if_in_progress",
+                    {
+                        "_job_id": run["job_id"],
+                        "_new_status": "pending",  # Must be valid enum label
+                        "_worker_id": worker["id"],
+                        "_job_outputs": None,
+                        "_job_script": None,
+                    },
                 ).execute()
+            except Exception as e:
+                logger.error(f"Error reverting job {run['job_id']} to pending: {e}")
+
+        # 3) If this worker has a RunPod pod, terminate it
+        if worker.get("pod_id"):
+            try:
+                logger.info(f"Terminating pod {worker['pod_id']}")
+                terminate_worker_pod(worker["pod_id"], runpod)
+            except Exception as e:
+                logger.error(f"Failed to terminate pod {worker['pod_id']}: {e}")
+                return False  # Keep accruing cost and retry termination next cycle.
+
+        # 4) Finally, mark the worker as 'terminated' in the DB
+        self._ow._supabase.table("worker").update({"status": "terminated"}).eq(
+            "id", worker["id"]
+        ).execute()
+        return True
+
+    @supabase_retry()
+    def clean_up_workers(self, workers):
+        """Terminate the pods of workers that asked for it or stopped pinging.
+
+        Workers hold no RunPod key, so this is the only place where worker pods are
+        terminated (apart from old worker images, which still do it themselves).
+        Returns the ids of the workers that are now terminated.
+        """
+        now = datetime.now(timezone.utc)
+        terminated = []
+        for worker in workers:
+            reason = self.termination_reason(worker, now)
+            if reason and self.terminate_worker(worker, reason):
+                terminated.append(worker["id"])
+        return terminated
 
     def normalize_allowed_hardware(self, pending_jobs):
         """Rewrite allowed_hardware aliases to canonical names; fail jobs with unknown GPUs.
@@ -618,7 +669,7 @@ class OrganizationManager:
                                         count=count,
                                         worker_id=worker_id,
                                         image=docker_image,
-                                        env=self.worker_env,
+                                        env=self.worker_env_for(docker_image),
                                         name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                         runpod_client=runpod,
                                     )
@@ -758,12 +809,14 @@ class OrganizationManager:
             if pending_jobs:
                 self.scale_workers(running_workers, pending_jobs)
 
-            # Clean up unresponsive workers
-            self.clean_up_unresponsive_workers(running_workers)
+            # Terminate workers that asked for it or stopped pinging
+            terminated = self.clean_up_workers(running_workers)
 
             # Handle idle workers
             active_and_starting_workers = [
-                w for w in running_workers if w["status"] in ["active", "starting"]
+                w
+                for w in running_workers
+                if w["status"] in ["active", "starting"] and w["id"] not in terminated
             ]
             idle_workers = self.get_idle_workers(active_and_starting_workers)
             self.set_shutdown_flags(idle_workers)

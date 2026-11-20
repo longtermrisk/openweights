@@ -24,6 +24,7 @@ from models import (
     Organization,
     OrganizationCreate,
     OrganizationSecret,
+    OrganizationSecretValue,
     OrganizationUpdate,
     Run,
     RunWithJobAndWorker,
@@ -171,14 +172,31 @@ def get_organization(organization_id: str, db: Database = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.put("/organizations/{organization_id}/secrets")
-def update_organization_secrets(
-    organization_id: str, secrets: Dict[str, str], db: Database = Depends(get_db)
+@app.put("/organizations/{organization_id}/secrets/{secret_name}")
+def set_organization_secret(
+    organization_id: str,
+    secret_name: str,
+    payload: OrganizationSecretValue,
+    db: Database = Depends(get_db),
 ):
-    """Update all organization secrets together."""
+    """Create a secret or replace its value. The value is never returned."""
     try:
-        success = db.update_organization_secrets(organization_id, secrets)
-        return {"status": "success" if success else "failed"}
+        db.set_organization_secret(organization_id, secret_name, payload.value)
+        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/organizations/{organization_id}/secrets/{secret_name}")
+def delete_organization_secret(
+    organization_id: str, secret_name: str, db: Database = Depends(get_db)
+):
+    """Delete a secret."""
+    try:
+        db.delete_organization_secret(organization_id, secret_name)
+        return {"status": "success"}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
@@ -192,7 +210,8 @@ def update_organization_secrets(
 def list_organization_secrets(
     organization_id: str, db: Database = Depends(get_db)
 ):
-    """List all secrets for an organization (admin-only)."""
+    """List an organization's secrets, masked: names, last four characters and
+    update time, never the values (admin-only)."""
     try:
         return db.list_organization_secrets(organization_id)
     except ValueError as e:

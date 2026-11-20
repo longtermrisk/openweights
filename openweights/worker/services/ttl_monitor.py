@@ -2,6 +2,7 @@
 """
 TTL monitoring service that terminates pods after expiration
 """
+
 import datetime
 import os
 import sys
@@ -44,21 +45,47 @@ def get_pod_id():
     return None
 
 
-def terminate_pod():
-    """Terminate the current pod using RunPod API"""
-    try:
-        import runpod
+def request_termination_by_manager():
+    """Ask the cluster manager to terminate this pod (the normal path).
 
+    A managed worker holds no RunPod key. It sets ``termination_requested_at`` on
+    its worker row instead, and the manager terminates the pod. Returns True once the
+    request is stored.
+    """
+    worker_id = os.environ.get("WORKER_ID")
+    if not worker_id or not os.environ.get("OPENWEIGHTS_API_KEY"):
+        return False
+    try:
+        from openweights import OpenWeights
+        from openweights.worker.termination import request_termination
+
+        stored = request_termination(OpenWeights()._supabase, worker_id)
+        print(f"Asked the cluster manager to terminate worker {worker_id}")
+        return stored
+    except Exception as e:
+        print(f"ERROR: Could not ask the cluster manager for termination: {e}")
+        return False
+
+
+def terminate_pod():
+    """Terminate the current pod directly using a RunPod API key from the environment.
+
+    Only pods started outside the cluster manager have one: `ow ssh` forwards the
+    caller's own key, because no manager watches those pods.
+    """
+    try:
         api_key = os.environ.get("RUNPOD_API_KEY")
         pod_id = get_pod_id()
 
         if not api_key:
-            print("ERROR: RUNPOD_API_KEY not found in environment")
+            print("No RUNPOD_API_KEY in environment, cannot terminate the pod directly")
             return False
 
         if not pod_id:
             print("ERROR: Could not determine pod ID")
             return False
+
+        import runpod
 
         runpod.api_key = api_key
         result = runpod.terminate_pod(pod_id)
@@ -71,6 +98,20 @@ def terminate_pod():
     except Exception as e:
         print(f"ERROR: Failed to terminate pod: {e}")
         return False
+
+
+def terminate_expired_pod():
+    """TTL expired: get this pod terminated. Returns True when nothing is left to do.
+
+    The request to the manager is repeated every minute while the pod is alive (it is
+    idempotent), so this returns True only after a direct termination.
+    """
+    requested = request_termination_by_manager()
+    if terminate_pod():
+        return True
+    if requested:
+        print("Waiting for the cluster manager to terminate this pod")
+    return False
 
 
 def monitor_ttl():
@@ -95,11 +136,11 @@ def monitor_ttl():
                         )
                         print("Initiating pod termination...")
 
-                        if terminate_pod():
+                        if terminate_expired_pod():
                             print("Pod termination successful")
                             break
                         else:
-                            print("Pod termination failed, will retry in 60 seconds")
+                            print("Pod still running, will retry in 60 seconds")
                     else:
                         time_left = shutdown_time - current_time
                         print(f"TTL check: {time_left} remaining until shutdown")

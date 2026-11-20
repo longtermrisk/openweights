@@ -112,6 +112,13 @@ interface CreateOrganizationData {
     };
 }
 
+export interface OrganizationSecret {
+    name: string;
+    plain_value: string | null;  // only for settings that are not secrets
+    last_four: string | null;    // only for secrets long enough to show a hint
+    updated_at: string | null;
+}
+
 export const api = {
     getCosts: async (orgId: string, offset = 0): Promise<CostReport> => {
         try { return (await axios.get(`${API_URL}/organizations/${orgId}/costs?offset=${offset}`, await getAuthHeaders())).data; }
@@ -152,12 +159,13 @@ export const api = {
         }
     },
 
-    updateOrganizationSecrets: async (orgId: string, secrets: Record<string, string>) => {
+    // Stored secret values never reach the browser: a secret is listed by name, its
+    // last four characters and when it was last changed. It can be replaced or deleted.
+    listOrganizationSecrets: async (orgId: string): Promise<OrganizationSecret[]> => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.put(
+            const response = await axios.get<OrganizationSecret[]>(
                 `${API_URL}/organizations/${orgId}/secrets`,
-                secrets,
                 config
             );
             return response.data;
@@ -166,14 +174,26 @@ export const api = {
         }
     },
 
-    listOrganizationSecrets: async (orgId: string): Promise<{ name: string; value: string }[]> => {
+    setOrganizationSecret: async (orgId: string, name: string, value: string): Promise<void> => {
         try {
             const config = await getAuthHeaders();
-            const response = await axios.get<{ name: string; value: string }[]>(
-                `${API_URL}/organizations/${orgId}/secrets`,
+            await axios.put(
+                `${API_URL}/organizations/${orgId}/secrets/${encodeURIComponent(name)}`,
+                { value },
                 config
             );
-            return response.data;
+        } catch (error) {
+            throw new Error(getErrorMessage(error));
+        }
+    },
+
+    deleteOrganizationSecret: async (orgId: string, name: string): Promise<void> => {
+        try {
+            const config = await getAuthHeaders();
+            await axios.delete(
+                `${API_URL}/organizations/${orgId}/secrets/${encodeURIComponent(name)}`,
+                config
+            );
         } catch (error) {
             throw new Error(getErrorMessage(error));
         }

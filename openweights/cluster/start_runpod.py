@@ -736,9 +736,13 @@ def _start_worker(
             "DOCKER_IMAGE": image,
             "OW_DEV": "true" if dev_mode else "false",
             "TTL_HOURS": str(ttl_hours),
-            "RUNPOD_API_KEY": os.getenv("RUNPOD_API_KEY"),
         }
     )
+    # No RunPod key by default: it can terminate every pod of the account, and a
+    # managed worker gets its pod terminated by the cluster manager instead (see
+    # openweights/worker/termination.py). Callers that still need it on the pod put
+    # it into `env` themselves: dev mode below, and the manager for worker images
+    # that predate manager-side termination.
     # entrypoint.sh writes this to /root/.ssh/authorized_keys at boot. Without it the
     # pod only accepts keys already registered on the RunPod account, which the caller
     # may not control.
