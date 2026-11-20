@@ -148,11 +148,18 @@ class Database:
             # Create a default API token for the organization
             token = self.create_token(org_id, TokenCreate(name="Default API Key"))
 
+            managed = str(org_data.secrets.get("OW_MANAGED", "false")).lower() in (
+                "true",
+                "1",
+                "yes",
+            )
             # Store the API token as an organization secret
-            self._write_setting(org_id, "OPENWEIGHTS_API_KEY", token.access_token)
+            self._write_setting(
+                org_id, "OPENWEIGHTS_API_KEY", token.access_token, managed
+            )
 
             for secret_name, secret_value in org_data.secrets.items():
-                self._write_setting(org_id, secret_name, secret_value)
+                self._write_setting(org_id, secret_name, secret_value, managed)
 
             # Fetch the created organization to return
             org_result = (
@@ -211,8 +218,27 @@ class Database:
 
         self._write_setting(organization_id, secret_name, secret_value)
 
-    def _stores_in_secret_store(self, name: str) -> bool:
-        return self.secret_store is not None and is_managed_secret(name)
+    def _is_managed_organization(self, organization_id: str) -> bool:
+        """Whether the hosted cluster manager runs this organization's workers."""
+        value = self._readable_secret_values(organization_id, ["OW_MANAGED"]).get(
+            "OW_MANAGED", "false"
+        )
+        return value.lower() in ("true", "1", "yes")
+
+    def _stores_in_secret_store(
+        self, organization_id: str, name: str, managed: Optional[bool] = None
+    ) -> bool:
+        """Secrets go to the store only for organizations the hosted manager serves.
+
+        A self-managed cluster (`ow cluster` with the organization's own API key)
+        cannot read the deployment's secret store; what its organization saves in
+        the dashboard has to stay where that cluster reads it, in the database.
+        """
+        if self.secret_store is None or not is_managed_secret(name):
+            return False
+        if managed is None:
+            managed = self._is_managed_organization(organization_id)
+        return managed
 
     def _require_admin(self, organization_id: str) -> None:
         """The secret store does not know our users: ask the database first."""
@@ -222,10 +248,20 @@ class Database:
         if is_admin.data is not True:
             raise ValueError("Only organization admins can manage secrets")
 
-    def _write_setting(self, organization_id: str, name: str, value: str) -> None:
-        """Write a secret to the secret store, anything else to the database."""
+    def _write_setting(
+        self,
+        organization_id: str,
+        name: str,
+        value: str,
+        managed: Optional[bool] = None,
+    ) -> None:
+        """Write a secret to the secret store, anything else to the database.
+
+        ``managed`` says whether the organization is served by the hosted manager,
+        for a caller that knows before the setting is stored.
+        """
         try:
-            if self._stores_in_secret_store(name):
+            if self._stores_in_secret_store(organization_id, name, managed):
                 self._require_admin(organization_id)
                 self.secret_store.set(organization_id, name, value)
                 # Records what may be displayed and removes a copy of this secret
@@ -264,7 +300,9 @@ class Database:
                 "OPENWEIGHTS_API_KEY cannot be deleted: the cluster manager needs it"
             )
         try:
-            if self._stores_in_secret_store(secret_name):
+            if self.secret_store is not None and is_managed_secret(secret_name):
+                # Also for an organization that is no longer managed: the secret
+                # may be in the store from the time it was.
                 self._require_admin(organization_id)
                 self.secret_store.delete(organization_id, secret_name)
                 forgotten = self.client.rpc(

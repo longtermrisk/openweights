@@ -19,6 +19,15 @@ manager passed every one of them to every worker. Now there are two kinds:
 
 The dashboard's tab is now "Secrets & Environment", with one table for each.
 
+### Organizations that run their own cluster (0.17.1)
+
+The store is used only for organizations served by the hosted cluster manager
+(`OW_MANAGED` is true). A self-managed cluster (`ow cluster` with the organization's own
+API key) cannot read the deployment's secret store, so what such an organization saves
+in the dashboard stays in `organization_secrets`, where its cluster reads it, and
+`openweights.secret_store_migration` leaves its rows alone. 0.17.0 sent these secrets to
+the store as well, out of reach of the only cluster that needed them.
+
 ### What a worker still receives
 
 Unchanged in this release: `HF_TOKEN` and `OPENWEIGHTS_API_KEY` are still copied into
