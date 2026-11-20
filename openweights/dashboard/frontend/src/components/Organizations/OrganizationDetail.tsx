@@ -27,17 +27,14 @@ import {
   TableRow,
   Breadcrumbs,
   Alert,
-  InputAdornment,
   Tooltip,
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import NavigateNextIcon from '@mui/icons-material/NavigateNext'
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { useAuth } from '../../contexts/AuthContext'
 import { TokenView } from '../TokenView'
-import { api } from '../../api'
+import { api, OrganizationSecret } from '../../api'
 
 interface Member {
   user_id: string;
@@ -50,11 +47,6 @@ interface Organization {
   name: string
 }
 
-interface Secret {
-  name: string
-  value: string
-}
-
 interface TabPanelProps {
   children?: React.ReactNode
   index: number
@@ -63,6 +55,8 @@ interface TabPanelProps {
 
 // Required secrets that cannot be deleted
 const REQUIRED_SECRETS = ['HF_ORG', 'HF_USER', 'HF_TOKEN', 'RUNPOD_API_KEY', 'OPENWEIGHTS_API_KEY'];
+// Settings that are not secrets; the backend returns these in full.
+const PLAIN_SETTINGS = ['HF_USER', 'HF_ORG', 'OW_MANAGED', 'MAX_WORKERS'];
 
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props
@@ -87,20 +81,20 @@ export function OrganizationDetail() {
   const { user } = useAuth()
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [members, setMembers] = useState<Member[]>([])
-  const [editedSecrets, setEditedSecrets] = useState<Record<string, string>>({})
+  const [secrets, setSecrets] = useState<OrganizationSecret[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [openInviteDialog, setOpenInviteDialog] = useState(false)
   const [openEditDialog, setOpenEditDialog] = useState(false)
-  const [openNewSecretDialog, setOpenNewSecretDialog] = useState(false)
+  // The secret dialog adds a secret (name === null) or replaces the value of one.
+  const [secretDialog, setSecretDialog] = useState<{ name: string | null } | null>(null)
+  const [savingSecret, setSavingSecret] = useState(false)
   const [editName, setEditName] = useState('')
   const [newSecretName, setNewSecretName] = useState('')
   const [newSecretValue, setNewSecretValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [secretError, setSecretError] = useState<string | null>(null)
   const [tabValue, setTabValue] = useState(0)
-  const [hasChanges, setHasChanges] = useState(false)
-  const [showSecretValues, setShowSecretValues] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (orgId) {
@@ -126,11 +120,7 @@ export function OrganizationDetail() {
       })));
 
       if (admin) {
-        const secretData = await api.listOrganizationSecrets(orgId);
-        const currentValues = Object.fromEntries(
-          secretData.map((secret: Secret) => [secret.name, secret.value])
-        );
-        setEditedSecrets(currentValues);
+        setSecrets(await api.listOrganizationSecrets(orgId));
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -187,58 +177,39 @@ export function OrganizationDetail() {
     }
   }
 
-  const handleSaveSecrets = async () => {
-    if (!orgId) return;
+  const closeSecretDialog = () => {
+    setSecretDialog(null);
+    setNewSecretName('');
+    setNewSecretValue('');
+  };
+
+  const handleSaveSecret = async () => {
+    const name = secretDialog?.name ?? newSecretName.trim();
+    if (!orgId || !name || !newSecretValue) return;
     try {
       setSecretError(null);
-      await api.updateOrganizationSecrets(orgId, editedSecrets);
-      const secretData = await api.listOrganizationSecrets(orgId);
-      const currentValues = Object.fromEntries(
-        secretData.map((secret: Secret) => [secret.name, secret.value])
-      );
-      setEditedSecrets(currentValues);
-      setHasChanges(false);
+      setSavingSecret(true);
+      await api.setOrganizationSecret(orgId, name, newSecretValue);
+      closeSecretDialog();
+      setSecrets(await api.listOrganizationSecrets(orgId));
     } catch (err) {
-      console.error('Error updating secrets:', err);
-      setSecretError(err instanceof Error ? err.message : 'Failed to update secrets');
+      closeSecretDialog();
+      setSecretError(err instanceof Error ? err.message : 'Failed to save secret');
+    } finally {
+      setSavingSecret(false);
     }
   };
 
-  const handleDeleteSecret = (name: string) => {
-    if (REQUIRED_SECRETS.includes(name)) return;
-
-    const newSecrets = { ...editedSecrets };
-    delete newSecrets[name];
-    setEditedSecrets(newSecrets);
-    setHasChanges(true);
-  };
-
-  const handleAddNewSecret = () => {
-    if (!newSecretName || !newSecretValue) return;
-
-    setEditedSecrets(prev => ({
-      ...prev,
-      [newSecretName]: newSecretValue
-    }));
-    setNewSecretName('');
-    setNewSecretValue('');
-    setOpenNewSecretDialog(false);
-    setHasChanges(true);
-  };
-
-  const handleSecretChange = (name: string, value: string) => {
-    setEditedSecrets(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    setHasChanges(true);
-  };
-
-  const toggleSecretVisibility = (name: string) => {
-    setShowSecretValues(prev => ({
-      ...prev,
-      [name]: !prev[name]
-    }));
+  const handleDeleteSecret = async (name: string) => {
+    if (!orgId || REQUIRED_SECRETS.includes(name)) return;
+    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+    try {
+      setSecretError(null);
+      await api.deleteOrganizationSecret(orgId, name);
+      setSecrets(await api.listOrganizationSecrets(orgId));
+    } catch (err) {
+      setSecretError(err instanceof Error ? err.message : 'Failed to delete secret');
+    }
   };
 
   if (error) return <Typography color="error">{error}</Typography>
@@ -338,25 +309,19 @@ export function OrganizationDetail() {
         <TabPanel value={tabValue} index={1}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="h6">Secrets</Typography>
-            <Box>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => setOpenNewSecretDialog(true)}
-                sx={{ mr: 1 }}
-              >
-                Add Secret
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSaveSecrets}
-                disabled={!hasChanges}
-              >
-                Save Changes
-              </Button>
-            </Box>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setSecretDialog({ name: null })}
+            >
+              Add Secret
+            </Button>
           </Box>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Stored secrets cannot be viewed, only replaced or deleted. A secret is
+            identified by its last four characters.
+          </Typography>
 
           {secretError && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -370,38 +335,31 @@ export function OrganizationDetail() {
                 <TableRow>
                   <TableCell>Name</TableCell>
                   <TableCell>Value</TableCell>
+                  <TableCell>Last changed</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {Object.entries(editedSecrets).map(([name, value]) => (
-                  <TableRow key={name}>
-                    <TableCell>{name}</TableCell>
+                {secrets.map((secret) => (
+                  <TableRow key={secret.name}>
+                    <TableCell>{secret.name}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace' }}>
+                      {secret.plain_value ?? `••••••••${secret.last_four ?? ''}`}
+                    </TableCell>
                     <TableCell>
-                      <TextField
-                        fullWidth
-                        type={showSecretValues[name] ? 'text' : 'password'}
-                        value={value}
-                        onChange={(e) => handleSecretChange(name, e.target.value)}
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <IconButton
-                                onClick={() => toggleSecretVisibility(name)}
-                                edge="end"
-                              >
-                                {showSecretValues[name] ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                              </IconButton>
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
+                      {secret.updated_at ? new Date(secret.updated_at).toLocaleString() : ''}
                     </TableCell>
                     <TableCell align="right">
-                      {!REQUIRED_SECRETS.includes(name) && (
+                      <Button
+                        size="small"
+                        onClick={() => setSecretDialog({ name: secret.name })}
+                      >
+                        Replace
+                      </Button>
+                      {!REQUIRED_SECRETS.includes(secret.name) && (
                         <Tooltip title="Delete">
                           <IconButton
-                            onClick={() => handleDeleteSecret(name)}
+                            onClick={() => handleDeleteSecret(secret.name)}
                             color="error"
                           >
                             <DeleteIcon />
@@ -477,51 +435,45 @@ export function OrganizationDetail() {
         </DialogActions>
       </Dialog>
 
-      {/* Add New Secret Dialog */}
-      <Dialog
-        open={openNewSecretDialog}
-        onClose={() => {
-          setOpenNewSecretDialog(false);
-          setNewSecretName('');
-          setNewSecretValue('');
-        }}
-      >
-        <DialogTitle>Add New Secret</DialogTitle>
+      {/* Add or replace a secret. The value is write-only. */}
+      <Dialog open={secretDialog !== null} onClose={closeSecretDialog}>
+        <DialogTitle>
+          {secretDialog?.name ? `Replace ${secretDialog.name}` : 'Add New Secret'}
+        </DialogTitle>
         <DialogContent>
+          {!secretDialog?.name && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Secret Name"
+              type="text"
+              fullWidth
+              value={newSecretName}
+              onChange={(e) => setNewSecretName(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+          )}
           <TextField
-            autoFocus
+            autoFocus={!!secretDialog?.name}
             margin="dense"
-            label="Secret Name"
-            type="text"
-            fullWidth
-            value={newSecretName}
-            onChange={(e) => setNewSecretName(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            margin="dense"
-            label="Secret Value"
-            type="password"
+            label={secretDialog?.name ? 'New Value' : 'Secret Value'}
+            type={secretDialog?.name && PLAIN_SETTINGS.includes(secretDialog.name) ? 'text' : 'password'}
+            autoComplete="new-password"
             fullWidth
             value={newSecretValue}
             onChange={(e) => setNewSecretValue(e.target.value)}
+            helperText="The value is stored when you save and cannot be shown again."
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setOpenNewSecretDialog(false);
-            setNewSecretName('');
-            setNewSecretValue('');
-          }}>
-            Cancel
-          </Button>
+          <Button onClick={closeSecretDialog}>Cancel</Button>
           <Button
-            onClick={handleAddNewSecret}
+            onClick={handleSaveSecret}
             variant="contained"
             color="primary"
-            disabled={!newSecretName || !newSecretValue}
+            disabled={savingSecret || !newSecretValue || !(secretDialog?.name || newSecretName.trim())}
           >
-            Add Secret
+            {secretDialog?.name ? 'Replace' : 'Add Secret'}
           </Button>
         </DialogActions>
       </Dialog>

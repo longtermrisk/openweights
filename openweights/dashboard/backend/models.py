@@ -21,8 +21,16 @@ class OrganizationUpdate(BaseModel):
 
 
 class OrganizationSecret(BaseModel):
+    """A stored secret as the dashboard may see it: never the value itself."""
+
     name: str
-    value: str
+    plain_value: Optional[str] = None  # only for settings that are not secrets
+    last_four: Optional[str] = None  # only for secrets of 12+ characters
+    updated_at: Optional[datetime] = None
+
+
+class OrganizationSecretValue(BaseModel):
+    value: str = Field(min_length=1)
 
 
 class Member(BaseModel):

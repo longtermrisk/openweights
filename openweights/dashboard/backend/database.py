@@ -30,6 +30,28 @@ from utils import (
 from openweights.client import _SUPABASE_ANON_KEY, _SUPABASE_URL, OpenWeights
 from supabase import Client, create_client
 
+# Settings stored next to the secrets that are not credentials and may be shown.
+# Mirrors is_plain_organization_setting() in the database.
+PLAIN_SETTINGS = frozenset({"HF_USER", "HF_ORG", "OW_MANAGED", "MAX_WORKERS"})
+HF_SECRET_NAMES = frozenset({"HF_TOKEN", "HF_USER", "HF_ORG"})
+SECRET_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def mask_secret_row(row: dict) -> dict:
+    """What may leave the backend about a stored secret: never the value itself.
+
+    Same rule as list_organization_secrets_masked() in the database.
+    """
+    name, value = row["name"], row["value"] or ""
+    plain = name in PLAIN_SETTINGS
+    return {
+        "name": name,
+        "plain_value": value if plain else None,
+        # Four characters of a short value would be most of it.
+        "last_four": value[-4:] if not plain and len(value) >= 12 else None,
+        "updated_at": row.get("updated_at"),
+    }
+
 
 class Database:
     def __init__(self, auth_token: Optional[str] = None):
@@ -150,35 +172,48 @@ class Database:
         except Exception as e:
             raise ValueError(f"Failed to create organization: {str(e)}")
 
-    def update_organization_secret(
+    def _readable_secret_values(
+        self, organization_id: str, names: List[str]
+    ) -> Dict[str, str]:
+        """Values of the named secrets that this caller may read directly.
+
+        Once migration 20261120000000_credential_safety.sql is applied, a signed-in
+        user can read only the plain settings (HF_USER, HF_ORG, ...) this way; before
+        it, an admin gets every name asked for.
+        """
+        result = (
+            self.client.from_("organization_secrets")
+            .select("name, value")
+            .eq("organization_id", organization_id)
+            .in_("name", names)
+            .execute()
+        )
+        return {row["name"]: row["value"] for row in (result.data or [])}
+
+    def set_organization_secret(
         self, organization_id: str, secret_name: str, secret_value: str
-    ) -> bool:
-        """Update or create an organization secret."""
+    ) -> None:
+        """Create a secret or replace its value (admin-only, enforced by the RPC)."""
         self.set_organization_id(organization_id)
-
-        # Get existing secrets to validate together
-        try:
-            secrets_result = (
-                self.client.from_("organization_secrets")
-                .select("name, value")
-                .eq("organization_id", organization_id)
-                .execute()
+        if not SECRET_NAME_PATTERN.fullmatch(secret_name):
+            raise ValueError(
+                "Secret names may contain only letters, digits and underscores"
             )
+        if not secret_value:
+            raise ValueError("Secret value must not be empty")
 
-            # Create a dictionary of current secrets
-            current_secrets = {
-                secret["name"]: secret["value"] for secret in secrets_result.data
-            }
-
-            # Update with new secret value
-            current_secrets[secret_name] = secret_value
-
-            # Validate all secrets together
-            is_valid, error_message = validate_organization_secrets(current_secrets)
+        if secret_name in HF_SECRET_NAMES:
+            # Validate the Hugging Face settings together, as far as the stored
+            # ones are readable (the stored HF_TOKEN no longer is).
+            hf_secrets = self._readable_secret_values(
+                organization_id, sorted(HF_SECRET_NAMES)
+            )
+            hf_secrets[secret_name] = secret_value
+            is_valid, error_message = validate_organization_secrets(hf_secrets)
             if not is_valid:
                 raise ValueError(f"Invalid secret configuration: {error_message}")
 
-            # If validation passes, update the secret
+        try:
             result = self.client.rpc(
                 "manage_organization_secret",
                 {
@@ -187,73 +222,29 @@ class Database:
                     "secret_value": secret_value,
                 },
             ).execute()
+        except APIError as e:
+            raise ValueError(f"Failed to update secret: {e.message}")
+        if not result.data:
+            raise ValueError(f"Failed to update secret: {secret_name}")
 
-            return bool(result.data)
-        except Exception as e:
-            raise ValueError(f"Failed to update secret: {str(e)}")
-
-    def update_organization_secrets(
-        self, organization_id: str, secrets: Dict[str, str]
-    ) -> bool:
-        """Update all organization secrets together. Deletes secrets not in the input dict.
-
-        Note: OPENWEIGHTS_API_KEY is protected and will never be deleted.
-        """
+    def delete_organization_secret(
+        self, organization_id: str, secret_name: str
+    ) -> None:
+        """Delete a secret (admin-only, enforced by the RPC)."""
         self.set_organization_id(organization_id)
-
-        try:
-            # First validate all secrets together
-            is_valid, error_message = validate_organization_secrets(secrets)
-            if not is_valid:
-                raise ValueError(f"Invalid secret configuration: {error_message}")
-
-            # Get current secrets
-            current_secrets_result = (
-                self.client.from_("organization_secrets")
-                .select("name")
-                .eq("organization_id", organization_id)
-                .execute()
+        if secret_name == "OPENWEIGHTS_API_KEY":
+            raise ValueError(
+                "OPENWEIGHTS_API_KEY cannot be deleted: the cluster manager needs it"
             )
-
-            current_secret_names = {
-                secret["name"] for secret in current_secrets_result.data
-            }
-            new_secret_names = set(secrets.keys())
-
-            # Delete secrets that are not in the new set
-            # But protect OPENWEIGHTS_API_KEY from deletion
-            secrets_to_delete = (current_secret_names - new_secret_names) - {
-                "OPENWEIGHTS_API_KEY"
-            }
-            for secret_name in secrets_to_delete:
-                delete_result = (
-                    self.client.from_("organization_secrets")
-                    .delete()
-                    .eq("organization_id", organization_id)
-                    .eq("name", secret_name)
-                    .execute()
-                )
-
-                if not delete_result.data:
-                    print(f"Warning: Failed to delete secret {secret_name}")
-
-            # Update or insert new secrets
-            for secret_name, secret_value in secrets.items():
-                result = self.client.rpc(
-                    "manage_organization_secret",
-                    {
-                        "org_id": organization_id,
-                        "secret_name": secret_name,
-                        "secret_value": secret_value,
-                    },
-                ).execute()
-
-                if not result.data:
-                    raise ValueError(f"Failed to update secret: {secret_name}")
-
-            return True
-        except Exception as e:
-            raise ValueError(f"Failed to update secrets: {str(e)}")
+        try:
+            result = self.client.rpc(
+                "delete_organization_secret",
+                {"org_id": organization_id, "secret_name": secret_name},
+            ).execute()
+        except APIError as e:
+            raise ValueError(f"Failed to delete secret: {e.message}")
+        if not result.data:
+            raise ValueError(f"Secret not found: {secret_name}")
 
     def get_organization(self, organization_id: str) -> Organization:
         """Fetch a single organization by id (RLS-enforced)."""
@@ -342,18 +333,40 @@ class Database:
     def list_organization_secrets(
         self, organization_id: str
     ) -> List[OrganizationSecret]:
-        """List all secrets for an organization (admin-only, enforced by RLS)."""
+        """List an organization's secrets without their values (admin-only).
+
+        A secret is described by its name, its last four characters and when it was
+        last changed. Only the plain settings come back in full.
+        """
         self.set_organization_id(organization_id)
-        result = (
-            self.client.from_("organization_secrets")
-            .select("name, value")
-            .eq("organization_id", organization_id)
-            .execute()
-        )
-        return [
-            OrganizationSecret(name=row["name"], value=row["value"])
-            for row in (result.data or [])
-        ]
+        try:
+            rows = (
+                self.client.rpc(
+                    "list_organization_secrets_masked", {"org_id": organization_id}
+                )
+                .execute()
+                .data
+            )
+        except APIError as e:
+            if e.code == "42501":
+                raise ValueError("Only organization admins can list secrets")
+            if e.code != "PGRST202":
+                raise
+            # The database predates migration 20261120000000_credential_safety.sql:
+            # read the rows as before and mask them here.
+            rows = [
+                mask_secret_row(row)
+                for row in (
+                    self.client.from_("organization_secrets")
+                    .select("name, value, updated_at")
+                    .eq("organization_id", organization_id)
+                    .order("name")
+                    .execute()
+                    .data
+                    or []
+                )
+            ]
+        return [OrganizationSecret(**row) for row in (rows or [])]
 
     def create_token(
         self, organization_id: str, token_data: TokenCreate
