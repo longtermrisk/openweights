@@ -78,5 +78,13 @@ No worker image changes.
   stream passed through, nothing sent without key and address), the address check
   with a fake resolver, the manager's side; `tests/test_worker_tokens.py`: the new
   argument against a real PostgreSQL.
-- Not verified: a real LiteLLM proxy. It needs an organization with the two settings;
-  the proxy must be reachable from the broker (the public internet).
+- Verified after the release (2026-11-20): with the key saved through the dashboard, a
+  job on a fresh worker listed the proxy's models and made a chat completion, plain
+  and streamed, through the broker; the pod's `LITELLM_API_KEY` was its own worker
+  token and its `LITELLM_BASE_URL` the broker's address.
+
+## 0.20.1
+
+The dashboard's form for an environment variable shows the value while typing; only
+secrets are hidden. Jobs can read environment variables anyway, and a typo is easier
+to spot.
