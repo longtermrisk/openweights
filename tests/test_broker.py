@@ -628,29 +628,25 @@ def brokered_manager(monkeypatch, broker_url=BROKER + "/", from_store=("HF_TOKEN
 
 def test_worker_gets_a_stand_in_and_the_brokers_address_not_the_real_token(monkeypatch):
     manager = brokered_manager(monkeypatch)
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", WORKER_TOKEN)
+    env = manager.worker_env_for(WORKER_TOKEN)
     assert env["HF_TOKEN"] == STAND_IN
     assert env["HF_ENDPOINT"] == f"{BROKER}/hf"
     assert REAL not in env.values()
     assert env["HF_USER"] == "me"  # environment variables are untouched
-    # Images that predate HF_ENDPOINT support get no real token either.
-    old = manager.worker_env_for("nielsrolf/ow-unsloth:v0.14.0", WORKER_TOKEN)
-    assert REAL not in old.values()
 
 
 @pytest.mark.parametrize(
-    "broker_url, from_store, worker_token",
+    "broker_url, from_store",
     [
-        (None, ("HF_TOKEN",), WORKER_TOKEN),  # a deployment without a broker
-        (BROKER, (), WORKER_TOKEN),  # the token is not in the store: nothing to broker
-        (BROKER, ("HF_TOKEN",), None),  # no worker token (database before 0.18)
+        (None, ("HF_TOKEN",)),  # a deployment without a broker
+        (BROKER, ()),  # the token is not in the store: nothing to broker
     ],
 )
-def test_without_broker_store_or_worker_token_the_worker_keeps_the_real_token(
-    monkeypatch, broker_url, from_store, worker_token
+def test_without_broker_or_store_the_worker_keeps_the_real_token(
+    monkeypatch, broker_url, from_store
 ):
     manager = brokered_manager(monkeypatch, broker_url, from_store)
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", worker_token)
+    env = manager.worker_env_for(WORKER_TOKEN)
     assert env["HF_TOKEN"] == REAL and "HF_ENDPOINT" not in env
 
 
@@ -671,7 +667,7 @@ def litellm_manager(monkeypatch, url="https://litellm.example/proxy/", in_store=
 def test_worker_reaches_litellm_through_the_broker_with_its_own_token(monkeypatch):
     manager = litellm_manager(monkeypatch)
     assert manager.broker_settings() == {"litellm_base_url": LITELLM}
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", WORKER_TOKEN)
+    env = manager.worker_env_for(WORKER_TOKEN)
     assert env["LITELLM_API_KEY"] == WORKER_TOKEN
     assert env["LITELLM_BASE_URL"] == f"{BROKER}/litellm"
     assert LITELLM_KEY not in env.values()
@@ -686,7 +682,7 @@ def test_without_address_or_stored_key_the_worker_gets_no_litellm_key(
 ):
     manager = litellm_manager(monkeypatch, url=url, in_store=in_store)
     assert manager.broker_settings() is None
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", WORKER_TOKEN)
+    env = manager.worker_env_for(WORKER_TOKEN)
     assert "LITELLM_API_KEY" not in env and LITELLM_KEY not in env.values()
     assert env.get("LITELLM_BASE_URL") != f"{BROKER}/litellm"
 

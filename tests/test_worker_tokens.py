@@ -10,7 +10,10 @@ from types import SimpleNamespace
 import pytest
 from postgrest.exceptions import APIError
 
-from openweights.cluster.org_manager import WORKER_TOKEN_LIFETIME_HOURS
+from openweights.cluster.org_manager import (
+    WORKER_TOKEN_LIFETIME_HOURS,
+    WorkerTokenError,
+)
 from test_cost_tracking import KEY, ORG, OTHER, ROOT, USER, claims, db  # noqa: F401
 from test_credential_safety import (  # noqa: F401
     FakeSupabase,
@@ -33,9 +36,10 @@ WORKER = "worker-1"
 
 
 class TokenSupabase(FakeSupabase):
-    def __init__(self, error=None):
+    def __init__(self, error=None, data=None):
         super().__init__()
         self.error = error
+        self.data = data
 
     def rpc(self, name, params):
         self.rpcs.append((name, params))
@@ -43,6 +47,8 @@ class TokenSupabase(FakeSupabase):
         def execute():
             if self.error:
                 raise self.error
+            if self.data is not None:
+                return SimpleNamespace(data=self.data)
             return SimpleNamespace(
                 data=[{"token_id": "id", "token": "ow_worker_token"}]
             )
@@ -67,20 +73,25 @@ def test_manager_asks_for_a_token_that_outlives_the_pod_by_a_margin():
 
 def test_worker_gets_its_own_token_in_place_of_the_organization_key():
     manager = make_manager()
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", "ow_worker_token")
+    env = manager.worker_env_for("ow_worker_token")
     assert env["OPENWEIGHTS_API_KEY"] == "ow_worker_token"
     assert "ow" not in env.values()  # the organization's key, see make_manager
-    # Any image works with it: old ones read the same variable.
-    old = manager.worker_env_for("nielsrolf/ow-unsloth:v0.14.0", "ow_worker_token")
-    assert old["OPENWEIGHTS_API_KEY"] == "ow_worker_token"
 
 
-def test_before_the_migration_the_worker_keeps_the_organization_key():
+def test_before_the_migration_there_is_no_token_and_no_fallback_to_the_organization_key():
     missing = APIError({"code": "PGRST202", "message": "function not found"})
     manager = make_manager(supabase=TokenSupabase(error=missing))
-    assert manager.create_worker_token(WORKER) is None
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0", None)
-    assert env["OPENWEIGHTS_API_KEY"] == "ow"
+    with pytest.raises(WorkerTokenError, match="20261122000000_worker_tokens.sql"):
+        manager.create_worker_token(WORKER)
+    with pytest.raises(WorkerTokenError):
+        manager.worker_env_for(None)
+
+
+@pytest.mark.parametrize("data", [[], [{"token_id": "id", "token": None}], [{}]])
+def test_an_answer_without_a_token_is_an_error(data):
+    manager = make_manager(supabase=TokenSupabase(data=data))
+    with pytest.raises(WorkerTokenError):
+        manager.create_worker_token(WORKER)
 
 
 def test_other_database_errors_are_not_swallowed():

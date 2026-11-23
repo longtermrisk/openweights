@@ -60,12 +60,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # The first worker image that asks the manager for termination (by setting
-# worker.termination_requested_at) instead of calling RunPod itself.
+# worker.termination_requested_at) instead of calling RunPod itself. Older official
+# images were built to hold the organization's RunPod key; no worker gets that key,
+# so jobs that name them are refused (unsupported_worker_image).
 KEYLESS_WORKER_IMAGE_VERSION = (0, 16, 0)
 # A worker's own OpenWeights token outlives the pod's TTL (24 hours for the pods the
 # manager starts) by a margin; the database revokes it when the worker is terminated.
 WORKER_TOKEN_LIFETIME_HOURS = 25
-_OFFICIAL_IMAGE_VERSION = re.compile(r"nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)")
+# After a worker token could not be created, wait this long before trying to start
+# workers again: every attempt leaves a (terminated) worker row behind.
+WORKER_TOKEN_RETRY_SECONDS = 60
+# Organization credentials that never go into a worker's environment, whatever the
+# image and whatever else fails: the RunPod key can terminate every pod of the
+# account, and the organization's OpenWeights key is an admin of the organization.
+NEVER_IN_WORKER_ENV = ("RUNPOD_API_KEY", "OPENWEIGHTS_API_KEY")
+_OFFICIAL_IMAGE_VERSION = re.compile(
+    r"(?:(?:index\.|registry-1\.)?docker\.io/)?nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)"
+)
+
+
+class WorkerTokenError(RuntimeError):
+    """No token of its own could be created for a worker, so it must not be started."""
 
 
 def broker_url() -> str:
@@ -73,19 +88,33 @@ def broker_url() -> str:
     return os.environ.get("OW_BROKER_URL", "").rstrip("/")
 
 
-def worker_image_needs_runpod_key(image: str) -> bool:
-    """Whether a worker image still terminates its own pod and needs the key for it.
+def unsupported_worker_image(image: Optional[str]) -> Optional[str]:
+    """Why the manager refuses to start a worker from this image, or None if it does.
 
-    Only official images older than KEYLESS_WORKER_IMAGE_VERSION do. Everything else
-    gets no key: current official images, and custom images, which are assumed to be
-    built on top of a current official image. (A custom image built on an old one
-    fails to terminate itself, and the manager terminates its pod when the pings
-    stop.)
+    Official images older than KEYLESS_WORKER_IMAGE_VERSION terminate their own pod
+    with the organization's RunPod key, which the manager used to pass to them. Job
+    authors choose the image, so that gave them the key. No worker gets it any more,
+    and those images cannot end their pod without it (their TTL monitor cannot
+    either), so a job that names one is failed with this message.
+
+    Everything else is started, without the key: current official images, and custom
+    images, which are assumed to be built on a current official image. (A custom
+    image built on an old one fails to terminate itself, and the manager terminates
+    its pod when the pings stop.)
     """
-    match = _OFFICIAL_IMAGE_VERSION.match(image or "")
+    match = _OFFICIAL_IMAGE_VERSION.match((image or "").strip())
     if not match:
-        return False
-    return tuple(int(part) for part in match.groups()) < KEYLESS_WORKER_IMAGE_VERSION
+        return None
+    if tuple(int(part) for part in match.groups()) >= KEYLESS_WORKER_IMAGE_VERSION:
+        return None
+    minimum = "v" + ".".join(str(part) for part in KEYLESS_WORKER_IMAGE_VERSION)
+    return (
+        f"Worker image {image.strip()} is no longer supported: official OpenWeights "
+        f"images older than {minimum} need the organization's RunPod API key, which "
+        f"is not given to workers any more. Upgrade the openweights package "
+        f"(pip install -U openweights) and submit the job again, or pass a "
+        f"docker_image tagged {minimum} or newer."
+    )
 
 
 def format_cooldown_remaining(until: float, now: Optional[float] = None) -> str:
@@ -173,16 +202,19 @@ class OrganizationManager:
     # be served by the broker, which reads the store and nothing else.
     managed_secrets = None
     secrets_from_store = frozenset()
+    # Set when a worker token could not be created: no worker is started before it.
+    worker_token_retry_at = 0.0
 
-    def create_worker_token(self, worker_id: str) -> Optional[str]:
+    def create_worker_token(self, worker_id: str) -> str:
         """An OpenWeights token for one worker, to stand in for the organization's key.
 
         The token expires shortly after the pod's TTL and the database revokes it when
         the worker is marked terminated. It is not an organization admin: it cannot
         read settings or create tokens.
 
-        Returns None on a database that predates worker tokens; the worker then gets
-        the organization's key as before.
+        Raises if there is no token (WorkerTokenError on a database that predates
+        worker tokens, the database's own error otherwise). The caller must not start
+        the worker then: there is no fallback to the organization's key.
         """
         expires_at = datetime.now(timezone.utc) + timedelta(
             hours=WORKER_TOKEN_LIFETIME_HOURS
@@ -201,15 +233,19 @@ class OrganizationManager:
                     "create_worker_token", attempt
                 ).execute()
             except APIError as error:
-                if error.code != "PGRST202":  # function (with these arguments) not found
+                if (
+                    error.code != "PGRST202"
+                ):  # function (with these arguments) not found
                     raise
                 continue
-            return result.data[0]["token"]
-        logger.warning(
-            "The database has no create_worker_token(); workers get the "
-            "organization's API key"
+            token = (result.data[0] if result.data else {}).get("token")
+            if not token:
+                raise WorkerTokenError("create_worker_token() returned no token")
+            return token
+        raise WorkerTokenError(
+            "The database has no create_worker_token(); apply "
+            "supabase/migrations/20261122000000_worker_tokens.sql"
         )
-        return None
 
     def broker_settings(self) -> Optional[Dict[str, str]]:
         """What the broker needs to serve this organization's workers, or None.
@@ -227,39 +263,39 @@ class OrganizationManager:
             return {"litellm_base_url": litellm_url}
         return None
 
-    def worker_env_for(
-        self, docker_image: str, worker_token: Optional[str] = None
-    ) -> Dict[str, str]:
+    def worker_env_for(self, worker_token: str) -> Dict[str, str]:
         """The environment of a new worker pod: the manager's, minus what is not for it.
 
-        The RunPod key can terminate every pod of the account. Only the manager uses
-        it; official worker images that predate manager-side termination are the
-        exception. ``worker_token`` replaces the organization's OpenWeights key.
+        The same for every image, because the job's author chooses the image. Never
+        in it: the RunPod key, which can terminate every pod of the account and which
+        only the manager uses, and the organization's OpenWeights key. In place of
+        the latter the worker gets ``worker_token``; without one there is no
+        environment (WorkerTokenError) and so no worker.
         """
+        if not worker_token:
+            raise WorkerTokenError("A worker is not started without a token of its own")
         env = self.worker_env
-        if not worker_image_needs_runpod_key(docker_image):
-            env.pop("RUNPOD_API_KEY", None)
         # Secrets a worker has no use for. (The one it still gets, the Hugging Face
-        # token, is to be replaced by the broker.)
-        for name in MANAGED_SECRETS - SECRETS_STILL_PASSED_TO_WORKERS:
-            if name not in ("RUNPOD_API_KEY", "OPENWEIGHTS_API_KEY"):
-                env.pop(name, None)
-        if worker_token:
-            env["OPENWEIGHTS_API_KEY"] = worker_token
-            broker = broker_url()
-            if broker and "HF_TOKEN" in self.secrets_from_store:
-                # The organization's Hugging Face token stays in the secret store.
-                # The worker reaches the Hub through the broker, which accepts the
-                # worker's own token and puts in the real one (openweights/broker).
-                env["HF_TOKEN"] = hf_stand_in_token(worker_token)
-                env["HF_ENDPOINT"] = broker + HF_PREFIX
-            if broker and "LITELLM_API_KEY" in self.secrets_from_store:
-                # Same for the organization's LiteLLM proxy. The broker forwards to
-                # the address in the organization's LITELLM_BASE_URL setting, which
-                # create_worker_token() wrote onto the worker's token.
-                if env.get("LITELLM_BASE_URL", "").strip().startswith("https://"):
-                    env["LITELLM_API_KEY"] = worker_token
-                    env["LITELLM_BASE_URL"] = broker + LITELLM_PREFIX
+        # token, is replaced by a stand-in below where there is a broker.)
+        for name in (MANAGED_SECRETS - SECRETS_STILL_PASSED_TO_WORKERS) | set(
+            NEVER_IN_WORKER_ENV
+        ):
+            env.pop(name, None)
+        env["OPENWEIGHTS_API_KEY"] = worker_token
+        broker = broker_url()
+        if broker and "HF_TOKEN" in self.secrets_from_store:
+            # The organization's Hugging Face token stays in the secret store.
+            # The worker reaches the Hub through the broker, which accepts the
+            # worker's own token and puts in the real one (openweights/broker).
+            env["HF_TOKEN"] = hf_stand_in_token(worker_token)
+            env["HF_ENDPOINT"] = broker + HF_PREFIX
+        if broker and "LITELLM_API_KEY" in self.secrets_from_store:
+            # Same for the organization's LiteLLM proxy. The broker forwards to
+            # the address in the organization's LITELLM_BASE_URL setting, which
+            # create_worker_token() wrote onto the worker's token.
+            if env.get("LITELLM_BASE_URL", "").strip().startswith("https://"):
+                env["LITELLM_API_KEY"] = worker_token
+                env["LITELLM_BASE_URL"] = broker + LITELLM_PREFIX
         return env
 
     @supabase_retry()
@@ -531,7 +567,7 @@ class OrganizationManager:
         """Terminate the pods of workers that asked for it or stopped pinging.
 
         Workers hold no RunPod key, so this is the only place where worker pods are
-        terminated (apart from old worker images, which still do it themselves).
+        terminated.
         Returns the ids of the workers that are now terminated.
         """
         now = datetime.now(timezone.utc)
@@ -578,6 +614,24 @@ class OrganizationManager:
             valid_jobs.append(job)
         return valid_jobs
 
+    def reject_unsupported_images(self, pending_jobs):
+        """Fail pending jobs whose worker image the manager does not start.
+
+        See unsupported_worker_image(). The reason goes into the job's outputs, where
+        the client and the dashboard show it. Returns the jobs that remain.
+        """
+        supported_jobs = []
+        for job in pending_jobs:
+            reason = unsupported_worker_image(job.get("docker_image"))
+            if reason is None:
+                supported_jobs.append(job)
+                continue
+            logger.error("Failing job %s: %s", job["id"], reason)
+            self._ow._supabase.table("jobs").update(
+                {"status": "failed", "outputs": {"error": reason}}
+            ).eq("id", job["id"]).eq("status", "pending").execute()
+        return supported_jobs
+
     def group_jobs_by_hardware_requirements(self, pending_jobs):
         """Group jobs by their hardware requirements."""
         job_groups = {}
@@ -612,6 +666,16 @@ class OrganizationManager:
             )
             return
 
+        # Workers are not started without a token of their own. After a failure to
+        # create one, wait before the next attempt.
+        if time.time() < self.worker_token_retry_at:
+            logger.warning(
+                "Not starting workers: no worker token could be created. "
+                "Retrying in %d s; jobs stay pending.",
+                int(self.worker_token_retry_at - time.time()) + 1,
+            )
+            return
+
         # Group active workers by docker image
         print("@@@@ Scaling workers")
         running_workers_by_image = {}
@@ -631,6 +695,11 @@ class OrganizationManager:
 
         # Process each docker image type separately
         for docker_image, image_pending_jobs in pending_jobs_by_image.items():
+            if unsupported_worker_image(docker_image):
+                # manage_cluster() has failed these jobs already; this is for callers
+                # that pass jobs it has not seen.
+                logger.error("Not starting a worker from image %s", docker_image)
+                continue
             active_count = len(running_workers_by_image.get(docker_image, []))
             starting_count = len(
                 [
@@ -737,6 +806,7 @@ class OrganizationManager:
                             worker_token = None
                             pod = None
                             last_error = None
+                            token_error = None
 
                             for hardware_type in candidate_hardware:
                                 count, gpu = parse_hardware_config(hardware_type)
@@ -775,10 +845,21 @@ class OrganizationManager:
                                         worker_update_data
                                     ).eq("id", worker_id).execute()
 
-                                # Outside the try: a database error here says nothing
-                                # about this hardware type.
+                                # Outside the try below: an error here says nothing
+                                # about this hardware type. Without a token the pod
+                                # is not started; the organization's key is never
+                                # passed in its place.
                                 if worker_token is None:
-                                    worker_token = self.create_worker_token(worker_id)
+                                    try:
+                                        worker_token = self.create_worker_token(
+                                            worker_id
+                                        )
+                                    except Exception as e:
+                                        token_error = e
+                                        self.worker_token_retry_at = (
+                                            time.time() + WORKER_TOKEN_RETRY_SECONDS
+                                        )
+                                        break
 
                                 try:
                                     billing_started_at = datetime.now(
@@ -789,9 +870,7 @@ class OrganizationManager:
                                         count=count,
                                         worker_id=worker_id,
                                         image=docker_image,
-                                        env=self.worker_env_for(
-                                            docker_image, worker_token
-                                        ),
+                                        env=self.worker_env_for(worker_token),
                                         name=f"{self._ow.org_name}-{time.time()}-ow-1day",
                                         runpod_client=runpod,
                                     )
@@ -870,6 +949,20 @@ class OrganizationManager:
                                         max_vram_required,
                                         last_error,
                                     )
+                            if token_error is not None:
+                                # Not specific to this batch: stop for now. The
+                                # jobs stay pending and get a worker once a token
+                                # can be created.
+                                logger.error(
+                                    "Could not create a token for worker %s, so it "
+                                    "was not started (workers never get the "
+                                    "organization's API key). Jobs stay pending; "
+                                    "retrying in %d s: %s",
+                                    worker_id,
+                                    WORKER_TOKEN_RETRY_SECONDS,
+                                    token_error,
+                                )
+                                return
                         except Exception as e:
                             traceback.print_exc()
                             logger.error(
@@ -912,7 +1005,9 @@ class OrganizationManager:
             # Get active workers and pending jobs
             self.enforce_spending_limits()
             running_workers = self.get_running_workers()
-            pending_jobs = self.normalize_allowed_hardware(self.get_pending_jobs())
+            pending_jobs = self.normalize_allowed_hardware(
+                self.reject_unsupported_images(self.get_pending_jobs())
+            )
 
             # Log status
             status_counts: dict[str, int] = {}

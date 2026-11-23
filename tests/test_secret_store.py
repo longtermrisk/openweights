@@ -254,15 +254,14 @@ def test_workers_do_not_get_secrets_they_have_no_use_for():
             "WANDB_API_KEY": "an-env-variable",
         }
     )
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0")
+    env = manager.worker_env_for("ow_worker_token")
     assert "LITELLM_API_KEY" not in env and "RUNPOD_API_KEY" not in env
     # Environment variables are passed on as before.
     assert env["WANDB_API_KEY"] == "an-env-variable"
-    # Still passed until workers have tokens of their own.
-    assert env["HF_TOKEN"] == "hf" and env["OPENWEIGHTS_API_KEY"] == "ow"
-    assert "LITELLM_API_KEY" not in manager.worker_env_for(
-        "nielsrolf/ow-unsloth:v0.15.0"
-    )
+    # Still passed where no broker stands in for it.
+    assert env["HF_TOKEN"] == "hf"
+    # Its own token, not the organization's key.
+    assert env["OPENWEIGHTS_API_KEY"] == "ow_worker_token"
 
 
 # --- The dashboard backend ---------------------------------------------------------
