@@ -19,7 +19,8 @@ from openweights.cluster import org_manager as org_manager_module
 from openweights.cluster import start_runpod
 from openweights.cluster.org_manager import (
     OrganizationManager,
-    worker_image_needs_runpod_key,
+    WorkerTokenError,
+    unsupported_worker_image,
 )
 from openweights.worker import termination
 from openweights.worker.services import ttl_monitor
@@ -37,6 +38,7 @@ class FakeSupabase:
         self.rows = rows or {}
         self.fail_update = fail_update  # callable(update dict) -> exception or None
         self.updates = []  # (table, data, filters)
+        self.inserts = []  # (table, data)
         self.rpcs = []
 
     def table(self, name):
@@ -60,6 +62,10 @@ class FakeQuery:
     def update(self, data):
         self.data = data
         return self
+
+    def insert(self, data):
+        self.supabase.inserts.append((self.table, data))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=[data]))
 
     def eq(self, column, value):
         self.filters[column] = value
@@ -466,7 +472,7 @@ def test_worker_shutdown_requests_termination_and_never_calls_runpod(
 
 
 @pytest.mark.parametrize(
-    "image, needs_key",
+    "image, refused",
     [
         ("nielsrolf/ow-unsloth:v0.16.0", False),
         ("nielsrolf/ow-vllm:v0.16.1", False),
@@ -474,6 +480,15 @@ def test_worker_shutdown_requests_termination_and_never_calls_runpod(
         ("nielsrolf/ow-unsloth:v0.16.0-candidate", False),
         ("nielsrolf/ow-unsloth:v0.15.0", True),
         ("nielsrolf/ow-vllm:v0.9.12", True),
+        ("nielsrolf/ow-cluster:v0.15.2", True),
+        # Tags up to v0.11 have two parts.
+        ("nielsrolf/ow-vllm:v0.11", True),
+        ("nielsrolf/ow-default:v0.8", True),
+        ("nielsrolf/ow-vllm:v1.2", False),
+        # The same images, named with their registry.
+        ("docker.io/nielsrolf/ow-unsloth:v0.15.0", True),
+        ("index.docker.io/nielsrolf/ow-unsloth:v0.15.0", True),
+        ("docker.io/nielsrolf/ow-unsloth:v0.16.0", False),
         # Custom images are assumed to be built on a current official image.
         ("nielsrolf/ow-unsloth:latest", False),
         ("someone/custom-image:v0.15.0", False),
@@ -481,14 +496,20 @@ def test_worker_shutdown_requests_termination_and_never_calls_runpod(
         (None, False),
     ],
 )
-def test_only_old_official_images_get_the_key(image, needs_key):
-    assert worker_image_needs_runpod_key(image) is needs_key
+def test_old_official_images_are_refused(image, refused):
+    reason = unsupported_worker_image(image)
+    assert (reason is not None) is refused
+    if refused:
+        # What the job's author reads in the job's outputs.
+        assert image in reason and "v0.16.0" in reason and "RunPod" in reason
 
 
 def make_manager(supabase=None, secrets=None):
     manager = OrganizationManager.__new__(OrganizationManager)
     manager.org_id = ORG
-    manager._ow = SimpleNamespace(_supabase=supabase or FakeSupabase(), files=Mock())
+    manager._ow = SimpleNamespace(
+        _supabase=supabase or FakeSupabase(), files=Mock(), org_name="org"
+    )
     manager.get_secrets = lambda: dict(
         secrets
         or {"RUNPOD_API_KEY": "rp", "HF_TOKEN": "hf", "OPENWEIGHTS_API_KEY": "ow"}
@@ -497,24 +518,166 @@ def make_manager(supabase=None, secrets=None):
     return manager
 
 
-def test_manager_keeps_the_runpod_key_out_of_new_worker_pods():
+def test_no_worker_gets_the_runpod_key_or_the_organization_key():
     manager = make_manager()
-    env = manager.worker_env_for("nielsrolf/ow-unsloth:v0.16.0")
-    assert "RUNPOD_API_KEY" not in env
-    assert env["HF_TOKEN"] == "hf" and env["OPENWEIGHTS_API_KEY"] == "ow"
-    # Old images terminate their own pod and still need it.
-    assert (
-        manager.worker_env_for("nielsrolf/ow-unsloth:v0.15.0")["RUNPOD_API_KEY"] == "rp"
-    )
+    env = manager.worker_env_for("ow_worker_token")
+    assert "RUNPOD_API_KEY" not in env and "rp" not in env.values()
+    assert env["OPENWEIGHTS_API_KEY"] == "ow_worker_token"
+    assert "ow" not in env.values()
+    assert env["HF_TOKEN"] == "hf"
     # The manager itself keeps using it.
     assert manager.worker_env["RUNPOD_API_KEY"] == "rp"
 
 
-def test_current_sdk_images_are_keyless():
-    from openweights.images import OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE
+@pytest.mark.parametrize("worker_token", [None, ""])
+def test_without_a_worker_token_there_is_no_worker_environment(worker_token):
+    with pytest.raises(WorkerTokenError):
+        make_manager().worker_env_for(worker_token)
 
-    assert not worker_image_needs_runpod_key(OW_UNSLOTH_IMAGE)
-    assert not worker_image_needs_runpod_key(OW_VLLM_IMAGE)
+
+def test_current_sdk_images_are_supported():
+    from openweights.images import OW_CLUSTER_IMAGE, OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE
+
+    for image in (OW_UNSLOTH_IMAGE, OW_VLLM_IMAGE, OW_CLUSTER_IMAGE):
+        assert unsupported_worker_image(image) is None
+
+
+def pending_job(job_id, image, **extra):
+    return {
+        "id": job_id,
+        "docker_image": image,
+        "status": "pending",
+        "requires_vram_gb": 24,
+        "allowed_hardware": None,
+        **extra,
+    }
+
+
+def test_jobs_naming_an_old_official_image_fail_with_the_reason():
+    supabase = FakeSupabase()
+    manager = make_manager(supabase=supabase)
+    current = pending_job("job-new", "nielsrolf/ow-unsloth:v0.16.0")
+    custom = pending_job("job-custom", "someone/custom-image:v0.15.0")
+    old = pending_job("job-old", "nielsrolf/ow-unsloth:v0.15.0")
+
+    assert manager.reject_unsupported_images([current, old, custom]) == [
+        current,
+        custom,
+    ]
+
+    ((table, update, filters),) = supabase.updates
+    assert table == "jobs" and update["status"] == "failed"
+    assert update["outputs"] == {
+        "error": unsupported_worker_image("nielsrolf/ow-unsloth:v0.15.0")
+    }
+    # Only while it is still pending: a job a worker took meanwhile is left alone.
+    assert filters == {"id": "job-old", "status": "pending"}
+
+
+class FakeHardwareRegistry:
+    def __init__(self):
+        self.failures = []
+
+    def is_spending_limit_paused(self):
+        return False
+
+    def get_candidate_hardware(self, *_args, **_kwargs):
+        return ["1x L40", "1x A6000"]
+
+    def record_success(self, hardware_type):
+        pass
+
+    def record_failure(self, hardware_type, error):
+        self.failures.append((hardware_type, error))
+        return False
+
+    def get_cooldown_info(self, hardware_type):
+        return None
+
+
+def scaling_manager(monkeypatch, create_worker_token):
+    """A manager whose pods are recorded instead of started."""
+    supabase = FakeSupabase()
+    manager = make_manager(supabase=supabase)
+    manager.hardware_registry = FakeHardwareRegistry()
+    manager.create_worker_token = create_worker_token
+    started = []
+
+    def start_worker(**kwargs):
+        started.append(kwargs)
+        return {"id": "pod-1", "costPerHr": 1.0}
+
+    monkeypatch.setattr(org_manager_module, "runpod_start_worker", start_worker)
+    monkeypatch.setattr(org_manager_module, "runpod", Mock())
+    return manager, supabase, started
+
+
+def test_started_worker_holds_its_own_token_and_no_organization_credential(
+    monkeypatch,
+):
+    manager, supabase, started = scaling_manager(
+        monkeypatch, lambda worker_id: f"token-of-{worker_id}"
+    )
+    manager.scale_workers([], [pending_job("job-1", "someone/custom-image:v1")])
+
+    (pod,) = started
+    assert pod["image"] == "someone/custom-image:v1"
+    assert pod["env"]["OPENWEIGHTS_API_KEY"] == f"token-of-{pod['worker_id']}"
+    assert "RUNPOD_API_KEY" not in pod["env"]
+    assert "rp" not in pod["env"].values() and "ow" not in pod["env"].values()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        WorkerTokenError("The database has no create_worker_token()"),
+        APIError({"code": "42501", "message": "Only organization admins"}),
+        RuntimeError("connection reset"),
+    ],
+)
+def test_no_pod_is_started_when_the_worker_token_cannot_be_created(monkeypatch, error):
+    asked = []
+
+    def create_worker_token(worker_id):
+        asked.append(worker_id)
+        raise error
+
+    manager, supabase, started = scaling_manager(monkeypatch, create_worker_token)
+    jobs = [
+        pending_job("job-1", "nielsrolf/ow-unsloth:v0.16.0"),
+        pending_job("job-2", "nielsrolf/ow-vllm:v0.16.0"),
+    ]
+    manager.scale_workers([], jobs)
+
+    assert started == []  # fail closed: no pod, so nothing that could hold a key
+    # One attempt, not one per image or hardware type, and the hardware is not blamed.
+    assert len(asked) == 1
+    assert manager.hardware_registry.failures == []
+    # The worker row that was created for the token does not stay 'starting'.
+    ((_, row),) = supabase.inserts
+    assert row["id"] == asked[0] and row["status"] == "starting"
+    assert ("worker", {"status": "terminated"}, {"id": asked[0]}) in supabase.updates
+    # The jobs are left pending for a later attempt.
+    assert not [update for update in supabase.updates if update[0] == "jobs"]
+
+    # The next loops do not try again right away...
+    manager.scale_workers([], jobs)
+    assert len(asked) == 1 and started == []
+    # ...but do once the pause is over, and then start the workers.
+    manager.worker_token_retry_at = 0.0
+    manager.create_worker_token = lambda worker_id: "ow_worker_token"
+    manager.scale_workers([], jobs)
+    assert [pod["env"]["OPENWEIGHTS_API_KEY"] for pod in started] == [
+        "ow_worker_token"
+    ] * 2
+
+
+def test_scaling_never_starts_a_worker_from_an_old_official_image(monkeypatch):
+    manager, supabase, started = scaling_manager(
+        monkeypatch, lambda worker_id: "ow_worker_token"
+    )
+    manager.scale_workers([], [pending_job("job-old", "nielsrolf/ow-unsloth:v0.15.0")])
+    assert started == [] and supabase.inserts == []
 
 
 class FakeRunpodClient:

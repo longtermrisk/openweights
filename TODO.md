@@ -9,7 +9,9 @@ apart from environment variables (`docs/release-0.17.0.md`). Done in 0.18.0: a w
 OpenWeights token of its own, not the organization's key (`docs/release-0.18.0.md`). Done in 0.19.0: a
 broker keeps the Hugging Face token off the pod (`docs/release-0.19.0.md`). Done in 0.20.0: the same
 for the organization's LiteLLM key (`docs/release-0.20.0.md`). With these, a worker of an organization
-that keeps its secrets in the secret store holds no organization credential.
+that keeps its secrets in the secret store holds no organization credential. Done in 0.21.0: that holds
+for every image and when no worker token can be created; jobs naming official images older than v0.16.0
+are refused (`docs/release-0.21.0.md`).
 
 Open items:
 

@@ -202,13 +202,17 @@ they are rows of `organization_secrets` too. The supervisor (service role) and e
 organization's API key) read the table, then overlay the store (`ManagedSecretReader`, which asks the
 store only when `updated_at` changed). `OrganizationManager.worker_env_for` decides what a pod gets:
 all environment variables, of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`, and as
-`OPENWEIGHTS_API_KEY` a token of the worker's own.
+`OPENWEIGHTS_API_KEY` a token of the worker's own. The environment does not depend on the image, which
+the job's author chooses, and never holds `RUNPOD_API_KEY` or the organization's `OPENWEIGHTS_API_KEY`
+(`NEVER_IN_WORKER_ENV`).
 
 - **Worker tokens.** `OrganizationManager.create_worker_token` calls `create_worker_token()` in the
   database for each pod it starts: an API token with `api_tokens.worker_id` set, expiring after
   `WORKER_TOKEN_LIFETIME_HOURS`, revoked by a trigger when the worker row becomes `terminated` or is
   deleted. `is_organization_admin` is false for it, so everything gated on admin rights (settings,
-  keys, limits, members) is out of its reach; it is an ordinary member otherwise. When you add a
+  keys, limits, members) is out of its reach; it is an ordinary member otherwise. If no token can be
+  created the method raises and `scale_workers` starts no pod (the jobs stay pending, the next attempt
+  comes after `WORKER_TOKEN_RETRY_SECONDS`): never fall back to the organization's key. When you add a
   function or policy that only the organization's own key or an admin user should pass, gate it on
   `is_organization_admin`, never on `is_organization_member`.
 - **The broker** (`openweights/broker`, `ow broker`) lets a worker use the organization's Hugging Face
@@ -234,10 +238,12 @@ all environment variables, of the secrets only `SECRETS_STILL_PASSED_TO_WORKERS`
   `OrganizationManager.clean_up_workers` terminates the pod. The same method terminates workers that stop
   pinging, which covers every worker that dies without asking. When a pod's TTL expires, the TTL monitor
   sets `status='shutdown'` together with the request, so the worker stops even if no manager is running
-  (the pod itself then stays up until a manager terminates it). Exceptions that still get the key:
-  official worker images older than `KEYLESS_WORKER_IMAGE_VERSION` (`worker_image_needs_runpod_key`),
-  which terminate their own pod, and `ow ssh` pods, which receive the caller's own key because no manager
-  watches them. Custom images get no key: they are assumed to be built on a current official image.
+  (the pod itself then stays up until a manager terminates it). No worker the manager starts gets the
+  key. Official worker images older than `KEYLESS_WORKER_IMAGE_VERSION` terminate their own pod and
+  need it, so the manager fails jobs that name one, with the reason in `outputs.error`
+  (`unsupported_worker_image`, `reject_unsupported_images`), instead of starting them. Custom images get
+  no key either: they are assumed to be built on a current official image. The one exception is
+  `ow ssh` pods, which receive the caller's own key because no manager watches them.
 - **Open credential work** is listed in `TODO.md`.
 - **Dashboard: write-only secrets.** `GET /organizations/{id}/secrets` returns name, last four
   characters and update time (`list_organization_secrets_masked`); values can be replaced
