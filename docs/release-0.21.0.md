@@ -23,7 +23,8 @@ names and whatever fails. Closes two leftovers of 0.16.0 and 0.18.0 (security au
   environment** (`OrganizationManager.worker_env_for`, `NEVER_IN_WORKER_ENV`). The
   environment no longer depends on the image.
 - **Jobs that name an official image older than v0.16.0 fail.** The manager sets such a
-  pending job to `failed` with the reason in `outputs.error` and starts no pod for it
+  pending job to `failed` with the reason in `outputs.error` and starts no pod for it,
+  two-part tags such as `v0.11` included
   (`unsupported_worker_image`, `reject_unsupported_images`). Without the key these images
   cannot end their own pod, and their TTL monitor cannot either, so they are refused
   rather than run in a half-working state.

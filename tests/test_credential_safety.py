@@ -481,6 +481,10 @@ def test_worker_shutdown_requests_termination_and_never_calls_runpod(
         ("nielsrolf/ow-unsloth:v0.15.0", True),
         ("nielsrolf/ow-vllm:v0.9.12", True),
         ("nielsrolf/ow-cluster:v0.15.2", True),
+        # Tags up to v0.11 have two parts.
+        ("nielsrolf/ow-vllm:v0.11", True),
+        ("nielsrolf/ow-default:v0.8", True),
+        ("nielsrolf/ow-vllm:v1.2", False),
         # The same images, named with their registry.
         ("docker.io/nielsrolf/ow-unsloth:v0.15.0", True),
         ("index.docker.io/nielsrolf/ow-unsloth:v0.15.0", True),

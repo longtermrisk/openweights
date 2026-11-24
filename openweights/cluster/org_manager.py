@@ -75,7 +75,7 @@ WORKER_TOKEN_RETRY_SECONDS = 60
 # account, and the organization's OpenWeights key is an admin of the organization.
 NEVER_IN_WORKER_ENV = ("RUNPOD_API_KEY", "OPENWEIGHTS_API_KEY")
 _OFFICIAL_IMAGE_VERSION = re.compile(
-    r"(?:(?:index\.|registry-1\.)?docker\.io/)?nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)\.(\d+)"
+    r"(?:(?:index\.|registry-1\.)?docker\.io/)?nielsrolf/ow-[a-z0-9-]+:v(\d+)\.(\d+)(?:\.(\d+))?"
 )
 
 
@@ -105,7 +105,8 @@ def unsupported_worker_image(image: Optional[str]) -> Optional[str]:
     match = _OFFICIAL_IMAGE_VERSION.match((image or "").strip())
     if not match:
         return None
-    if tuple(int(part) for part in match.groups()) >= KEYLESS_WORKER_IMAGE_VERSION:
+    # Tags up to v0.11 have two parts (nielsrolf/ow-vllm:v0.11).
+    if tuple(int(part or 0) for part in match.groups()) >= KEYLESS_WORKER_IMAGE_VERSION:
         return None
     minimum = "v" + ".".join(str(part) for part in KEYLESS_WORKER_IMAGE_VERSION)
     return (
