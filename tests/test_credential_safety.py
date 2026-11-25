@@ -820,6 +820,42 @@ def test_worker_without_pod_is_only_marked_terminated(monkeypatch):
     assert runpod_client.terminated == []
 
 
+def test_worker_that_pinged_since_the_list_was_read_is_not_terminated(monkeypatch):
+    """The list is read before pods are started, which can take minutes."""
+    runpod_client = FakeRunpodClient()
+    monkeypatch.setattr(org_manager_module, "runpod", runpod_client)
+    now = datetime.now(timezone.utc)
+    listed = worker_row("active", ping_age=130, now=now)
+    supabase = FakeSupabase(
+        rows={"worker": [worker_row("active", ping_age=3, now=now)]}
+    )
+
+    assert make_manager(supabase).clean_up_workers([listed]) == []
+    assert runpod_client.terminated == [] and supabase.updates == []
+
+
+def test_worker_that_still_has_not_pinged_is_terminated(monkeypatch):
+    runpod_client = FakeRunpodClient()
+    monkeypatch.setattr(org_manager_module, "runpod", runpod_client)
+    now = datetime.now(timezone.utc)
+    listed = worker_row("active", ping_age=130, now=now)
+    supabase = FakeSupabase(rows={"worker": [dict(listed)]})
+
+    assert make_manager(supabase).clean_up_workers([listed]) == ["worker-1"]
+    assert runpod_client.terminated == ["pod-1"]
+
+
+def test_worker_terminated_since_the_list_was_read_is_left_alone(monkeypatch):
+    runpod_client = FakeRunpodClient()
+    monkeypatch.setattr(org_manager_module, "runpod", runpod_client)
+    now = datetime.now(timezone.utc)
+    listed = worker_row("active", ping_age=130, now=now)
+    supabase = FakeSupabase(rows={"worker": [listed | {"status": "terminated"}]})
+
+    assert make_manager(supabase).clean_up_workers([listed]) == []
+    assert runpod_client.terminated == []
+
+
 # --- TTL monitor -----------------------------------------------------------------
 
 

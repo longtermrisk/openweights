@@ -571,13 +571,36 @@ class OrganizationManager:
         terminated.
         Returns the ids of the workers that are now terminated.
         """
-        now = datetime.now(timezone.utc)
         terminated = []
         for worker in workers:
-            reason = self.termination_reason(worker, now)
+            if not self.termination_reason(worker):
+                continue
+            # `workers` was read at the start of the cycle, and starting pods in
+            # between can take minutes (every failed RunPod attempt costs about ten
+            # seconds). Judged by that list, every healthy worker "has not pinged"
+            # for as long as the cycle took: on 2026-11-25 this terminated all 47
+            # workers of one organization at once, three times in two hours. So the
+            # decision is made on the worker's row as it is now.
+            current = self.get_worker(worker["id"])
+            if current is not None:
+                if current.get("status") == "terminated":
+                    continue
+                worker = current
+            reason = self.termination_reason(worker)
             if reason and self.terminate_worker(worker, reason):
                 terminated.append(worker["id"])
         return terminated
+
+    def get_worker(self, worker_id):
+        """The worker's row as it is now, or None if it has none (any more)."""
+        rows = (
+            self._ow._supabase.table("worker")
+            .select("*")
+            .eq("id", worker_id)
+            .execute()
+            .data
+        )
+        return rows[0] if rows else None
 
     def normalize_allowed_hardware(self, pending_jobs):
         """Rewrite allowed_hardware aliases to canonical names; fail jobs with unknown GPUs.
