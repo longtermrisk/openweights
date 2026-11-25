@@ -95,51 +95,6 @@ class SFT(Jobs):
         return params
 
 
-@register("multiple_choice")
-class MultipleChoice(Jobs):
-    mount = {
-        filepath: os.path.basename(filepath)
-        for filepath in glob(os.path.join(os.path.dirname(__file__), "*.py"))
-    }
-    base_image: str = OW_VLLM_IMAGE
-
-    @property
-    def id_predix(self):
-        return "mcjob"
-
-    @supabase_retry()
-    def create(
-        self, requires_vram_gb="guess", allowed_hardware=None, priority=None, **params
-    ) -> Dict[str, Any]:
-        """Create a multiple choice evaluation job"""
-        if "model" not in params:
-            raise ValueError("model is required in params")
-
-        if requires_vram_gb == "guess":
-            requires_vram_gb = 36 if "8b" in params["model"].lower() else 70
-
-        params = MCQJobModel(**params).model_dump()
-        params["mc_eval"] = MultipleChoiceEvalModel(**params["mc_eval"]).to_file()
-        mounted_files = self._upload_mounted_files()
-        job_id = self.compute_id(
-            {"validated_params": params, "mounted_files": mounted_files}
-        )
-
-        data = {
-            "id": job_id,
-            "type": "custom",
-            "model": params["model"],
-            "params": {"validated_params": params, "mounted_files": mounted_files},
-            "requires_vram_gb": requires_vram_gb,
-            "allowed_hardware": allowed_hardware,
-            "priority": priority,
-            "docker_image": self.base_image,
-            "script": f"python mc_question.py {job_id}",
-        }
-
-        return self.get_or_create_or_reset(data)
-
-
 @register("logprob")
 class LogProb(Jobs):
     mount = {
