@@ -34,6 +34,10 @@ from openweights.secret_store import (
     secret_store_from_env,
 )
 from openweights.cluster.costs import terminate_worker_pod, worker_cost_fields
+from openweights.cluster.runpod_credits import (
+    RunpodCreditMonitor,
+    fetch_runpod_balance,
+)
 from openweights.cluster.start_runpod import (
     HARDWARE_REGISTRY,
     is_spending_limit_error,
@@ -180,6 +184,8 @@ class OrganizationManager:
         # Set up RunPod client
         runpod.api_key = os.environ["RUNPOD_API_KEY"]
         self.hardware_registry = HARDWARE_REGISTRY
+        # Reads runpod.api_key at call time: manage_cluster() sets it every cycle.
+        self.credit_monitor = RunpodCreditMonitor(lambda: fetch_runpod_balance(runpod))
         populate_hardware_config(runpod, force=True)
 
         # Register signal handlers
@@ -690,6 +696,13 @@ class OrganizationManager:
             )
             return
 
+        # Nor while the RunPod account cannot pay for a pod. Checked before any
+        # start, so that refusals for lack of credits never reach the per-GPU
+        # failure cooldowns.
+        if not self.credit_monitor.can_provision():
+            logger.warning(self.credit_monitor.status_line())
+            return
+
         # Workers are not started without a token of their own. After a failure to
         # create one, wait before the next attempt.
         if time.time() < self.worker_token_retry_at:
@@ -831,6 +844,7 @@ class OrganizationManager:
                             pod = None
                             last_error = None
                             token_error = None
+                            out_of_credits = False
 
                             for hardware_type in candidate_hardware:
                                 count, gpu = parse_hardware_config(hardware_type)
@@ -910,6 +924,7 @@ class OrganizationManager:
                                                 price_error,
                                             )
                                     self.hardware_registry.record_success(hardware_type)
+                                    self.credit_monitor.record_success()
                                     self._ow._supabase.table("worker").update(
                                         worker_cost_fields(
                                             pod, gpu, count, billing_started_at
@@ -918,6 +933,14 @@ class OrganizationManager:
                                     break
                                 except Exception as e:
                                     last_error = e
+                                    # An account without credits is refused on
+                                    # every GPU type: not a failure of this one,
+                                    # and no reason to try the others.
+                                    if self.credit_monitor.record_failure(
+                                        hardware_type, e
+                                    ):
+                                        out_of_credits = True
+                                        break
                                     cooldown_applied = (
                                         self.hardware_registry.record_failure(
                                             hardware_type, e
@@ -973,6 +996,10 @@ class OrganizationManager:
                                         max_vram_required,
                                         last_error,
                                     )
+                            if out_of_credits:
+                                # Account-wide: the remaining batches would be
+                                # refused as well. Jobs stay pending.
+                                return
                             if token_error is not None:
                                 # Not specific to this batch: stop for now. The
                                 # jobs stay pending and get a worker once a token
