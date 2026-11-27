@@ -17,6 +17,7 @@ from postgrest.exceptions import APIError
 
 from openweights.cluster import org_manager as org_manager_module
 from openweights.cluster import start_runpod
+from openweights.cluster.runpod_credits import RunpodCreditMonitor
 from openweights.cluster.org_manager import (
     OrganizationManager,
     WorkerTokenError,
@@ -600,6 +601,7 @@ def scaling_manager(monkeypatch, create_worker_token):
     supabase = FakeSupabase()
     manager = make_manager(supabase=supabase)
     manager.hardware_registry = FakeHardwareRegistry()
+    manager.credit_monitor = RunpodCreditMonitor(lambda: 100.0)
     manager.create_worker_token = create_worker_token
     started = []
 
